@@ -101,6 +101,9 @@ async function go<T>(name: string, ...args: any[]): Promise<T> {
 // Mock shop: the first visit is a human-check page that the in-app browser
 // "passes" after 12 s (cookie + reload), so the verification window is shown.
 const shopTitle = "QA 浏览器商品";
+let rejectImageKey = false;
+let returnImageURL = false;
+let resultLinkUnavailable = false;
 let shopPhotoRequests = 0;
 function shopPage(req: http.IncomingMessage, res: http.ServerResponse) {
   res.setHeader("content-type", "text/html; charset=utf-8");
@@ -126,6 +129,16 @@ document.head.appendChild(s);
 
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
+    if (req.url === "/qa-result.png") {
+      if (resultLinkUnavailable) {
+        res.writeHead(404);
+        res.end();
+      } else {
+        res.setHeader("content-type", "image/png");
+        res.end(image);
+      }
+      return;
+    }
     if (req.url?.startsWith("/qa-shop/product")) return shopPage(req, res);
     if (req.url === "/qa-shop/photo.png") {
       shopPhotoRequests++;
@@ -141,13 +154,25 @@ test.beforeAll(async () => {
       );
       return;
     }
+    if (req.url?.includes("/images/") && rejectImageKey) {
+      req.resume();
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Invalid API key" } }));
+      return;
+    }
     if (req.url?.includes("/images/")) {
       imageRequests++;
       req.resume();
       req.on("end", () => {
         res.setHeader("content-type", "application/json");
         res.end(
-          JSON.stringify({ data: [{ b64_json: image.toString("base64") }] }),
+          JSON.stringify({
+            data: [
+              returnImageURL
+                ? { url: new URL("/qa-result.png", baseURL).href }
+                : { b64_json: image.toString("base64") },
+            ],
+          }),
         );
       });
       return;
@@ -419,6 +444,10 @@ test("native agent requests necessary materials and automatically generates twel
   await expect
     .poll(async () => (await go<any>("GetAgentDraft")).imageConnectionID)
     .not.toBe("");
+  // The backend fills a lone connection itself, so also wait for the typed instruction.
+  await expect
+    .poll(async () => (await go<any>("GetAgentDraft")).instruction)
+    .toMatch(/Etsy/);
   // Every field in 更多设置 is a dropdown; nothing is typed by hand.
   const settings = page.locator(".ant-collapse-content");
   await expect(settings.locator('input:not([role="combobox"])')).toHaveCount(0);
@@ -446,6 +475,11 @@ test("native agent requests necessary materials and automatically generates twel
     .locator("..")
     .locator("..")
     .click();
+  await expect(
+    page.locator(
+      ".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option",
+    ),
+  ).toHaveText(["1 张（逐张生成）", "2 张", "3 张", "4 张"]);
   await page.locator('.ant-select-item-option[title="2 张"]').click();
   await expect.poll(() => go<number>("ImageConcurrency")).toBe(2);
   const ref = await go<{ id: string }>(
@@ -522,6 +556,12 @@ test("native agent requests necessary materials and automatically generates twel
   });
   await page.getByRole("link", { name: "任务中心", exact: true }).click();
   await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  // The finished set no longer pulls the user back: a new request page, no ring.
+  await expect(
+    page.getByRole("button", { name: "开始生成套图", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "套图结果" })).toHaveCount(0);
+  await expect(page.locator(".nav-progress")).toHaveCount(0);
   await page
     .getByRole("button", { name: "打开记录", exact: true })
     .first()
@@ -596,6 +636,122 @@ test("set images open in a large viewer with keyboard and button navigation", as
   await expect(second).toHaveCount(0);
 });
 
+test("failed result downloads show the cause and bulk retry never regenerates", async () => {
+  returnImageURL = true;
+  resultLinkUnavailable = true;
+  try {
+    for (const slot of [3, 4]) {
+      await page
+        .getByRole("button", { name: `优化第 ${slot} 张图片`, exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+      await dialog.getByLabel("想怎么调整？").fill("稍微提亮背景");
+      await dialog
+        .getByRole("button", { name: "开始优化", exact: true })
+        .click();
+      await expect(
+        page
+          .locator(".agent-result")
+          .nth(slot - 1)
+          .getByText("下载失败", { exact: true }),
+      ).toBeVisible({ timeout: 20000 });
+    }
+    const failed = page.locator(".agent-result").nth(2);
+    await expect(
+      failed.getByText(
+        "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。",
+      ),
+    ).toBeVisible();
+    await failed.getByText("查看详细错误", { exact: true }).click();
+    await expect(
+      failed.getByText(/图片链接不可访问或已过期（HTTP 404）/),
+    ).toBeVisible();
+    await failed.locator("summary").first().focus();
+    await page.keyboard.press("Enter");
+    await expect(failed.locator(".task-error-details")).not.toHaveAttribute(
+      "open",
+      "",
+    );
+    await page.screenshot({
+      path: path.resolve("../docs/download-recovery-0.3.11.png"),
+      fullPage: true,
+    });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 760,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await expect(
+      page.getByRole("button", {
+        name: "补下载全部失败图片（2 张）",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await expect(page.locator(".ant-notification-notice")).toHaveCount(0, {
+      timeout: 10000,
+    });
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations).toEqual([]);
+    const before = imageRequests;
+    resultLinkUnavailable = false;
+    await page
+      .getByRole("button", { name: "补下载全部失败图片（2 张）", exact: true })
+      .click();
+    await expect(
+      page.locator(".agent-result").filter({ hasText: "下载失败" }),
+    ).toHaveCount(0, { timeout: 15000 });
+    await expect(
+      failed.getByRole("button", { name: "优化第 3 张图片", exact: true }),
+    ).toBeVisible();
+    expect(imageRequests).toBe(before);
+  } finally {
+    returnImageURL = false;
+    resultLinkUnavailable = false;
+  }
+});
+
+test("rejected API key is explained and failed images regenerate in one action", async () => {
+  rejectImageKey = true;
+  const second = page.locator(".agent-result").nth(1);
+  await second.getByRole("button", { name: "优化第 2 张图片" }).click();
+  const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+  await dialog.getByLabel("想怎么调整？").fill("背景更亮一些");
+  await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
+  await expect(page.getByText("生图中转站拒绝了 API Key")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(
+    second.getByText("API Key 无效，中转站拒绝了请求，未生成也不计费。"),
+  ).toBeVisible();
+  const bulk = page.getByRole("button", {
+    name: "重新生成全部失败图片（1 张）",
+  });
+  await expect(bulk).toBeVisible();
+  rejectImageKey = false;
+  const before = imageRequests;
+  await bulk.click();
+  const confirm = page.getByRole("dialog", { name: "重新生成 1 张图片？" });
+  await expect(confirm.getByText("可能产生费用")).toBeVisible();
+  await confirm.getByRole("button", { name: "重新生成", exact: true }).click();
+  await expect(page.getByText("生图中转站拒绝了 API Key")).toHaveCount(0, {
+    timeout: 20000,
+  });
+  await expect(bulk).toHaveCount(0);
+  expect(imageRequests).toBe(before + 1);
+  // The ring disappears once the regenerated image is saved and the set is finished.
+  await expect(page.locator(".nav-progress")).toHaveCount(0, {
+    timeout: 20000,
+  });
+});
+
 test("blocked product link waits for browser verification and continues", async () => {
   test.setTimeout(120000);
   const before = imageRequests;
@@ -624,6 +780,12 @@ test("blocked product link waits for browser verification and continues", async 
   ).toBeVisible({ timeout: 40000 });
   const waiting = page.getByText(/等待验证中（已 \d+ 秒）/);
   await expect(waiting).toBeVisible();
+  await expect(page.locator("#smart-progress-status")).toContainText(
+    "智能生图正在分析",
+  );
+  await page.getByRole("link", { name: "素材库", exact: true }).click();
+  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await expect(waiting).toBeVisible();
   const first = Number(
     (await waiting.textContent())?.match(/已 (\d+) 秒/)?.[1],
   );
@@ -640,6 +802,18 @@ test("blocked product link waits for browser verification and continues", async 
     { timeout: 40000 },
   );
   await expect(waiting).toHaveCount(0);
+  // An unfinished run (waiting for input) is kept when the user leaves and returns.
+  await expect(page.locator("#smart-progress-status")).toContainText(
+    "智能生图等待补充资料",
+  );
+  await page.getByRole("link", { name: "任务中心", exact: true }).click();
+  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await expect(
+    page.getByText("等待补充", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByLabel("商品链接", { exact: true })).toHaveValue(
+    shopURL,
+  );
   const runs = await go<{ items: any[] }>("ListAgentRuns", 0, 50);
   const run = runs.items.find((r) => r.input.productURL === shopURL);
   expect(run.product.title).toBe(shopTitle);

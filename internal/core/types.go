@@ -77,6 +77,9 @@ type GenerationDiagnostic struct {
 	ElapsedMS         int64  `json:"elapsedMS"`
 	BytesReceived     int    `json:"bytesReceived"`
 	NetworkError      string `json:"networkError"`
+	// Download of a returned result runs after generation, in its own pool.
+	DownloadStartedAt string `json:"downloadStartedAt,omitempty"`
+	DownloadMS        int64  `json:"downloadMS,omitempty"`
 }
 type Output struct {
 	URL    string `json:"url,omitempty"`

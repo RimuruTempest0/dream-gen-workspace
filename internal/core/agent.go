@@ -23,7 +23,7 @@ func (s *Service) AgentRuntime() AgentRuntimeInfo {
 	defer s.mu.Unlock()
 	info, e := os.Stat(s.agentExecutable)
 	if e != nil || info.IsDir() {
-		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.3.8 便携包。普通生图仍可使用。"}
+		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.4.0 便携包。普通生图仍可使用。"}
 	}
 	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: "内置运行时已就绪"}
 }

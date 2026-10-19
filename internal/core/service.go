@@ -33,12 +33,15 @@ type Service struct {
 	// imageConcurrency is how many generation tasks run at once (saved preference).
 	imageConcurrency int
 	inflight         map[string]bool
+	downloads        map[string]bool
 	workers          sync.WaitGroup
 }
 
 const (
 	defaultImageConcurrency = 3
-	maxImageConcurrency     = 8
+	maxImageConcurrency     = 4
+	// Result downloads never call the generation API, so they get their own limit.
+	maxParallelDownloads = 4
 )
 
 func (s *Service) ImageConcurrency() int {
@@ -122,10 +125,12 @@ func NewService(root string) (*Service, error) {
 		}
 	}
 	s.inflight = map[string]bool{}
+	s.downloads = map[string]bool{}
 	s.imageConcurrency = defaultImageConcurrency
 	var saved int
-	if st.Get("preferences", "image-concurrency", &saved) == nil && saved >= 1 && saved <= maxImageConcurrency {
-		s.imageConcurrency = saved
+	if st.Get("preferences", "image-concurrency", &saved) == nil && saved >= 1 {
+		// Versions before 0.4.0 allowed up to 8; keep such a choice at the new maximum.
+		s.imageConcurrency = min(saved, maxImageConcurrency)
 	}
 	if e = s.initializeAgents(); e != nil {
 		st.Close()
@@ -517,30 +522,11 @@ func (s *Service) Retry(id string) (string, error) {
 		return "", errors.New("任务仍在执行，不能重复生成")
 	}
 	if t.AgentRunID != "" {
-		var c Connection
-		if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
+		if e := s.retryAgentLocked(t); e != nil {
 			return "", e
 		}
-		if normalizeConnection(c).Kind != "image" {
-			return "", errors.New("请选择生图中转站")
-		}
-		if _, e := s.key(c.Credential); e != nil {
-			return "", e
-		}
-		t.ID = NewID()
-		t.CreatedAt = Now()
-		t.UpdatedAt = Now()
-		t.Status = "queued"
-		t.Error = ""
-		t.Results = nil
-		t.AssetIDs = []string{}
-		t.Diagnostic = GenerationDiagnostic{}
-		t.Connection = c
-		batch, e := s.store.Submit(NewID(), t.BatchID, []Task{t})
-		if e == nil {
-			s.signal()
-		}
-		return batch, e
+		s.signal()
+		return t.BatchID, nil
 	}
 	return s.submit(GenerateInput{RequestID: NewID(), ConnectionID: t.Connection.ID, Model: t.Model, Prompts: []string{t.Prompt}, Count: 1, References: t.References, Size: t.Size, Quality: t.Quality, ProjectID: t.ProjectID})
 }
@@ -572,12 +558,48 @@ func (s *Service) ResumeBlocked(id string) error {
 	if e := s.store.Get("task", id, &t); e != nil {
 		return e
 	}
+	if e := s.resumeBlockedLocked(t); e != nil {
+		return e
+	}
+	s.signal()
+	return nil
+}
+
+// retryAgentLocked queues a new attempt for a smart-generation slot with the
+// connection's current key. It is a new, possibly billable request.
+func (s *Service) retryAgentLocked(t Task) error {
+	var c Connection
+	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
+		return missing(e, "这张图片使用的生图中转站已删除，请新建需求")
+	}
+	if normalizeConnection(c).Kind != "image" {
+		return errors.New("请选择生图中转站")
+	}
+	if _, e := s.key(c.Credential); e != nil {
+		return e
+	}
+	t.ID = NewID()
+	t.CreatedAt = Now()
+	t.UpdatedAt = Now()
+	t.Status = "queued"
+	t.Error = ""
+	t.Results = nil
+	t.AssetIDs = []string{}
+	t.Diagnostic = GenerationDiagnostic{}
+	t.PreviousAssetIDs = nil
+	t.Connection = c
+	_, e := s.store.Submit(NewID(), t.BatchID, []Task{t})
+	return e
+}
+
+// resumeBlockedLocked puts an unsent, paused task back in the queue.
+func (s *Service) resumeBlockedLocked(t Task) error {
 	if t.Status != "blocked" {
-		return errors.New("只有未提交且缺少密钥的任务可恢复")
+		return errors.New("只有未提交的暂停任务可恢复")
 	}
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
-		return e
+		return missing(e, "这张图片使用的生图中转站已删除，请新建需求")
 	}
 	if c.BaseURL != t.Connection.BaseURL {
 		return errors.New("连接地址已修改，请先恢复原地址，或明确重新生成")
@@ -588,11 +610,46 @@ func (s *Service) ResumeBlocked(id string) error {
 	t.Connection.Credential = c.Credential
 	t.Status = "queued"
 	t.Error = ""
-	if e := s.store.Put("task", id, t); e != nil {
-		return e
+	t.UpdatedAt = Now()
+	return s.store.Put("task", t.ID, t)
+}
+
+// RetryFailedAgentImages regenerates every failed image and resumes every paused
+// image of a smart-generation set in one confirmed action. Images whose result is
+// unknown are skipped: they may already have been generated and billed.
+func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all, e := List[Task](s.store, "task")
+	if e != nil {
+		return 0, e
 	}
+	seen := map[string]bool{}
+	retried := 0
+	for _, t := range all { // newest first: the first task of a slot is its current attempt
+		if t.AgentRunID != runID || seen[t.PlanItemID] {
+			continue
+		}
+		seen[t.PlanItemID] = true
+		switch t.Status {
+		case "failed":
+			e = s.retryAgentLocked(t)
+		case "blocked":
+			e = s.resumeBlockedLocked(t)
+		default:
+			continue
+		}
+		if e != nil {
+			return retried, e
+		}
+		retried++
+	}
+	if retried == 0 {
+		return 0, errors.New("没有需要重新生成的失败或暂停图片")
+	}
+	_ = s.store.appendLog("info", "image", runID, fmt.Sprintf("重新生成全部失败图片：%d 张", retried))
 	s.signal()
-	return nil
+	return retried, nil
 }
 func (s *Service) Dashboard() (Summary, error) {
 	s.mu.Lock()
@@ -602,7 +659,7 @@ func (s *Service) Dashboard() (Summary, error) {
 		return Summary{}, e
 	}
 	as, e := List[Asset](s.store, "asset")
-	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.3.8"}
+	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.4.0"}
 	if s.agentRunID != "" {
 		r.Active++
 	}
@@ -646,7 +703,12 @@ func (s *Service) loop() {
 			return
 		}
 		started := false
-		for s.claimTask() {
+		for {
+			downloading := s.claimTask(true)
+			generating := s.claimTask(false)
+			if !downloading && !generating {
+				break
+			}
 			started = true
 		}
 		if !started {
@@ -660,10 +722,17 @@ func (s *Service) loop() {
 	}
 }
 
-// claimTask starts one waiting task in its own goroutine when a slot is free.
-func (s *Service) claimTask() bool {
+// claimTask starts one waiting task in its own goroutine when its pool has room.
+// Generation requests are limited by the user's setting; downloads of results
+// already returned use a separate pool, so a slow image host never holds a
+// generation slot.
+func (s *Service) claimTask(download bool) bool {
 	s.mu.Lock()
-	if s.paused || s.ctx.Err() != nil || len(s.inflight) >= s.imageConcurrency {
+	pool, limit, status := s.inflight, s.imageConcurrency, "queued"
+	if download {
+		pool, limit, status = s.downloads, maxParallelDownloads, "downloading"
+	}
+	if s.paused || s.ctx.Err() != nil || len(pool) >= limit {
 		s.mu.Unlock()
 		return false
 	}
@@ -674,7 +743,7 @@ func (s *Service) claimTask() bool {
 	}
 	var chosen *Task
 	for i := len(tasks) - 1; i >= 0; i-- {
-		if (tasks[i].Status == "queued" || tasks[i].Status == "downloading") && !s.inflight[tasks[i].ID] {
+		if tasks[i].Status == status && !s.inflight[tasks[i].ID] && !s.downloads[tasks[i].ID] {
 			t := tasks[i]
 			chosen = &t
 			break
@@ -684,13 +753,13 @@ func (s *Service) claimTask() bool {
 		s.mu.Unlock()
 		return false
 	}
-	s.inflight[chosen.ID] = true
+	pool[chosen.ID] = true
 	s.workers.Add(1)
 	s.mu.Unlock()
 	go func(t Task) {
 		defer func() {
 			s.mu.Lock()
-			delete(s.inflight, t.ID)
+			delete(pool, t.ID)
 			s.mu.Unlock()
 			s.workers.Done()
 			s.signal()
@@ -755,12 +824,22 @@ func (s *Service) step(claimed Task) bool {
 		s.signal()
 	})
 	s.mu.Lock()
+	// A rejected key fails every remaining image the same way, so the rest of the
+	// batch is paused unsent; the user fixes the key and resumes explicitly.
+	authRejected := e != nil && !unknown && (t.Diagnostic.HTTPStatus == 401 || t.Diagnostic.HTTPStatus == 403)
 	if e != nil {
 		t.Status = "failed"
 		if unknown {
 			t.Status = "unknown"
 		}
 		t.Error = redact(e.Error(), key)
+		if authRejected {
+			t.Error = fmt.Sprintf("API Key 无效（HTTP %d），生图中转站拒绝了请求，未生成也不计费。请在“连接与设置”重新输入该生图中转站的 API Key 后重新生成。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			s.pauseBatchForAuthLocked(t)
+		}
+		if unknown && relayTimedOut(t.Diagnostic) {
+			t.Error = fmt.Sprintf("中转站等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在中转站生成并已计费，请先核对中转站记录。降低同时生成张数或质量可能减少这类超时，但不能保证避免；程序不会自动重发生图。原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), t.Error)
+		}
 	} else {
 		t.Status = "downloading"
 		t.Results = outputs
@@ -773,12 +852,63 @@ func (s *Service) step(claimed Task) bool {
 	if saveErr != nil {
 		return false
 	}
-	if e == nil {
-		s.download(&t)
-	}
+	// The result is saved as "downloading"; the download pool fetches it, so this
+	// generation slot is free for the next image right away.
 	return true
 }
+
+// relayTimedOut recognises a relay or CDN cutting a long-running request: gateway
+// timeout statuses, or a connection closed without a reply after a long wait.
+func relayTimedOut(d GenerationDiagnostic) bool {
+	switch d.HTTPStatus {
+	case 504, 522, 524:
+		return true
+	case 0:
+		return d.ElapsedMS >= 90_000 && d.NetworkError != ""
+	}
+	return false
+}
+
+func timeoutLabel(d GenerationDiagnostic) string {
+	if d.HTTPStatus != 0 {
+		return fmt.Sprintf("HTTP %d", d.HTTPStatus)
+	}
+	return "连接被关闭"
+}
+
+// pauseBatchForAuthLocked blocks the batch's queued, unsent images after the relay
+// rejected the API key. Requests already in flight finish on their own.
+func (s *Service) pauseBatchForAuthLocked(failed Task) {
+	if failed.BatchID == "" {
+		return
+	}
+	tasks, e := List[Task](s.store, "task")
+	if e != nil {
+		return
+	}
+	paused := 0
+	for _, t := range tasks {
+		if t.BatchID == failed.BatchID && t.Status == "queued" && t.Connection.ID == failed.Connection.ID {
+			t.Status = "blocked"
+			t.Error = "同批图片因 API Key 无效已暂停，尚未提交、未计费。重新输入密钥后可恢复生成。"
+			t.UpdatedAt = Now()
+			if s.store.Put("task", t.ID, t) == nil {
+				paused++
+			}
+		}
+	}
+	if paused > 0 {
+		_ = s.store.appendLog("warn", "image", failed.BatchID, fmt.Sprintf("生图中转站拒绝 API Key，已暂停同批 %d 张未提交图片", paused))
+	}
+}
+
 func (s *Service) download(t *Task) {
+	s.mu.Lock()
+	t.Diagnostic.DownloadStartedAt = Now()
+	t.Diagnostic.DownloadMS = 0
+	s.store.Put("task", t.ID, *t)
+	s.mu.Unlock()
+	s.signal()
 	for i, out := range t.Results {
 		assetID := fmt.Sprintf("%s-%d", t.ID, i)
 		s.mu.Lock()
@@ -813,15 +943,27 @@ func (s *Service) download(t *Task) {
 	t.Status = "succeeded"
 	t.Error = ""
 	t.Results = nil
+	t.Diagnostic.DownloadMS = sinceMS(t.Diagnostic.DownloadStartedAt)
 	t.UpdatedAt = Now()
 	s.store.Put("task", t.ID, *t)
 	s.mu.Unlock()
 	s.signal()
 }
+
+// sinceMS returns milliseconds elapsed since an RFC 3339 timestamp, or 0.
+func sinceMS(stamp string) int64 {
+	at, e := time.Parse(time.RFC3339Nano, stamp)
+	if e != nil {
+		return 0
+	}
+	return time.Since(at).Milliseconds()
+}
+
 func (s *Service) downloadError(t *Task, e error) {
 	s.mu.Lock()
 	t.Status = "download_failed"
 	t.Error = e.Error()
+	t.Diagnostic.DownloadMS = sinceMS(t.Diagnostic.DownloadStartedAt)
 	t.UpdatedAt = Now()
 	s.store.Put("task", t.ID, *t)
 	s.mu.Unlock()

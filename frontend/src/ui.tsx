@@ -246,20 +246,75 @@ export function TaskTiming({ task }: { task: Task }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [active, task.id]);
-  const start = Date.parse(task.diagnostic?.startedAt || task.createdAt);
+  const d = task.diagnostic;
+  const start = Date.parse(d?.startedAt || task.createdAt);
   const end = active ? now : Date.parse(task.updatedAt || task.createdAt);
   const seconds = Math.max(0, Math.floor((end - start) / 1000));
   if (task.status === "queued" || !Number.isFinite(seconds)) return null;
+  const span = (s: number) =>
+    s >= 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒` : `${s} 秒`;
+  // Since 0.3.12 the download runs in its own pool after generation, so the
+  // card shows both phases; older tasks only have the total time.
+  const downloadStart = Date.parse(d?.downloadStartedAt || "");
+  let label = `${active ? "已等待" : "用时"} ${span(seconds)}`;
+  if (Number.isFinite(downloadStart)) {
+    const generated = Math.max(
+      0,
+      Math.floor((d?.elapsedMS || downloadStart - start) / 1000),
+    );
+    const downloading = task.status === "downloading";
+    const fetched = Math.max(
+      0,
+      Math.floor(
+        (downloading
+          ? now - downloadStart
+          : d?.downloadMS || end - downloadStart) / 1000,
+      ),
+    );
+    label = `生成 ${span(generated)} · ${downloading ? "下载中" : "下载"} ${span(fetched)}`;
+  }
   return (
     <div className="task-timing">
-      <small>
-        {active ? "已等待" : "用时"} {Math.floor(seconds / 60)} 分{" "}
-        {seconds % 60} 秒
-      </small>
+      <small>{label}</small>
       {active && seconds >= 120 && (
-        <p>中转站响应较慢，请保持应用运行。再次生成会提交新的计费请求。</p>
+        <p>
+          {task.status === "downloading"
+            ? "正在下载已返回的图片，临时网络错误会自动重试。请保持应用运行，不会重新生图。"
+            : "中转站响应较慢，请保持应用运行。再次生成会提交新的计费请求。"}
+        </p>
       )}
     </div>
+  );
+}
+export function TaskFailureAlert({ task }: { task: Task }) {
+  if (!task.error) return null;
+  let message = "这张图片尚未完成，请查看详细错误。";
+  if (task.status === "download_failed") {
+    message = /deadline exceeded|timeout|超时|10 分钟/i.test(task.error)
+      ? "已收到图片结果，但下载超时。可点“补下载”，不会重新生图。"
+      : "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。";
+  } else if (task.status === "unknown") {
+    const status = task.diagnostic?.httpStatus;
+    message = [504, 522, 524].includes(status || 0)
+      ? `中转站等待超时（HTTP ${status}），结果未知。请先核对中转站记录，系统不会自动重发生图。`
+      : "结果未知，请先核对供应商记录，系统不会自动重发。";
+  } else if (task.status === "blocked") {
+    message = "已暂停，尚未提交、未计费。修正后可恢复生成。";
+  } else if (task.error.startsWith("API Key 无效")) {
+    message = "API Key 无效，中转站拒绝了请求，未生成也不计费。";
+  }
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      message={message}
+      description={
+        <details className="task-error-details">
+          <summary>查看详细错误</summary>
+          <p>{task.error}</p>
+        </details>
+      }
+    />
   );
 }
 export function AssetImage({

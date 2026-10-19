@@ -89,6 +89,33 @@ batchImage 客户端统一构造 Authorization: Bearer，并包含以下路径�
 6. 优先验证 API Key 可用的基础生成接口和批量接口，再决定使用哪条上游任务链路。
 7. 网页任务查询如依赖登录会话，portable 产品应自行管理任务，避免依赖浏览器 Cookie。
 
+## 2026-10-19 补充：批量接口不可用，改用异步任务接口
+
+背景：同步 POST /v1/images/edits 位于 Cloudflare 之后，单个请求超过约 2 分钟即被 524 或断开（实测 116–130 秒），中转站可能仍在生成并计费，本应用只能标为“结果未知”。
+
+证据（均为免费、未使用 API Key）：
+
+- 中转站基于开源 Sub2API（github.com/Wei-Shaw/sub2api）。前端批量页 BatchImageGuideView 只列出 `group.platform === "gemini"` 且 `allow_batch_image_generation` 的 Key，批量提交固定 `image_size: "1K"`；上游源码 service/batch_image.go 的批量供应商只有 `gemini_api` 与 `vertex`（Vertex 批量预测，排队可能以小时计）。用户本机全部生图任务使用 gpt-image-2，因此**批量接口不能用于当前连接**。
+- 上游 docs/ASYNC_IMAGE_TASKS.md 与 handler/image_task_handler.go 提供 OpenAI/Grok 分组的异步任务接口，明确用于避免 Cloudflare 524：
+  - POST /v1/images/edits/async、POST /v1/images/generations/async：请求体与同步接口完全相同（JSON 或 multipart），返回 202 `{id, task_id, status:"processing", expires_at, poll_url}`，`Retry-After: 3`。
+  - GET /v1/images/tasks/{task_id}：必须用提交时的同一个 Key；`processing` / `completed`（`result` 同同步响应，`data[].url` 为对象存储链接，b64 被移除）/ `failed`（`http_status` 与 `error`）。轮询不计费。
+  - 任务最长执行 30 分钟，状态与结果在最后一次更新后保留 24 小时；未知或他人任务返回 404。没有服务端幂等去重。
+  - 该功能默认关闭，需站长配置对象存储；未开启时提交返回 404 `async image tasks are not enabled`。
+- 无 Key 探测：三个异步路径均返回 401 `API_KEY_REQUIRED`，不存在的路径返回 404，说明路由已部署。
+- 带 Key 免费探测（用户 2026-10-19 批准；连接 test3，Base URL 无 /v1 前缀）：POST /images/edits/async 空请求体返回 404 `async image tasks are not enabled`；GET /images/tasks/<不存在的ID> 返回 404 `IMAGE_TASK_NOT_FOUND`。即任务存储可用但站长未开启该功能。空请求体在创建任务前即被拒绝，未生成、未计费。
+- 网页生图页的异步提交 /v1/image-playground/edits 虽用 API Key 提交，但查询 /api/v1/image-playground/tasks 要求网站登录会话（无 Key 返回 401 `UNAUTHORIZED: Authorization header is required`，与网关的 `API_KEY_REQUIRED` 不同），portable 应用无法只凭 API Key 取回结果。
+
+**结论：当前两条路都不能用于本应用。** 批量接口只支持 Gemini；异步任务接口已部署但未开启。可请幻灵站长在后台开启“异步图片对象存储”（Admin → Backup → Async image object storage）。开启后，用同样的空请求体探测会返回 400 `Request body is empty`，届时按下面方案实现。在此之前继续使用 0.3.10 的同步行为：说明超时原因，不自动重发。
+
+适配方案（每个生图连接单独开关，默认关闭，同步路径不变）：
+
+1. 提交：同一 multipart/JSON 请求体改发到 `…/async`，只要等到 202。拿到 task_id 立即持久化到任务记录，状态从 submitting 变为 running。提交本身仍只发一次：断线、5xx 或拿不到 task_id 都按“结果未知”处理，不重发。
+2. 轮询：遵循 Retry-After（3–10 秒），轮询 GET 可在网络错误、429、5xx 时继续，不产生新的生成。累计超过 35 分钟仍为 processing，或返回 404（过期、换 Key），标为结果未知并写明 task_id 以便核对。
+3. 结果：completed 的 `result.data[].url` 交给现有下载流程；下载失败保留链接可补下载（链接一般 24 小时有效）。failed 映射为失败并显示中转站错误，用户可明确重新生成。提交返回 404 未开启时提示关闭此选项。401/403 沿用现有的暂停同批逻辑。
+4. 并行：轮询期间保持占用“同时生成张数”的名额，使并行数仍代表中转站同时生成的张数。
+5. 重启：已持有 task_id 的 running 任务在重启后继续轮询、不重新提交；尚未拿到 task_id 的 submitting 任务仍标为结果未知。
+6. 诊断：记录 task_id、轮询次数与最近状态，不记录密钥与响应正文。
+
 ## 开发前还需实测
 
 - 选定分组对应的 Key 与模型权限。

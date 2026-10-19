@@ -24,6 +24,8 @@ export function ContinueAgentAnalysis(arg1:core.AgentContinuation):Promise<void>
 
 export function ContinueSmartGeneration(arg1:core.AgentContinuation,arg2:string):Promise<string>;
 
+export function CurrentSmartProgress():Promise<core.SmartProgress>;
+
 export function Dashboard():Promise<core.Summary>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
@@ -99,6 +101,8 @@ export function ResumeBlocked(arg1:string):Promise<void>;
 export function Retry(arg1:string):Promise<string>;
 
 export function RetryDownload(arg1:string):Promise<void>;
+
+export function RetryFailedAgentImages(arg1:string):Promise<number>;
 
 export function SaveConnection(arg1:core.ConnectionInput):Promise<core.Connection>;
 

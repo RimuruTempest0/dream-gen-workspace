@@ -23,7 +23,10 @@ func (a *App) ListAgentRuns(offset, limit int) (core.AgentPage, error) {
 }
 func (a *App) GetAgentRun(id string) (core.AgentRun, error) { return a.service.GetAgentRun(id) }
 func (a *App) GetAgentTasks(id string) ([]core.Task, error) { return a.service.GetAgentTasks(id) }
-func (a *App) ImageConcurrency() int                        { return a.service.ImageConcurrency() }
+func (a *App) RetryFailedAgentImages(runID string) (int, error) {
+	return a.service.RetryFailedAgentImages(runID)
+}
+func (a *App) ImageConcurrency() int { return a.service.ImageConcurrency() }
 func (a *App) SetImageConcurrency(n int) error {
 	return a.service.SetImageConcurrency(n)
 }
@@ -94,4 +97,8 @@ func (a *App) StartSmartGeneration(v core.AgentInput, requestID string) (string,
 }
 func (a *App) ContinueSmartGeneration(v core.AgentContinuation, requestID string) (string, error) {
 	return a.service.ContinueSmartGeneration(v, requestID)
+}
+
+func (a *App) CurrentSmartProgress() (core.SmartProgress, error) {
+	return a.service.CurrentSmartProgress()
 }

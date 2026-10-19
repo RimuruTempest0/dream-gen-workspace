@@ -210,7 +210,7 @@ func TestDownloadDoesNotLeakAuthOrRegenerate(t *testing.T) {
 		if r.Header.Get("Authorization") != "" {
 			t.Error("credential leaked")
 		}
-		if downloads.Load() == 1 {
+		if downloads.Load() <= imageDownloadAttempts {
 			w.WriteHeader(503)
 			return
 		}
@@ -231,6 +231,9 @@ func TestDownloadDoesNotLeakAuthOrRegenerate(t *testing.T) {
 	p, _ := s.ListTasks("", 0, 10)
 	if p.Items[0].Status != "download_failed" {
 		t.Fatal(p)
+	}
+	if downloads.Load() != imageDownloadAttempts || !strings.Contains(p.Items[0].Error, "HTTP 503") {
+		t.Fatal("temporary downloads were not retried", downloads.Load(), p.Items[0].Error)
 	}
 	if e := s.RetryDownload(p.Items[0].ID); e != nil {
 		t.Fatal(e)

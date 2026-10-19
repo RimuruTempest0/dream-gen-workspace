@@ -352,6 +352,30 @@ code {
   padding: 0 5px;
   border-radius: 4px;
 }
+.nav-progress {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--primary);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.nav-progress-visual {
+  display: inline-flex;
+  align-items: center;
+}
+.nav-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+}
 .sidebar-bottom {
   margin-top: auto;
   padding: 20px 10px 0;
@@ -907,4 +931,10 @@ code {
 }
 .log-detail {
   overflow-wrap: anywhere;
+}
+.task-error-details {
+  overflow-wrap: anywhere;
+}
+.task-error-details summary {
+  cursor: pointer;
 }

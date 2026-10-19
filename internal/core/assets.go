@@ -12,11 +12,9 @@ import (
 	"image/png"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 const MaxImageBytes = 32 << 20
@@ -210,36 +208,5 @@ func (s *Service) outputBytes(ctx context.Context, out Output) ([]byte, error) {
 		}
 		return base64.StdEncoding.DecodeString(out.Base64)
 	}
-	u, e := url.Parse(out.URL)
-	if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
-		return nil, errors.New("结果图片地址无效")
-	}
-	// Download requests NEVER carry provider authentication, including redirects.
-	client := &http.Client{Transport: newNetworkTransport(), Timeout: 2 * time.Minute, CheckRedirect: func(r *http.Request, via []*http.Request) error {
-		if len(via) > 5 {
-			return errors.New("图片重定向次数过多")
-		}
-		if r.URL.Scheme != "http" && r.URL.Scheme != "https" {
-			return errors.New("不支持图片地址协议")
-		}
-		r.Header.Del("Authorization")
-		return nil
-	}}
-	req, e := http.NewRequestWithContext(ctx, "GET", out.URL, nil)
-	if e != nil {
-		return nil, e
-	}
-	resp, e := client.Do(req)
-	if e != nil {
-		return nil, errors.New("图片下载失败，可补下载，不会重新生成")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, errors.New("图片链接不可访问或已过期，可检查中转站记录")
-	}
-	b, e := io.ReadAll(io.LimitReader(resp.Body, MaxImageBytes+1))
-	if len(b) > MaxImageBytes {
-		return nil, errors.New("结果图片超过 32 MB")
-	}
-	return b, e
+	return downloadImage(ctx, out.URL)
 }

@@ -575,6 +575,8 @@ export namespace core {
 	    elapsedMS: number;
 	    bytesReceived: number;
 	    networkError: string;
+	    downloadStartedAt?: string;
+	    downloadMS?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new GenerationDiagnostic(source);
@@ -595,6 +597,8 @@ export namespace core {
 	        this.elapsedMS = source["elapsedMS"];
 	        this.bytesReceived = source["bytesReceived"];
 	        this.networkError = source["networkError"];
+	        this.downloadStartedAt = source["downloadStartedAt"];
+	        this.downloadMS = source["downloadMS"];
 	    }
 	}
 	
@@ -847,6 +851,24 @@ export namespace core {
 	}
 	
 	
+	export class SmartProgress {
+	    runID: string;
+	    state: string;
+	    done: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SmartProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runID = source["runID"];
+	        this.state = source["state"];
+	        this.done = source["done"];
+	        this.total = source["total"];
+	    }
+	}
 	
 	
 	export class Summary {

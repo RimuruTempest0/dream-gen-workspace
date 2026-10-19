@@ -33,6 +33,7 @@ import {
   Space,
   Switch,
   Tooltip,
+  Progress,
 } from "antd";
 import {
   PictureOutlined,
@@ -52,7 +53,54 @@ import {
   CheckCircleOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
+  LoadingOutlined,
 } from "@ant-design/icons";
+import type { SmartProgress } from "./agent-api";
+
+// Shows the newest smart-generation run while it is unfinished: a ring filled by
+// finished images, a spinner while analyzing, a dot while waiting for input.
+function SmartProgressRing() {
+  const q = useData<SmartProgress>(
+    ["smart-progress"],
+    "CurrentSmartProgress",
+    [],
+    3000,
+  );
+  const p = q.data;
+  if (!p?.runID) return null;
+  const label =
+    p.state === "analyzing"
+      ? "智能生图正在分析"
+      : p.state === "needs_input"
+        ? "智能生图等待补充资料"
+        : p.state === "paused"
+          ? `智能生图已暂停，已完成 ${p.done} / ${p.total} 张`
+          : `智能生图生成中，已完成 ${p.done} / ${p.total} 张`;
+  // The link keeps its plain name; this text is its description (aria-describedby).
+  return (
+    <Tooltip title={label}>
+      <span className="nav-progress" id="smart-progress-status">
+        <span className="sr-only">{label}</span>
+        <span className="nav-progress-visual" aria-hidden="true">
+          {p.state === "analyzing" ? (
+            <LoadingOutlined spin />
+          ) : p.state === "needs_input" ? (
+            <span className="nav-progress-dot" />
+          ) : (
+            <Progress
+              type="circle"
+              size={18}
+              strokeWidth={14}
+              showInfo={false}
+              percent={p.total ? Math.round((p.done / p.total) * 100) : 0}
+              status={p.state === "paused" ? "exception" : "active"}
+            />
+          )}
+        </span>
+      </span>
+    </Tooltip>
+  );
+}
 import {
   call,
   blankDraft,
@@ -80,6 +128,7 @@ import {
   Header,
   Status,
   TaskTiming,
+  TaskFailureAlert,
   AssetImage,
   time,
 } from "./ui";
@@ -147,12 +196,21 @@ export default function App() {
         </div>
         <nav aria-label="主导航">
           {links.map(([path, label, icon]) => (
-            <NavLink key={path} to={path} end>
+            <NavLink
+              key={path}
+              to={path}
+              end
+              aria-label={path === "/smart" ? label : undefined}
+              aria-describedby={
+                path === "/smart" ? "smart-progress-status" : undefined
+              }
+            >
               {icon}
               <span>{label}</span>
               {path === "/tasks" && !!summary.data?.active && (
                 <span className="count">{summary.data.active}</span>
               )}
+              {path === "/smart" && <SmartProgressRing />}
             </NavLink>
           ))}
         </nav>
@@ -160,7 +218,7 @@ export default function App() {
           <div className="local-status">
             <CheckCircleOutlined aria-hidden="true" /> 本地数据工作区
           </div>
-          <small>Portable · {summary.data?.version || "0.3.8"}</small>
+          <small>Portable · {summary.data?.version || "0.4.0"}</small>
         </div>
       </aside>
       <main className="main">
@@ -929,13 +987,7 @@ function Tasks() {
                 message="详情刷新失败，当前显示最近记录。"
               />
             )}
-            {detail.error && (
-              <Alert
-                type={detail.status === "unknown" ? "warning" : "error"}
-                showIcon
-                message={detail.error}
-              />
-            )}
+            <TaskFailureAlert task={detail} />
             <div className="asset-grid">
               {detail.assetIDs.map((id) => (
                 <AssetImage key={id} id={id} thumbnail={false} />

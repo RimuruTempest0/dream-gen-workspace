@@ -25,7 +25,13 @@ if ($LASTEXITCODE -ne 0) { throw 'product browser build failed' }
 if (-not (Test-Path '.tools\desktop-qa\runtime\msedgewebview2.exe')) {
     # A copied or broken link can leave a plain file here; keep it aside and relink.
     if (Test-Path '.tools\desktop-qa\runtime') { Rename-Item '.tools\desktop-qa\runtime' ('runtime-broken-' + (Get-Date -Format 'yyyyMMddHHmmss')) }
-    New-Item -ItemType Junction -Path '.tools\desktop-qa\runtime' -Target (Join-Path $projectRoot 'release\ImageWorkbench\runtime') | Out-Null }
+    # Prefer an unpacked release runtime; otherwise use the fixed runtime the build packages.
+    $runtimeTarget = Join-Path $projectRoot 'release\ImageWorkbench\runtime'
+    if (-not (Test-Path (Join-Path $runtimeTarget 'msedgewebview2.exe'))) {
+        $runtimeTarget = Get-ChildItem (Join-Path $projectRoot '.tools\webview-expanded') -Filter 'msedgewebview2.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { $_.Directory.FullName }
+    }
+    if (-not $runtimeTarget) { throw 'No WebView2 fixed runtime found for desktop QA' }
+    New-Item -ItemType Junction -Path '.tools\desktop-qa\runtime' -Target $runtimeTarget | Out-Null }
 $env:IMAGEWORKBENCH_DATA_DIR = Join-Path $projectRoot ('.tools\qa-data-' + [guid]::NewGuid().ToString('N'))
 $agentDir = Join-Path $projectRoot '.tools\desktop-qa\agent\claude-code'
 New-Item -ItemType Directory -Force -Path $agentDir | Out-Null

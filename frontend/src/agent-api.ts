@@ -87,6 +87,12 @@ export type AgentRun = {
   submittedRevision: number;
 };
 export type AgentPage = { items: AgentRun[]; total: number };
+export type SmartProgress = {
+  runID: string;
+  state: "" | "analyzing" | "needs_input" | "generating" | "paused";
+  done: number;
+  total: number;
+};
 export type AgentRuntimeInfo = {
   available: boolean;
   version: string;

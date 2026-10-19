@@ -81,19 +81,19 @@ func TestQueueRunsConfiguredNumberInParallel(t *testing.T) {
 	}
 
 	// Raising the limit starts more immediately; lowering it starts nothing new.
-	if e := s.SetImageConcurrency(5); e != nil {
+	if e := s.SetImageConcurrency(4); e != nil {
 		t.Fatal(e)
 	}
-	waitFor(t, "five open requests", func() bool { return relay.open.Load() == 5 })
+	waitFor(t, "four open requests", func() bool { return relay.open.Load() == 4 })
 	if e := s.SetImageConcurrency(1); e != nil {
 		t.Fatal(e)
 	}
 	close(relay.release)
 	waitFor(t, "all succeeded", func() bool { return countStatus(s, "succeeded") == 7 })
-	if relay.total.Load() != 7 || relay.peak.Load() != 5 {
+	if relay.total.Load() != 7 || relay.peak.Load() != 4 {
 		t.Fatal("each task must be submitted exactly once", relay.total.Load(), relay.peak.Load())
 	}
-	for _, bad := range []int{0, 9} {
+	for _, bad := range []int{0, 5, 8} {
 		if s.SetImageConcurrency(bad) == nil {
 			t.Fatal("out of range concurrency accepted", bad)
 		}
@@ -125,7 +125,7 @@ func TestConcurrencyPreferencePersists(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.SetImageConcurrency(6); e != nil {
+	if e = s.SetImageConcurrency(2); e != nil {
 		t.Fatal(e)
 	}
 	s.Dispose()
@@ -133,8 +133,64 @@ func TestConcurrencyPreferencePersists(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer next.Dispose()
-	if next.ImageConcurrency() != 6 {
+	if next.ImageConcurrency() != 2 {
 		t.Fatal("concurrency preference lost", next.ImageConcurrency())
+	}
+	// A value saved by an older version above the new maximum loads as the maximum.
+	if e = next.store.Put("preferences", "image-concurrency", 8); e != nil {
+		t.Fatal(e)
+	}
+	next.Dispose()
+	old, e := NewService(root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer old.Dispose()
+	if old.ImageConcurrency() != maxImageConcurrency {
+		t.Fatal("old concurrency not capped", old.ImageConcurrency())
+	}
+}
+
+func TestSlowDownloadsDoNotHoldGenerationSlots(t *testing.T) {
+	var generated atomic.Int32
+	release := make(chan struct{})
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/result.png" {
+			<-release
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(tinyPNG())
+			return
+		}
+		io.Copy(io.Discard, r.Body)
+		generated.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"url": server.URL + "/result.png"}}})
+	}))
+	defer server.Close()
+	s := testService(t)
+	if e := s.SetImageConcurrency(1); e != nil {
+		t.Fatal(e)
+	}
+	c := saveConnection(t, s, server.URL)
+	if _, e := s.Submit(GenerateInput{RequestID: "slow-download", ConnectionID: c.ID, Model: "m", Prompts: []string{"a", "b", "c"}, Count: 1, References: []string{}, Size: "auto", Quality: "auto"}); e != nil {
+		t.Fatal(e)
+	}
+	s.Start(func() {})
+	// With one generation slot, all three images are still generated while every
+	// download is stuck: downloads run in their own pool.
+	waitFor(t, "all generated while downloads wait", func() bool {
+		return generated.Load() == 3 && countStatus(s, "downloading") == 3
+	})
+	close(release)
+	waitFor(t, "all saved", func() bool { return countStatus(s, "succeeded") == 3 })
+	if generated.Load() != 3 {
+		t.Fatal("each image must be generated exactly once", generated.Load())
+	}
+	tasks, _ := List[Task](s.store, "task")
+	for _, task := range tasks {
+		if task.Diagnostic.DownloadStartedAt == "" || task.Diagnostic.DownloadMS <= 0 || task.Diagnostic.ElapsedMS <= 0 {
+			t.Fatalf("generation and download times not both recorded: %+v", task.Diagnostic)
+		}
 	}
 }

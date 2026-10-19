@@ -69,6 +69,8 @@ export type Task = {
     elapsedMS: number;
     bytesReceived: number;
     networkError: string;
+    downloadStartedAt?: string;
+    downloadMS?: number;
   };
 };
 export type RecentBatch = {

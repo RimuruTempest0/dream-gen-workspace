@@ -46,6 +46,10 @@ export function ContinueSmartGeneration(arg1, arg2) {
   return window['go']['main']['App']['ContinueSmartGeneration'](arg1, arg2);
 }
 
+export function CurrentSmartProgress() {
+  return window['go']['main']['App']['CurrentSmartProgress']();
+}
+
 export function Dashboard() {
   return window['go']['main']['App']['Dashboard']();
 }
@@ -196,6 +200,10 @@ export function Retry(arg1) {
 
 export function RetryDownload(arg1) {
   return window['go']['main']['App']['RetryDownload'](arg1);
+}
+
+export function RetryFailedAgentImages(arg1) {
+  return window['go']['main']['App']['RetryFailedAgentImages'](arg1);
 }
 
 export function SaveConnection(arg1) {

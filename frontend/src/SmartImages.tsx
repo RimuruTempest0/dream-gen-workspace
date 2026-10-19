@@ -34,6 +34,7 @@ import {
   type AgentPage,
   type AgentRun,
   type AgentRuntimeInfo,
+  type SmartProgress,
 } from "./agent-api";
 import {
   AssetImage,
@@ -42,6 +43,7 @@ import {
   ImageViewer,
   Status,
   TaskTiming,
+  TaskFailureAlert,
   time,
   useActions,
   useData,
@@ -163,6 +165,11 @@ const ratioSizes: Record<string, string> = {
   "2:3": "1024x1536",
   "16:9": "1792x1024",
 };
+
+// The backend marks images the relay refused for the API key (HTTP 401/403).
+function isKeyRejected(task: Task) {
+  return task.status === "failed" && !!task.error?.startsWith("API Key 无效");
+}
 
 type RefineTarget = { task: Task; assetID: string };
 
@@ -299,13 +306,17 @@ export function SmartImages() {
       setReady(true);
     }
   }, [draft.data, ready]);
+  // Returning to this page reopens the newest run while it is unfinished
+  // (analyzing, waiting for input, generating or paused); otherwise a new request.
   useEffect(() => {
-    if (!autoOpen.current && history.data) {
-      autoOpen.current = true;
-      const active = history.data.items.find((r) => r.status === "analyzing");
-      if (active) setRunID(active.id);
-    }
-  }, [history.data]);
+    if (autoOpen.current) return;
+    autoOpen.current = true;
+    call<SmartProgress>("CurrentSmartProgress")
+      .then((p) => {
+        if (p.runID) setRunID((current) => current || p.runID);
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     if (run && initialized.current !== run.id) {
       initialized.current = run.id;
@@ -407,6 +418,11 @@ export function SmartImages() {
     const at = viewerItems.findIndex((item) => item.assetID === assetID);
     if (at >= 0) setViewerIndex(at);
   }
+  // Failed and paused images can be sent again in one confirmed action; unknown ones cannot.
+  const retryable = tasks.filter(
+    (t) => t.status === "failed" || t.status === "blocked",
+  ).length;
+  const pendingDownloads = tasks.filter((t) => t.status === "download_failed");
   const sizeOptions = [
     ...presetSizes,
     ...(presetSizes.some((s) => s.value === input.size)
@@ -793,7 +809,7 @@ export function SmartImages() {
                       className="full-width"
                       value={concurrency.data}
                       loading={concurrency.isLoading}
-                      options={[1, 2, 3, 4, 5, 6, 7, 8].map((value) => ({
+                      options={[1, 2, 3, 4].map((value) => ({
                         value,
                         label: value === 1 ? "1 张（逐张生成）" : `${value} 张`,
                       }))}
@@ -988,17 +1004,63 @@ export function SmartImages() {
             <section className="panel">
               <div className="panel-heading">
                 <h2>套图结果</h2>
-                <Button
-                  icon={<DownloadOutlined aria-hidden="true" />}
-                  disabled={!available || downloads.busy}
-                  loading={downloads.busy}
-                  onClick={() => downloads.downloadBatch(run!.batchID)}
-                >
-                  {tasks.length > 0 && completed === tasks.length
-                    ? "下载整套图片"
-                    : "下载已完成图片"}
-                </Button>
+                <Space wrap>
+                  {pendingDownloads.length > 0 && (
+                    <Button
+                      disabled={actions.busy}
+                      onClick={() =>
+                        actions.run(async () => {
+                          for (const task of pendingDownloads) {
+                            await call("RetryDownload", task.id);
+                          }
+                        }, "已加入补下载队列，不会重新生图")
+                      }
+                    >
+                      补下载全部失败图片（{pendingDownloads.length} 张）
+                    </Button>
+                  )}
+                  {retryable > 0 && (
+                    <Button
+                      onClick={() =>
+                        actions.confirm(
+                          `重新生成 ${retryable} 张图片？`,
+                          `将为 ${retryable} 张失败或暂停的图片重新发起生图请求，可能产生费用。“结果未知”的图片不包含在内，请先核对平台记录。`,
+                          () => call("RetryFailedAgentImages", run!.id),
+                          false,
+                          "重新生成",
+                        )
+                      }
+                    >
+                      重新生成全部失败图片（{retryable} 张）
+                    </Button>
+                  )}
+                  <Button
+                    icon={<DownloadOutlined aria-hidden="true" />}
+                    disabled={!available || downloads.busy}
+                    loading={downloads.busy}
+                    onClick={() => downloads.downloadBatch(run!.batchID)}
+                  >
+                    {tasks.length > 0 && completed === tasks.length
+                      ? "下载整套图片"
+                      : "下载已完成图片"}
+                  </Button>
+                </Space>
               </div>
+              {tasks.some(isKeyRejected) && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="生图中转站拒绝了 API Key"
+                  description={
+                    <>
+                      这些图片没有生成，也不计费；同批未提交的图片已暂停。请到
+                      <Link to="/settings">连接与设置</Link>
+                      重新输入该生图中转站的 API
+                      Key，再点“重新生成全部失败图片”。
+                    </>
+                  }
+                />
+              )}
               <p role="status">
                 已完成 {completed} / {tasks.length || input.targetCount}{" "}
                 个任务，可下载 {available} 张图片
@@ -1018,17 +1080,7 @@ export function SmartImages() {
                       <Status state={task.status} task={task} />
                     </Space>
                     <TaskTiming task={task} />
-                    {task.error && (
-                      <Alert
-                        type="warning"
-                        showIcon
-                        message={
-                          task.status === "unknown"
-                            ? "结果未知，请先核对供应商记录，系统不会自动重发。"
-                            : "这张图片尚未完成，详细错误请查看日志。"
-                        }
-                      />
-                    )}
+                    <TaskFailureAlert task={task} />
                     {task.refineInstruction && (
                       <p className="hint refine-note">
                         优化：{task.refineInstruction}
@@ -1112,6 +1164,7 @@ export function SmartImages() {
                     )}
                     {task.status === "download_failed" && (
                       <Button
+                        disabled={actions.busy}
                         onClick={() =>
                           actions.run(() => call("RetryDownload", task.id))
                         }
