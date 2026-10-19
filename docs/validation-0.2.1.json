@@ -1,0 +1,46 @@
+{
+  "version": "0.2.1",
+  "checkedAt": "2026-10-13T00:56:46.527806+00:00",
+  "goTests": "passed",
+  "goVet": "passed",
+  "typescript": "passed",
+  "frontendBuild": "passed",
+  "prettier": "passed",
+  "premiumUIAudit": "passed",
+  "desktopTests": {
+    "startTime": "2026-10-13T00:54:45.692Z",
+    "duration": 26129.233,
+    "expected": 11,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "nativeClaude": "2.1.296: thinking content and signatures preserved across Skill, MCP, reference image and 12-item planning calls with isolated Windows-only PATH",
+  "regressionCases": [
+    "Thinking provider rejects forced tool_choice; auto passes all 4 probes",
+    "Tool probe honors configured token limit",
+    "Text-only, wrong nonce and wrong tool name fail tools capability",
+    "Compatibility bridge preserves thinking block content and signature with tool_result history"
+  ],
+  "paidAPICalls": 0,
+  "coreTestFunctions": 29,
+  "packageBytes": 447184416,
+  "expandedBytes": 984927505,
+  "packageSHA256": "c77c2067ddacef0e628417dda400d80db6ac22716b097c5b6b60842dd72ec26b",
+  "requiredFiles": [
+    "ImageWorkbench.exe",
+    "runtime/msedgewebview2.exe",
+    "agent/claude-code/claude.exe",
+    "agent/claude-code/LICENSE.md",
+    "agent/claude-code/version.json",
+    "version.json",
+    "使用说明.txt"
+  ],
+  "appHashVerified": true,
+  "claudeHashVerified": true,
+  "excludesUserDataKeysAndCache": true,
+  "limitations": [
+    "No live DeepSeek account/API verification",
+    "No independent Windows 10 or clean VM acceptance"
+  ]
+}

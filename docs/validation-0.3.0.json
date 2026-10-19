@@ -1,0 +1,54 @@
+{
+  "version": "0.3.0",
+  "checkedAt": "2026-10-13T04:38:10.645876+00:00",
+  "goTests": "passed",
+  "goVet": "passed",
+  "typescript": "passed",
+  "frontendBuild": "passed",
+  "prettier": "passed",
+  "premiumUIAudit": "passed",
+  "desktopTests": {
+    "startTime": "2026-10-13T04:30:24.576Z",
+    "duration": 27932.704,
+    "expected": 14,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "coreTestFunctions": 39,
+  "nativeClaude": "2.1.296: Skill, MCP, reference image and thinking history preserved; successful run automatically enqueues exactly twelve images with isolated Windows-only PATH",
+  "regressionCases": [
+    "all necessary material questions block images until answered",
+    "start and continuation request IDs deduplicate persistent operations",
+    "abnormal exit, cancellation, no fresh plan, excess count, changed image parameters and missing references do not submit",
+    "403 or absent product evidence requests supplementation",
+    "frozen original image connection and model survive settings edits",
+    "transaction rollback leaves no tasks and valid plan is reused on explicit retry",
+    "legacy review plan can be explicitly authorized without another LLM run",
+    "backup clears both connection snapshot credentials and execution readiness; submitted batches are not duplicated",
+    "restart interrupts analysis and pauses unsubmitted smart images until explicit resume",
+    "single/multiple/manual product link handling",
+    "customer UI hides analysis, rules, Skills, prompts, revisions and confirmation; full twelve-image completion without plan approval",
+    "downloads, unknown-result protection, logs, migration, narrow layout and accessibility"
+  ],
+  "paidAPICalls": 0,
+  "packageBytes": 447203741,
+  "expandedBytes": 984977768,
+  "packageSHA256": "31e2d4723f8c85bd2ffc7a223cf04bf3d25bb338cb751ad269986dabb434e378",
+  "requiredFiles": [
+    "ImageWorkbench.exe",
+    "runtime/msedgewebview2.exe",
+    "agent/claude-code/claude.exe",
+    "agent/claude-code/LICENSE.md",
+    "agent/claude-code/version.json",
+    "version.json",
+    "使用说明.txt"
+  ],
+  "appHashVerified": true,
+  "claudeHashVerified": true,
+  "excludesUserDataKeysAndCache": true,
+  "limitations": [
+    "No live supplier verification or paid generation",
+    "No independent Windows 10 or clean VM acceptance"
+  ]
+}

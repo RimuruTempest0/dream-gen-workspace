@@ -1,0 +1,23 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["frontend/src"],
+  "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": [
+    "Select/Listbox",
+    "Form",
+    "Scrollbar",
+    "Toast",
+    "CRUD"
+  ],
+  "ownership": { "Select/Listbox": "authored" },
+  "commands": {
+    "typecheck": "pnpm --dir frontend typecheck",
+    "e2e": "pnpm --dir frontend test:e2e"
+  },
+  "requiredCommands": ["typecheck", "e2e"],
+  "evidence": {
+    "crudFullFlow": "internal/core/service_test.go",
+    "failurePaths": "frontend/tests/workbench.spec.ts"
+  }
+}

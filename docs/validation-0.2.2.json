@@ -1,0 +1,49 @@
+{
+  "version": "0.2.2",
+  "checkedAt": "2026-10-13T01:11:03.677656+00:00",
+  "goTests": "passed",
+  "goVet": "passed",
+  "typescript": "passed",
+  "frontendBuild": "passed",
+  "prettier": "passed",
+  "premiumUIAudit": "passed",
+  "desktopTests": {
+    "startTime": "2026-10-13T01:08:10.082Z",
+    "duration": 29854.798,
+    "expected": 13,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "coreTestFunctions": 33,
+  "logChecks": [
+    "state transitions and duplicate suppression",
+    "saved and unsaved key redaction before persistence",
+    "URL credentials and query parameter removal",
+    "search, source and level filters, literal SQL metacharacters and pagination",
+    "5000-entry retention and restart persistence",
+    "previous database upgrade preserves connections and keys",
+    "data migration, backup and restore preserve logs",
+    "desktop details, empty state, pause/manual refresh, paging filter reset, accessibility and narrow viewport"
+  ],
+  "paidAPICalls": 0,
+  "packageBytes": 447192561,
+  "expandedBytes": 984948413,
+  "packageSHA256": "8d979b282f32acc596277eb8125f115b5b9d036c5ed262300c78589fbc08db90",
+  "requiredFiles": [
+    "ImageWorkbench.exe",
+    "runtime/msedgewebview2.exe",
+    "agent/claude-code/claude.exe",
+    "agent/claude-code/LICENSE.md",
+    "agent/claude-code/version.json",
+    "version.json",
+    "使用说明.txt"
+  ],
+  "appHashVerified": true,
+  "claudeHashVerified": true,
+  "excludesUserDataKeysAndCache": true,
+  "limitations": [
+    "No live provider or paid API calls",
+    "No independent Windows 10 or clean VM acceptance"
+  ]
+}

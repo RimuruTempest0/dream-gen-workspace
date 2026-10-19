@@ -1,0 +1,14 @@
+.tools/
+.local/
+data-location.txt
+.pnpm-store/
+frontend/tsconfig.tsbuildinfo
+node_modules/
+frontend/node_modules/
+frontend/dist/
+build/bin/
+release/
+data/
+cache/
+test-results/
+*.log

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ImageWorkbench",
+  "outputfilename": "ImageWorkbench",
+  "frontend:install": "pnpm install --frozen-lockfile",
+  "frontend:build": "pnpm build",
+  "frontend:dev:watcher": "pnpm dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": { "name": "ImageWorkbench" },
+  "info": { "productName": "ImageWorkbench", "productVersion": "0.3.8", "copyright": "ImageWorkbench", "comments": "Portable image workbench with Claude Code" }
+}

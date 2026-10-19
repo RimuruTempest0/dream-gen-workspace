@@ -1,0 +1,39 @@
+{
+  "version": "0.2.0",
+  "checkedAt": "2026-10-12T10:01:09.618108+00:00",
+  "goTests": "passed",
+  "goVet": "passed",
+  "typescript": "passed",
+  "frontendBuild": "passed",
+  "desktopTests": {
+    "startTime": "2026-10-12T09:45:25.830Z",
+    "duration": 24121.004,
+    "expected": 11,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "nativeClaude": "2.1.296: Skill + MCP + image analysis + 12-item plan, isolated Windows-only PATH",
+  "paidAPICalls": 0,
+  "packageBytes": 447183669,
+  "expandedBytes": 984927268,
+  "requiredFiles": [
+    "ImageWorkbench.exe",
+    "runtime/msedgewebview2.exe",
+    "agent/claude-code/claude.exe",
+    "agent/claude-code/LICENSE.md",
+    "agent/claude-code/version.json",
+    "version.json",
+    "使用说明.txt"
+  ],
+  "claudeHashVerified": true,
+  "excludesUserDataKeysAndCache": true,
+  "limitations": [
+    "No independent Windows 10 or clean VM acceptance",
+    "No real relay verification or paid generation"
+  ],
+  "packageSHA256": "ab0427e07895c767bff6a5c6aa77542155d06ff245f267aab99d526c4a6dbff7",
+  "appHashVerified": true,
+  "premiumUIAudit": "passed",
+  "coreTestFunctions": 28
+}
