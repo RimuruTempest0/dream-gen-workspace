@@ -32,3 +32,20 @@ func (a *App) ResetDesktopQA() error {
 	a.startup(a.ctx)
 	return nil
 }
+
+// StartTestCustomer switches the QA instance to a fresh data directory running a
+// signed test customer package (trial first), and returns its ID and code.
+func (a *App) StartTestCustomer(imageBase, llmBase string, trialImages int) (map[string]string, error) {
+	if e := a.ResetDesktopQA(); e != nil {
+		return nil, e
+	}
+	dir := filepath.Join(filepath.Dir(a.service.Root()), "qa-customer-"+core.NewID())
+	id, code, e := core.WriteTestCustomer(dir, imageBase, llmBase, trialImages)
+	if e != nil {
+		return nil, e
+	}
+	if e = a.service.LoadLicense(dir); e != nil {
+		return nil, e
+	}
+	return map[string]string{"softwareID": id, "code": code}, nil
+}

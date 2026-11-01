@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,7 +24,7 @@ func (s *Service) AgentRuntime() AgentRuntimeInfo {
 	defer s.mu.Unlock()
 	info, e := os.Stat(s.agentExecutable)
 	if e != nil || info.IsDir() {
-		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.4.0 便携包。普通生图仍可使用。"}
+		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.6.20 便携包。普通生图仍可使用。"}
 	}
 	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: "内置运行时已就绪"}
 }
@@ -42,6 +43,12 @@ func (s *Service) agentBusy() error {
 	return nil
 }
 func cleanAgentRun(r AgentRun) AgentRun {
+	// Before 0.5.3 a cut LLM stream was saved as the run's error even when the
+	// automatic retry succeeded; show it as a retry note instead.
+	if r.Error != "" && r.Status != "failed" && r.Status != "interrupted" {
+		r.LLMReconnectError, r.Error = r.Error, ""
+		r.LLMReconnects = max(r.LLMReconnects, 1)
+	}
 	r.LLMConnection = cleanConnection(r.LLMConnection)
 	r.ImageConnection = cleanConnection(r.ImageConnection)
 	return r
@@ -208,6 +215,7 @@ func (s *Service) StartAgentAnalysis(in AgentInput) (string, error) {
 	if in.ProductURL == "" {
 		in.ProductURL = productURLPattern.FindString(in.Instruction)
 	}
+	in.ProductURL = cleanProductURL(in.ProductURL)
 	llm, skills, e := s.validateAgentInput(in)
 	if e != nil {
 		return "", e
@@ -269,6 +277,7 @@ func (s *Service) ContinueAgentAnalysis(in AgentContinuation) error {
 		return e
 	}
 	r.LLMConnection = llm
+	resumeTimer(&r)
 	r.Status = "analyzing"
 	r.Stage = "重新分析与规划"
 	r.Error = ""
@@ -279,11 +288,26 @@ func (s *Service) ContinueAgentAnalysis(in AgentContinuation) error {
 	s.launchAgent(r, in.Instruction)
 	return nil
 }
+
+// resumeTimer adds the time a stopped run waited for the user to WaitedMS when
+// the user continues it. The run's last save marks when it stopped.
+func resumeTimer(r *AgentRun) {
+	switch r.Status {
+	case "needs_input", "review", "interrupted", "failed":
+		if stopped, e := time.Parse(time.RFC3339Nano, r.UpdatedAt); e == nil {
+			if waited := time.Since(stopped).Milliseconds(); waited > 0 {
+				r.WaitedMS += waited
+			}
+		}
+	}
+}
+
 func (s *Service) launchAgent(r AgentRun, instruction string) {
 	r.AnalysisStartedAt = Now()
 	r.AttemptStartRevision = len(r.Plans)
 	r.AnalysisSucceeded = false
 	r.CancelRequested = false
+	r.LLMReconnects, r.LLMReconnectError = 0, ""
 	s.store.Put("agent_run", r.ID, r)
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
 	s.agentCancel = cancel
@@ -304,12 +328,16 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 			if e != nil {
 				current.Status = "failed"
 				current.Error = redact(e.Error(), "")
+				if current.LLMReconnectError != "" {
+					current.Error += fmt.Sprintf("（LLM 连接中断 %d 次，最近一次：%s）", current.LLMReconnects, current.LLMReconnectError)
+				}
 				if wasCanceled {
 					current.Status = "interrupted"
 					current.Stage = "分析已中断"
 					current.Error = "分析已取消或超时，已保存资料与方案，可明确继续"
 				}
-			} else if hasMissing(current.Questions) {
+			} else if current.Error = ""; hasMissing(current.Questions) {
+				// The analysis finished: an earlier problem no longer applies.
 				current.Status = "needs_input"
 				current.Stage = "等待补充资料"
 			} else if len(current.Plans) > current.AttemptStartRevision {
@@ -422,11 +450,32 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 	for _, id := range append(append([]string{}, r.Input.References...), r.Product.ReferenceIDs...) {
 		allowed[id] = true
 	}
+	samples := 0
+	for _, item := range p.Items {
+		if item.Sample {
+			samples++
+		}
+	}
+	if samples > 1 {
+		return errors.New("整套最多一张细节样板图（sample）")
+	}
 	ids := map[string]bool{}
 	for i := range p.Items {
 		item := &p.Items[i]
 		if item.ID == "" {
 			item.ID = NewID()
+		}
+		if item.Sample && item.UseSample {
+			return errors.New("样板图本身不能再照样板图画（sample 与 useSample 不能同时为 true）")
+		}
+		if item.NoProduct && (item.Sample || item.UseSample) {
+			return errors.New("没有商品的图片（noProduct）不能做样板图，也不需要照样板图画")
+		}
+		if item.UseSample && samples == 0 {
+			return errors.New("方案有图片标了 useSample，但没有标 sample 的样板图")
+		}
+		if item.UseSample && len(item.References) > 3 {
+			return errors.New("照样板图画的图片最多选 3 张参考图，第 4 张留给样板图")
 		}
 		if ids[item.ID] {
 			return errors.New("方案图 ID 重复")
@@ -520,15 +569,31 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	}
 	batch := NewID()
 	tasks := []Task{}
+	sampleItem := ""
 	for _, item := range p.Items {
-		prompt := item.Prompt + "\n统一锁定项：" + strings.Join(p.Locked, "；") + "\n允许修改：" + strings.Join(p.Editable, "；") + "\n画面比例：" + r.Input.Ratio + projectRulesSuffix(r)
-		tasks = append(tasks, Task{ID: NewID(), BatchID: batch, AgentRunID: id, PlanItemID: item.ID, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: item.Size, Quality: item.Quality, References: append([]string{}, item.References...), ProjectID: r.Input.ProjectID, Connection: c, AssetIDs: []string{}})
+		if item.Sample {
+			sampleItem = item.ID
+		}
+	}
+	for _, item := range p.Items {
+		prompt := itemPrompt(r, p, item)
+		t := Task{ID: NewID(), BatchID: batch, AgentRunID: id, PlanItemID: item.ID, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: item.Size, Quality: item.Quality, References: append([]string{}, item.References...), ProjectID: r.Input.ProjectID, Connection: c, AssetIDs: []string{}, Sample: item.Sample}
+		if item.UseSample && sampleItem != "" {
+			t.SampleItem, t.SamplePending = sampleItem, true
+		}
+		tasks = append(tasks, t)
 	}
 	r.BatchID = batch
 	r.SubmittedRevision = revision
 	r.Status = "submitted"
 	r.Stage = "已提交生图队列"
 	r.UpdatedAt = Now()
+	if e := s.ensureCanGenerateLocked(len(tasks), c.ID); e != nil {
+		return "", e
+	}
+	for i := range tasks {
+		tasks[i].Trial = s.trialLocked()
+	}
 	e := s.store.submitSuite(requestID, batch, tasks, r)
 	if e != nil {
 		return "", e

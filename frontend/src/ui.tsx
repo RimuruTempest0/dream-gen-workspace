@@ -71,6 +71,7 @@ export function useActions() {
     fn: () => Promise<unknown>,
     danger = false,
     okText?: string,
+    cancelText = "取消",
   ) {
     if (dialogOpen.current) return;
     dialogOpen.current = true;
@@ -78,7 +79,7 @@ export function useActions() {
       title,
       content,
       okText: okText || (danger ? "确认执行" : "继续"),
-      cancelText: "取消",
+      cancelText,
       okButtonProps: { danger },
       autoFocusButton: "cancel",
       afterClose: () => {
@@ -102,6 +103,39 @@ export function useActions() {
     });
   }
   return { run, busy, confirm };
+}
+// An image can be cancelled until its result has come back (downloading is kept).
+const cancelableStates = ["queued", "submitting", "running", "blocked"];
+export function CancelTaskButton({
+  task,
+  size,
+}: {
+  task: Task;
+  size?: "small";
+}) {
+  const actions = useActions();
+  if (!cancelableStates.includes(task.status)) return null;
+  const sent = task.status === "submitting" || task.status === "running";
+  return (
+    <Button
+      size={size}
+      danger
+      onClick={() =>
+        actions.confirm(
+          "是否确认取消生成？",
+          sent
+            ? "这张图已提交到中转站。取消后不再等待结果；中转站可能仍会生成并计费，请以中转站记录为准。"
+            : "这张图尚未提交，取消后不会计费。",
+          () => call("CancelTask", task.id),
+          true,
+          "取消生成",
+          "继续生成",
+        )
+      }
+    >
+      取消生成
+    </Button>
+  );
 }
 export function SecretInput(props: ComponentProps<typeof Input>) {
   const [show, setShow] = useState(false);
@@ -235,7 +269,12 @@ export function Status({ state, task }: { state: string; task?: Task }) {
           } as Record<string, string>
         )[task?.diagnostic?.stage || ""]
       : undefined;
-  return <Tag color={color}>{phase || stateNames[state] || state}</Tag>;
+  const waitingForSample = state === "queued" && task?.samplePending;
+  return (
+    <Tag color={color}>
+      {waitingForSample ? "等待样板图" : phase || stateNames[state] || state}
+    </Tag>
+  );
 }
 export function TaskTiming({ task }: { task: Task }) {
   const active = ["submitting", "running", "downloading"].includes(task.status);
@@ -250,7 +289,11 @@ export function TaskTiming({ task }: { task: Task }) {
   const start = Date.parse(d?.startedAt || task.createdAt);
   const end = active ? now : Date.parse(task.updatedAt || task.createdAt);
   const seconds = Math.max(0, Math.floor((end - start) / 1000));
-  if (task.status === "queued" || !Number.isFinite(seconds)) return null;
+  const route = <TaskRoute task={task} />;
+  if (task.status === "queued" || !Number.isFinite(seconds))
+    return task.autoRetryOf || task.routedFrom ? (
+      <div className="task-timing">{route}</div>
+    ) : null;
   const span = (s: number) =>
     s >= 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒` : `${s} 秒`;
   // Since 0.3.12 the download runs in its own pool after generation, so the
@@ -276,6 +319,7 @@ export function TaskTiming({ task }: { task: Task }) {
   return (
     <div className="task-timing">
       <small>{label}</small>
+      {route}
       {active && seconds >= 120 && (
         <p>
           {task.status === "downloading"
@@ -285,6 +329,38 @@ export function TaskTiming({ task }: { task: Task }) {
       )}
     </div>
   );
+}
+// Which gateway produced the image when it was moved or re-generated automatically.
+function TaskRoute({ task }: { task: Task }) {
+  const name = task.connection?.name || "备用中转站";
+  if (task.autoRetryOf)
+    return (
+      <small className="task-route">
+        {task.status === "queued"
+          ? `524 后自动重新生成：等待「${name}」或健康的备用中转站（新的计费请求）`
+          : `524 后自动重新生成 · 「${name}」（可能重复计费）`}
+      </small>
+    );
+  if (task.routedFrom)
+    return (
+      <small className="task-route" title={task.routeReason}>
+        已从「{task.routedFromName}」转到「{name}」 · 未发送过，不额外计费
+      </small>
+    );
+  return null;
+}
+// Why the relay refused an image before generating it. Before 0.5.5 an empty
+// account was reported as an invalid key; its original message still says so.
+const balanceWords =
+  /insufficient[ _-]?(balance|quota|credit|funds)|quota[ _-]?(exhausted|exceeded)|\bbalance\b|\bquota\b|credits?\b|payment required|billing|余额|额度|欠费|充值/i;
+export function rejectionOf(task: Task): "balance" | "auth" | "" {
+  if (task.status !== "failed" || !task.error) return "";
+  if (
+    task.error.startsWith("中转站账户余额不足") ||
+    (task.error.startsWith("API Key 无效") && balanceWords.test(task.error))
+  )
+    return "balance";
+  return task.error.startsWith("API Key 无效") ? "auth" : "";
 }
 export function TaskFailureAlert({ task }: { task: Task }) {
   if (!task.error) return null;
@@ -296,11 +372,16 @@ export function TaskFailureAlert({ task }: { task: Task }) {
   } else if (task.status === "unknown") {
     const status = task.diagnostic?.httpStatus;
     message = [504, 522, 524].includes(status || 0)
-      ? `中转站等待超时（HTTP ${status}），结果未知。请先核对中转站记录，系统不会自动重发生图。`
+      ? task.autoRetriedAs
+        ? `中转站等待超时（HTTP ${status}），结果未知。已按设置自动重新生成一次，可能产生两次费用。`
+        : `中转站等待超时（HTTP ${status}），结果未知。请先核对中转站记录，系统不会自动重发生图。`
       : "结果未知，请先核对供应商记录，系统不会自动重发。";
   } else if (task.status === "blocked") {
     message = "已暂停，尚未提交、未计费。修正后可恢复生成。";
-  } else if (task.error.startsWith("API Key 无效")) {
+  } else if (rejectionOf(task) === "balance") {
+    message =
+      "中转站账户余额不足，中转站拒绝了请求，未生成也不计费。请到中转站后台充值后重新生成。";
+  } else if (rejectionOf(task) === "auth") {
     message = "API Key 无效，中转站拒绝了请求，未生成也不计费。";
   }
   return (

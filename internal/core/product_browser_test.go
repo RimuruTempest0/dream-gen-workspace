@@ -119,6 +119,11 @@ func productServer(t *testing.T) *httptest.Server {
 			w.Write(tinyPNG())
 		case "/challenge":
 			io.WriteString(w, `<html><body>Please enable JS and disable any ad blocker<iframe src="https://geo.captcha-delivery.com/c"></iframe></body></html>`)
+		case "/amazon-block":
+			io.WriteString(w, amazonBlockPage)
+		case "/amazon-block-text":
+			io.WriteString(w, `<html><head><title>Amazon.com</title></head><body><h4>Click the button below
+ to continue shopping</h4><button>Continue shopping</button></body></html>`)
 		case "/empty":
 			io.WriteString(w, `<html><body></body></html>`)
 		default:
@@ -333,5 +338,41 @@ func TestPublicHostLookupRetriesAndCachesOnlyPublicResults(t *testing.T) {
 	}
 	if e := publicProductURL(ctx, "https://missing.example/x"); e == nil || !errors.Is(e, errProductTarget) || calls["missing.example"] != 3 {
 		t.Fatal("persistent DNS failure should stop after three attempts", e, calls)
+	}
+}
+
+// The page Amazon returns to some direct requests instead of the listing.
+const amazonBlockPage = `<!doctype html><html lang="en"><head><title dir="ltr">Amazon.com</title></head><body>
+<div class="a-container a-padding-double-large"><div class="a-row a-spacing-double-large">
+<div class="a-box a-alert a-alert-info a-spacing-base"><div class="a-box-inner"><h4>Click the button below to continue shopping</h4></div></div>
+<form method="get" action="/errors/validateCaptcha" name=""><input type=hidden name="amzn" value="x"/>
+<button type="submit" class="a-button-text" alt="Continue shopping">Continue shopping</button></form>
+</div><div class="a-divider-inner"></div><div class="a-text-center a-spacing-small a-size-mini"><a href="#">Conditions of Use</a> <a href="#">Privacy Policy</a></div>
+<div class="a-text-center a-size-mini a-color-base">&copy; 1996-2025, Amazon.com, Inc. or its affiliates</div></div></body></html>`
+
+func TestAmazonContinueShoppingPageUsesBrowser(t *testing.T) {
+	server := productServer(t)
+	for _, path := range []string{"/amazon-block", "/amazon-block-text"} {
+		s := fakeBrowserService(t, "page", productPage(server.URL))
+		info, e := s.fetchProduct(context.Background(), productRun(t, s, server.URL+path).ID)
+		if e != nil || info.Title != "浏览器商品" || info.Error != "" {
+			t.Fatal(path, info, e)
+		}
+		if !strings.Contains(logText(t, s), "返回人机验证页") {
+			t.Fatal(path, "block page not recognised")
+		}
+	}
+}
+
+func TestBlockPageNeverBecomesProductData(t *testing.T) {
+	server := productServer(t)
+	// The browser also lands on the block page (for example the user did not click it).
+	s := fakeBrowserService(t, "page", amazonBlockPage)
+	info, e := s.fetchProduct(context.Background(), productRun(t, s, server.URL+"/amazon-block").ID)
+	if e != nil || !strings.Contains(info.Error, "人机验证") || !strings.Contains(info.Error, "请上传图片或粘贴商品描述") {
+		t.Fatal(info, e)
+	}
+	if info.Title != "" || info.Description != "" || len(info.ReferenceIDs) != 0 {
+		t.Fatal("block page kept as product data", info)
 	}
 }

@@ -281,7 +281,11 @@ func (s *Service) productFromBrowser(ctx context.Context, id, target, reason str
 	var info ProductInfo
 	var images []string
 	if e == nil {
-		if info, images, e = parseProductPage(page, finalURL); e != nil {
+		if info, images, e = parseProductPage(page, finalURL); e == nil && (looksLikeChallenge(page) || challengeInfo(info)) {
+			// Never pass a block page on as product data.
+			e = errors.New("浏览器中仍是人机验证页")
+		}
+		if e != nil {
 			b.Close()
 		}
 	}
@@ -354,11 +358,34 @@ func (e productHTTPError) Error() string {
 var challengeMarkers = [][]byte{
 	[]byte("captcha-delivery.com"), []byte("enable JS and disable any ad blocker"),
 	[]byte("challenges.cloudflare.com"), []byte("cf-chl-"), []byte("px-captcha"),
+	// Walmart's PerimeterX block page.
+	[]byte("<title>Robot or human?</title>"),
+	// Amazon's "Continue shopping" and character captcha pages.
+	[]byte("/errors/validateCaptcha"),
+}
+
+// challengeTexts are matched against the page text a parser extracted, so a block
+// page is caught even when its markup changes.
+var challengeTexts = []string{
+	"click the button below to continue shopping",
+	"enter the characters you see below",
+	"type the characters you see in this image",
 }
 
 func looksLikeChallenge(page []byte) bool {
 	for _, m := range challengeMarkers {
 		if bytes.Contains(page, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// challengeInfo reports whether parsed product data is really a block page.
+func challengeInfo(info ProductInfo) bool {
+	text := strings.ToLower(strings.Join(strings.Fields(info.Title+" "+info.Description), " "))
+	for _, t := range challengeTexts {
+		if strings.Contains(text, t) {
 			return true
 		}
 	}
@@ -384,7 +411,7 @@ func browserFallbackReason(ctx context.Context, page []byte, info ProductInfo, e
 		return ""
 	case e != nil:
 		return "直连请求失败"
-	case looksLikeChallenge(page):
+	case looksLikeChallenge(page), challengeInfo(info):
 		return "返回人机验证页"
 	case info.Error != "":
 		return "页面缺少商品资料"

@@ -1,4 +1,4 @@
-﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.4.0', [string]$ReleaseDirectory, [switch]$NoLocalProfile)
+﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.6.20', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
@@ -28,7 +28,10 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
     Pop-Location
     if ($frontendExit -ne 0) { throw 'Frontend build failed' }
 } else { throw 'Frontend build needs pnpm, or node with installed frontend\node_modules' }
-& $wailsCommand build -s -o "ImageWorkbench-$Version.exe"
+# Customer packages (built by the admin tool) trust its signing key for customer.dat.
+$buildArgs = @('build', '-s', '-o', "ImageWorkbench-$Version.exe")
+if ($LicensePublicKey) { $buildArgs += @('-ldflags', "-X imageworkbench/internal/core.licensePublicKey=$LicensePublicKey") }
+& $wailsCommand @buildArgs
 if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }
 # Product page reader used when a shop blocks direct requests (cmd/product-browser).
 go build -trimpath -ldflags '-H windowsgui -s -w' -o 'build\bin\product-browser.exe' ./cmd/product-browser
@@ -67,9 +70,20 @@ $manifest = @{version=$Version;platform='windows-x64';runtime=(Get-Item $runtime
 $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot 'version.json') -Encoding utf8
 # Only explicit shipping files; data/cache and development fixtures never enter the ZIP.
 $shipping = @((Join-Path $releaseRoot 'ImageWorkbench.exe'),(Join-Path $releaseRoot 'product-browser.exe'),$runtimeTarget,(Join-Path $releaseRoot 'agent'),(Join-Path $releaseRoot '使用说明.txt'),(Join-Path $releaseRoot 'version.json'))
-Compress-Archive -LiteralPath $shipping -DestinationPath (Join-Path $projectRoot "release\ImageWorkbench-portable-x64-$Version.zip") -Force
+# Customer builds (admin tool) pass their own ZIP path so the generic package is not replaced.
+$zipPath = if ($ZipPath) { [IO.Path]::GetFullPath((Join-Path $projectRoot $ZipPath)) } else { Join-Path $projectRoot "release\ImageWorkbench-portable-x64-$Version.zip" }
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $zipPath) | Out-Null
+Compress-Archive -LiteralPath $shipping -DestinationPath $zipPath -Force
+# The ZIP must never carry your LLM / image relay connections or keys: those stay only
+# in the local data directory used by the release folder. Any finding deletes the ZIP.
+go build -o 'build\bin\packcheck.exe' ./scripts/packcheck
+if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $zipPath -Force; throw 'Package privacy check build failed' }
+$checkArgs = @('-zip', $zipPath)
+if ($localDataRoot) { $checkArgs += @('-data', $localDataRoot) }
+& (Join-Path $projectRoot 'build\bin\packcheck.exe') @checkArgs
+if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $zipPath -Force; throw 'Shipping ZIP contained local data or connection details and was deleted' }
 if ($localDataRoot) {
     Set-LocalReleaseProfile $projectRoot $releaseRoot $localDataRoot
     Write-Output 'Local release reuses your saved connections and encrypted keys. The shipping ZIP contains no personal data or data-location.txt.'
 }
-Get-Item (Join-Path $projectRoot "release\ImageWorkbench-portable-x64-$Version.zip") | Select-Object FullName,Length
+Get-Item $zipPath | Select-Object FullName,Length

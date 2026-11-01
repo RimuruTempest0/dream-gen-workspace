@@ -1,6 +1,9 @@
 package core
 
 type Connection struct {
+	// Managed is the customer-file slot ("image-1", "llm-1" …) of a line set up by
+	// the licence; customers cannot edit or delete it.
+	Managed         string          `json:"managed,omitempty"`
 	MaxOutputTokens int             `json:"maxOutputTokens,omitempty"`
 	Kind            string          `json:"kind"`
 	Mode            string          `json:"mode,omitempty"`
@@ -44,6 +47,24 @@ type Task struct {
 	// RefinedFrom is the task whose image this attempt adjusts; RefineInstruction is the user's request.
 	RefinedFrom       string `json:"refinedFrom,omitempty"`
 	RefineInstruction string `json:"refineInstruction,omitempty"`
+	// RoutedFrom is the gateway an unsent image was moved away from (no extra cost).
+	RoutedFrom     string `json:"routedFrom,omitempty"`
+	RoutedFromName string `json:"routedFromName,omitempty"`
+	RouteReason    string `json:"routeReason,omitempty"`
+	// AutoRetryOf links an automatic re-generation to the image cut by a relay
+	// timeout; AutoRetriedAs is set on that original image.
+	AutoRetryOf   string `json:"autoRetryOf,omitempty"`
+	AutoRetriedAs string `json:"autoRetriedAs,omitempty"`
+	// Trial marks an image requested before activation; it counts toward the trial.
+	Trial bool `json:"trial,omitempty"`
+	// Sample marks the suite's detail sample image. SampleItem is the plan slot of
+	// that sample for an image drawn from it; SamplePending holds the image back
+	// until the sample is done, and SampleAssetID is the sample image it was given
+	// (empty when the sample did not succeed and the image went ahead without it).
+	Sample        bool   `json:"sample,omitempty"`
+	SampleItem    string `json:"sampleItem,omitempty"`
+	SamplePending bool   `json:"samplePending,omitempty"`
+	SampleAssetID string `json:"sampleAssetID,omitempty"`
 	// PreviousAssetIDs lists images of earlier attempts in the same slot (response only, newest first).
 	PreviousAssetIDs []string             `json:"previousAssetIDs,omitempty"`
 	ID               string               `json:"id"`

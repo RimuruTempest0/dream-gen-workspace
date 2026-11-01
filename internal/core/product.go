@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-var productURLPattern = regexp.MustCompile(`https?://[^\s\]\)\\<>]+`)
+// Full-width brackets and punctuation end a link pasted in Chinese text ("…th=1】").
+var productURLPattern = regexp.MustCompile(`https?://[^\s\]\)\\<>【】「」『』（）《》，。；！、]+`)
 
 // errProductTarget marks link problems a browser cannot fix: invalid, private or unresolvable targets.
 var errProductTarget = errors.New("product target")
@@ -27,6 +28,22 @@ type productTargetError struct{ message string }
 
 func (e productTargetError) Error() string        { return e.message }
 func (e productTargetError) Is(target error) bool { return target == errProductTarget }
+
+// cleanProductURL cuts a pasted link at the first full-width bracket or
+// punctuation and shortens Amazon listing links; other links are kept as typed.
+func cleanProductURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if found := productURLPattern.FindString(raw); found != "" && strings.HasPrefix(raw, found) {
+		raw = found
+	}
+	raw = strings.TrimRight(raw, "，。；,;！!\"'")
+	if u, e := url.Parse(raw); e == nil {
+		if short, ok := amazonProductURL(u); ok {
+			return short
+		}
+	}
+	return raw
+}
 
 func validateProductURL(raw string) error {
 	u, e := url.Parse(raw)
@@ -294,6 +311,55 @@ func parseProductPage(raw []byte, base string) (ProductInfo, []string, error) {
 		}
 	}
 	visit(doc)
+	if isAmazonHost(baseURL) {
+		if gallery := amazonGallery(raw, doc); len(gallery) > 0 {
+			images, seen = []string{}, map[string]bool{}
+			for _, g := range gallery {
+				addImage(g)
+			}
+		} else {
+			kept := []string{}
+			for _, i := range images {
+				if !amazonUIImage(i) {
+					kept = append(kept, i)
+				}
+			}
+			images = kept
+		}
+		title, details := amazonDetails(doc)
+		if title != "" {
+			info.Title = title
+		}
+		if len(details) > len(info.Description) {
+			info.Description = details
+		}
+	}
+	if isWalmartHost(baseURL) {
+		title, gallery, details, ok := walmartProduct(doc)
+		if len(gallery) > 0 {
+			images, seen = []string{}, map[string]bool{}
+			for _, g := range gallery {
+				addImage(g)
+			}
+		} else {
+			kept := []string{}
+			for _, i := range images {
+				if !walmartUIImage(i) {
+					kept = append(kept, walmartFullSize(i))
+				}
+			}
+			images, seen = []string{}, map[string]bool{}
+			for _, i := range kept {
+				addImage(i)
+			}
+		}
+		if ok && title != "" {
+			info.Title = title
+		}
+		if len(details) > len(info.Description) {
+			info.Description = details
+		}
+	}
 	if info.Description == "" {
 		info.Description = cutProductText(text.String(), 32000)
 	}
@@ -309,23 +375,26 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	if e != nil {
 		return ProductInfo{}, e
 	}
-	if r.Product.SourceURL != "" && r.Product.Error == "" {
+	// A run with images still missing reads the page again on continue, keeping saved images.
+	if r.Product.SourceURL != "" && r.Product.Error == "" && r.Product.ImageNote == "" {
 		return r.Product, nil
 	}
 	if r.Input.ProductURL == "" {
 		return ProductInfo{Description: r.Input.ProductText}, nil
 	}
+	// Runs saved before 0.6.14 may hold the link with a trailing "】" or tracking parameters.
+	target := cleanProductURL(r.Input.ProductURL)
 	s.updateAgent(id, "提取商品链接", nil)
 	client := productClient(ctx, s.allowLocalProduct)
-	data, e := getPublicBytes(ctx, client, r.Input.ProductURL, 4<<20, s.allowLocalProduct)
-	info := ProductInfo{SourceURL: r.Input.ProductURL, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
+	data, e := getPublicBytes(ctx, client, target, 4<<20, s.allowLocalProduct)
+	info := ProductInfo{SourceURL: target, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
 	var images []string
 	if e == nil {
-		info, images, e = parseProductPage(data, r.Input.ProductURL)
+		info, images, e = parseProductPage(data, target)
 	}
 	var browser *browserSession
 	if reason := browserFallbackReason(ctx, data, info, e); reason != "" {
-		parsed, found, session, be := s.productFromBrowser(ctx, id, r.Input.ProductURL, reason)
+		parsed, found, session, be := s.productFromBrowser(ctx, id, target, reason)
 		if be == nil {
 			browser = session
 			defer browser.Close()
@@ -340,8 +409,8 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 		}
 	}
 	if e == nil {
-		info.SourceURL = r.Input.ProductURL
-		if r.Product.SourceURL == r.Input.ProductURL {
+		info.SourceURL = target
+		if cleanProductURL(r.Product.SourceURL) == target {
 			info.ReferenceIDs = append([]string{}, r.Product.ReferenceIDs...)
 			info.ImageSources = r.Product.ImageSources
 		}
@@ -351,7 +420,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	}
 	if e != nil {
 		// Discard anything parsed from a blocked or challenge page.
-		info = ProductInfo{SourceURL: r.Input.ProductURL, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
+		info = ProductInfo{SourceURL: target, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
 		info.Error = cutProductText(e.Error(), 1500)
 	}
 	if e == nil {
@@ -383,7 +452,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			}
 			if err != nil {
 				fail(err)
-				info.Error = "部分商品图片未能下载，可上传缺失的参考图"
+				info.ImageNote = "部分商品图片未能下载，可上传缺失的参考图"
 				continue
 			}
 			u, _ := url.Parse(rawURL)
@@ -392,7 +461,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			s.mu.Unlock()
 			if err != nil {
 				fail(err)
-				info.Error = "部分商品图片不可读取，可上传参考图"
+				info.ImageNote = "部分商品图片不可读取，可上传参考图"
 				continue
 			}
 			info.ReferenceIDs = append(info.ReferenceIDs, asset.ID)

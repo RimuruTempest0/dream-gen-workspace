@@ -102,6 +102,11 @@ async function go<T>(name: string, ...args: any[]): Promise<T> {
 // "passes" after 12 s (cookie + reload), so the verification window is shown.
 const shopTitle = "QA 浏览器商品";
 let rejectImageKey = false;
+// The image relay refuses with 403 because the account has no balance (1route-style).
+let emptyImageAccount = false;
+// Cut the next answered analysis stream after its first frame, like a proxy
+// dropping the LLM connection; Claude Code should retry and finish.
+let cutStreamOnce = false;
 let returnImageURL = false;
 let resultLinkUnavailable = false;
 let shopPhotoRequests = 0;
@@ -118,7 +123,11 @@ setTimeout(function(){ document.cookie = "qa_passed=1; path=/"; location.replace
     name: shopTitle,
     description:
       "页面脚本渲染的完整商品描述：纯棉刺绣卫衣，尺寸与颜色以商品页为准。",
-    image: [{ "@type": "ImageObject", contentURL: "/qa-shop/photo.png" }],
+    // The second "image" is not a picture: the page is read, one image is skipped.
+    image: [
+      { "@type": "ImageObject", contentURL: "/qa-shop/photo.png" },
+      { "@type": "ImageObject", contentURL: "/qa-shop/broken.png" },
+    ],
   };
   res.end(`<html><head></head><body><p>商品</p><script>
 var s = document.createElement("script"); s.type = "application/ld+json";
@@ -146,12 +155,23 @@ test.beforeAll(async () => {
       res.end(image);
       return;
     }
+    if (req.url === "/qa-shop/broken.png") {
+      res.setHeader("content-type", "image/png");
+      res.end("not an image");
+      return;
+    }
     if (req.url?.endsWith("/models")) {
       modelRequests++;
       res.setHeader("content-type", "application/json");
       res.end(
         JSON.stringify({ data: [{ id: "mock-agent" }, { id: "mock-image" }] }),
       );
+      return;
+    }
+    if (req.url?.includes("/images/") && emptyImageAccount) {
+      req.resume();
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "insufficient balance" } }));
       return;
     }
     if (req.url?.includes("/images/") && rejectImageKey) {
@@ -236,6 +256,24 @@ test.beforeAll(async () => {
         return;
       }
       analysisRequests++;
+      // Claude Code may retry a dropped stream without streaming.
+      const reply = (block: any, id: string) => {
+        if (body.stream) return emit(res, block, id);
+        const tool = block.type === "tool_use";
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            id: "msg_mock",
+            type: "message",
+            role: "assistant",
+            model: "mock-agent",
+            content: [tool ? { ...block, id } : block],
+            stop_reason: tool ? "tool_use" : "end_turn",
+            stop_sequence: null,
+            usage: { input_tokens: 100, output_tokens: 100 },
+          }),
+        );
+      };
       const text =
         body.messages
           .flatMap((m: any) =>
@@ -251,6 +289,15 @@ test.beforeAll(async () => {
       const answered = ctx.questions?.some((q: any) => q.answer);
       const key = ctx.id + ":" + answered;
       const step = flows.get(key) || 0;
+      if (cutStreamOnce && answered) {
+        cutStreamOnce = false;
+        // The stream opens, then the connection drops before the first event,
+        // as when the local proxy closed the LLM connection while waiting.
+        res.setHeader("content-type", "text/event-stream");
+        res.flushHeaders();
+        setTimeout(() => res.destroy(), 50);
+        return;
+      }
       flows.set(key, step + 1);
       const tool = (name: string, input: any) => ({
         type: "tool_use",
@@ -271,12 +318,12 @@ test.beforeAll(async () => {
                     ],
                   })
                 : { type: "text", text: "请补充真实尺寸。" };
-        emit(res, block, `tool_${step}`);
+        reply(block, `tool_${step}`);
         return;
       }
       if (step === 0) block = tool("mcp__workbench__get_run_context", {});
       else if (!answered && step === 1)
-        block = tool("Skill", { skill: "etsy-suite" });
+        block = tool("Skill", { skill: "listing-suite" });
       else if (!answered && step === 2)
         block = tool("mcp__workbench__request_information", {
           questions: [
@@ -296,6 +343,8 @@ test.beforeAll(async () => {
           locked: ["衣服造型和比例", "MM 字体"],
           editable: ["背景", "名字"],
           notes: "12张 Etsy 1:1 套图",
+          // The instruction puts a black paw on the cuff (required with P004 since 0.5.2).
+          cuffEmbroidery: true,
           items: Array.from({ length: 12 }, (_, i) => ({
             id: `slot-${i + 1}`,
             purpose: `展示图 ${i + 1}`,
@@ -313,7 +362,7 @@ test.beforeAll(async () => {
             ? "已保存12张方案，等待确认生图。"
             : "请补充 P004 规则。",
         };
-      emit(res, block, `tool_${step}`);
+      reply(block, `tool_${step}`);
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -504,11 +553,18 @@ test("native agent requests necessary materials and automatically generates twel
     { timeout: 30000 },
   );
   expect(imageRequests).toBe(0);
+  // The timer stands still while the request waits for the answers.
+  const timer = page.getByText(/累计用时 .*计时已暂停/);
+  await expect(timer).toBeVisible();
+  const paused = await timer.textContent();
+  await page.waitForTimeout(2200);
+  await expect(timer).toHaveText(paused!);
   await page
     .getByLabel("请补充 P004 真实客户成品机绣规则")
     .fill(
       "P004：真实客户机绣，小金毛头像在 MM 中间，袖口黑色脚掌，按参考图比例。",
     );
+  cutStreamOnce = true;
   await page
     .getByRole("button", { name: "补充并继续制作", exact: true })
     .click();
@@ -522,6 +578,19 @@ test("native agent requests necessary materials and automatically generates twel
     page.getByText("已完成 12 / 12 个任务，可下载 12 张图片", { exact: true }),
   ).toBeVisible({ timeout: 30000 });
   expect(imageRequests).toBe(12);
+  // The 2 s and more spent waiting for the answers are left out of the timer.
+  const runs = await go<{ items: { waitedMS?: number }[] }>(
+    "ListAgentRuns",
+    0,
+    1,
+  );
+  expect(runs.items[0].waitedMS || 0).toBeGreaterThanOrEqual(2000);
+  // The LLM stream was cut once and retried: a note, not a failure warning.
+  expect(cutStreamOnce).toBe(false);
+  await expect(
+    page.getByText(/LLM 连接中断一次，已自动重试并继续完成/),
+  ).toBeVisible();
+  await expect(page.getByText(/制作未完成，资料已保留/)).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "下载整套图片", exact: true }),
   ).toBeEnabled();
@@ -752,6 +821,41 @@ test("rejected API key is explained and failed images regenerate in one action",
   });
 });
 
+test("an empty relay account is reported as low balance, not as a bad key", async () => {
+  emptyImageAccount = true;
+  const fourth = page.locator(".agent-result").nth(3);
+  await fourth.getByRole("button", { name: "优化第 4 张图片" }).click();
+  const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+  await dialog.getByLabel("想怎么调整？").fill("颜色更暖一些");
+  await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
+  await expect(page.getByText("生图中转站账户余额不足")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(
+    fourth.getByText(
+      "中转站账户余额不足，中转站拒绝了请求，未生成也不计费。请到中转站后台充值后重新生成。",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("生图中转站拒绝了 API Key")).toHaveCount(0);
+  await expect(page.getByText(/API Key 无效/)).toHaveCount(0);
+  emptyImageAccount = false;
+  const before = imageRequests;
+  await page
+    .getByRole("button", { name: "重新生成全部失败图片（1 张）" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "重新生成 1 张图片？" })
+    .getByRole("button", { name: "重新生成", exact: true })
+    .click();
+  await expect(page.getByText("生图中转站账户余额不足")).toHaveCount(0, {
+    timeout: 20000,
+  });
+  expect(imageRequests).toBe(before + 1);
+  await expect(page.locator(".nav-progress")).toHaveCount(0, {
+    timeout: 20000,
+  });
+});
+
 test("blocked product link waits for browser verification and continues", async () => {
   test.setTimeout(120000);
   const before = imageRequests;
@@ -818,7 +922,14 @@ test("blocked product link waits for browser verification and continues", async 
   const run = runs.items.find((r) => r.input.productURL === shopURL);
   expect(run.product.title).toBe(shopTitle);
   expect(run.product.error).toBe("");
+  expect(run.product.imageNote).toBe("部分商品图片不可读取，可上传参考图");
   expect(run.product.referenceIDs).toHaveLength(1);
+  // The page was read, so the "cannot read the link" warning stays hidden and a
+  // quiet note mentions the skipped image instead.
+  await expect(page.getByText(/暂时无法读取商品链接/)).toHaveCount(0);
+  await expect(
+    page.getByText("已读取商品页，部分商品图片不可读取，可上传参考图。"),
+  ).toBeVisible();
   expect(shopPhotoRequests).toBeGreaterThan(0);
   expect(imageRequests).toBe(before);
   const logs = await go<{ items: { message: string }[] }>(
@@ -889,4 +1000,88 @@ test("Skills creation, enable switch and editing preserve local rules", async ()
     path: "../docs/agent-settings-0.3.0.png",
     fullPage: true,
   });
+});
+test("LLM monitor shows requests, tokens, the retried drop and capability tests", async () => {
+  await page.getByRole("link", { name: "LLM 监控", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "LLM 监控", level: 1 }),
+  ).toBeVisible();
+  // The twelve-image run had one cut stream that Claude Code retried.
+  const drops = page.locator(".drop-item");
+  await expect(drops.first()).toBeVisible();
+  await expect(
+    page.locator(".drop-item").filter({ hasText: "已自动重试" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("cell", { name: "已提交 12 张" }).first(),
+  ).toBeVisible();
+  const card = page
+    .locator(".monitor-card")
+    .filter({ hasText: "Agent QA LLM" });
+  await expect(card).toContainText("能力验证通过");
+  expect(
+    Number(await card.locator(".monitor-big strong").innerText()),
+  ).toBeGreaterThan(4);
+  await expect(card).not.toContainText("输入 0 tokens");
+  await page
+    .getByRole("combobox", { name: "请求类型" })
+    .locator("..")
+    .locator("..")
+    .click();
+  await page
+    .locator(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="能力验证"]',
+    )
+    .click();
+  const rows = page.locator(
+    'section[aria-labelledby="llm-log"] .ant-table-tbody tr.ant-table-row',
+  );
+  await expect(rows.first()).toContainText("能力验证");
+  await expect(page.getByText("这段时间没有智能生图分析")).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "请求类型" })
+    .locator("..")
+    .locator("..")
+    .click();
+  await page
+    .locator(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="全部"]',
+    )
+    .click();
+  await page
+    .getByRole("combobox", { name: "请求结果" })
+    .locator("..")
+    .locator("..")
+    .click();
+  await page
+    .locator(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="连接中断"]',
+    )
+    .click();
+  await expect(rows.first()).toContainText("连接中断");
+  await expect(
+    page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)"),
+  ).toHaveCount(0);
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+  const cdp = await browser.contexts()[0].newCDPSession(page);
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 900,
+    height: 740,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.screenshot({
+    path: "../docs/llm-monitor-0.5.4.png",
+    fullPage: true,
+  });
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await cdp.detach();
 });

@@ -38,7 +38,8 @@ func agentInput(llm, imageConn Connection) AgentInput {
 	return AgentInput{Instruction: "规划至少12张 Etsy 套图，衣服比例和原字体锁定。", LLMConnectionID: llm.ID, ImageConnectionID: imageConn.ID, TargetCount: 12, Size: "1024x1024", Quality: "auto", Ratio: "1:1", References: []string{}, SkillIDs: []string{"etsy-suite"}}
 }
 func simplePlan(count int, refs []string) SuitePlan {
-	p := SuitePlan{Locked: []string{"比例"}, Editable: []string{"背景"}, Items: []SuiteItem{}}
+	cuff := true
+	p := SuitePlan{Locked: []string{"比例"}, Editable: []string{"背景"}, Items: []SuiteItem{}, CuffEmbroidery: &cuff}
 	for i := 0; i < count; i++ {
 		p.Items = append(p.Items, SuiteItem{Purpose: fmt.Sprintf("图%d", i+1), Scene: "客厅", Prompt: fmt.Sprintf("test prompt %d", i+1), References: refs, Size: "1024x1024", Quality: "auto"})
 	}
@@ -294,7 +295,8 @@ func TestProductExtractionAndPartialFailure(t *testing.T) {
 	r := AgentRun{ID: NewID(), Input: AgentInput{ProductURL: server.URL + "/good"}, CreatedAt: Now()}
 	s.store.Put("agent_run", r.ID, r)
 	info, e := s.fetchProduct(context.Background(), r.ID)
-	if e != nil || info.Title != "定制卫衣" || len(info.ReferenceIDs) != 1 || info.Error == "" {
+	// The page was read; only one image is missing, which is a note, not a page error.
+	if e != nil || info.Title != "定制卫衣" || len(info.ReferenceIDs) != 1 || info.Error != "" || info.ImageNote == "" {
 		t.Fatal(info, e)
 	}
 	firstReference := info.ReferenceIDs[0]
@@ -518,7 +520,7 @@ func TestNativeClaudeSkillsMCPAndImagePlanning(t *testing.T) {
 			t.Error("upstream key missing")
 		}
 		body, _ := io.ReadAll(r.Body)
-		if bytes.Contains(body, []byte("Launching skill: etsy-suite")) {
+		if bytes.Contains(body, []byte("Launching skill: listing-suite")) {
 			sawSkill.Store(true)
 		}
 		if bytes.Contains(body, []byte(`"type":"image"`)) {
@@ -533,7 +535,7 @@ func TestNativeClaudeSkillsMCPAndImagePlanning(t *testing.T) {
 		case 0:
 			block = messageBlock{Type: "tool_use", Name: "mcp__workbench__get_run_context", Input: map[string]any{}}
 		case 1:
-			block = messageBlock{Type: "tool_use", Name: "Skill", Input: map[string]any{"skill": "etsy-suite"}}
+			block = messageBlock{Type: "tool_use", Name: "Skill", Input: map[string]any{"skill": "listing-suite"}}
 		case 2:
 			block = messageBlock{Type: "tool_use", Name: "mcp__workbench__read_reference_image", Input: map[string]any{"assetID": ref.ID}}
 		case 3:

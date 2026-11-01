@@ -72,6 +72,7 @@ func (a *App) GetExportAsset(id string) (core.Asset, error) { return a.service.A
 func (a *App) CancelConnectionTest(id string)               { a.service.CancelConnectionTest(id) }
 func (a *App) GetTask(id string) (core.Task, error)         { return a.service.GetTask(id) }
 func (a *App) StopBatch(id string) error                    { return a.service.StopBatch(id) }
+func (a *App) CancelTask(id string) error                   { return a.service.CancelTask(id) }
 func (a *App) Retry(id string) (string, error)              { return a.service.Retry(id) }
 func (a *App) RetryDownload(id string) error                { return a.service.RetryDownload(id) }
 func (a *App) ResumeBlocked(id string) error                { return a.service.ResumeBlocked(id) }
@@ -137,7 +138,7 @@ func (a *App) ChooseExportPath(name string) (string, error) {
 	if ext == "" {
 		ext = ".png"
 	}
-	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".zip" {
+	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".zip" && ext != ".csv" {
 		return "", errors.New("导出格式不受支持")
 	}
 	title := "保存图片"
@@ -146,10 +147,20 @@ func (a *App) ChooseExportPath(name string) (string, error) {
 		title = "保存套图 ZIP"
 		label = "ZIP 套图"
 	}
+	if ext == ".csv" {
+		title = "保存调用记录 CSV"
+		label = "CSV 表格"
+	}
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: title, DefaultFilename: filepath.Base(name), Filters: []runtime.FileFilter{{DisplayName: label, Pattern: "*" + ext}}})
 }
-func (a *App) ExportAssetToPath(id, path string) error             { return a.service.ExportAsset(id, path) }
-func (a *App) ExportBatchToPath(id, path string) (int, error)      { return a.service.ExportBatch(id, path) }
+func (a *App) ExportAssetToPath(id, path string) error        { return a.service.ExportAsset(id, path) }
+func (a *App) ExportBatchToPath(id, path string) (int, error) { return a.service.ExportBatch(id, path) }
+func (a *App) ExportAssetsToPath(ids []string, path string) (int, error) {
+	return a.service.ExportAssets(ids, path)
+}
+func (a *App) UpdateAssets(ids []string, project string, hidden bool) (int, error) {
+	return a.service.UpdateAssets(ids, project, hidden)
+}
 func (a *App) ListProjects() ([]core.Project, error)               { return a.service.ListProjects() }
 func (a *App) SaveProject(v core.Project) (core.Project, error)    { return a.service.SaveProject(v) }
 func (a *App) DeleteProject(id string) error                       { return a.service.DeleteProject(id) }

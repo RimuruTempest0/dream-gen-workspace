@@ -112,6 +112,9 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 	if in.TargetCount == 0 {
 		in.TargetCount = 12
 	}
+	if e := s.ensureCanGenerateLocked(in.TargetCount, in.LLMConnectionID, in.ImageConnectionID); e != nil {
+		return "", e
+	}
 	if in.Ratio == "" {
 		in.Ratio = "1:1"
 	}
@@ -130,6 +133,7 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 			in.ProductURL = links[0]
 		}
 	}
+	in.ProductURL = cleanProductURL(in.ProductURL)
 	allSkills, e := List[SkillRecord](s.store, "skill")
 	if e != nil {
 		return "", e
@@ -164,7 +168,7 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 func productLinks(text string) []string {
 	links, seen := []string{}, map[string]bool{}
 	for _, raw := range productURLPattern.FindAllString(text, -1) {
-		raw = strings.TrimRight(raw, "，。；,;！!\"'")
+		raw = cleanProductURL(raw)
 		if validateProductURL(raw) == nil && !seen[raw] {
 			links = append(links, raw)
 			seen[raw] = true
@@ -270,6 +274,7 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 	}
 	r.CancelRequested = false
 	r.Error = ""
+	resumeTimer(&r)
 	r.UpdatedAt = Now()
 	reuse := !changed && !hasMissing(r.Questions) && (r.AnalysisSucceeded || legacyReady) && len(r.Plans) > 0
 	if reuse {

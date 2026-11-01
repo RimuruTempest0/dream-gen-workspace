@@ -78,6 +78,9 @@ export namespace core {
 	    references: string[];
 	    size: string;
 	    quality: string;
+	    sample?: boolean;
+	    useSample?: boolean;
+	    noProduct?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SuiteItem(source);
@@ -92,6 +95,9 @@ export namespace core {
 	        this.references = source["references"];
 	        this.size = source["size"];
 	        this.quality = source["quality"];
+	        this.sample = source["sample"];
+	        this.useSample = source["useSample"];
+	        this.noProduct = source["noProduct"];
 	    }
 	}
 	export class SuitePlan {
@@ -101,6 +107,7 @@ export namespace core {
 	    editable: string[];
 	    notes: string;
 	    items: SuiteItem[];
+	    cuffEmbroidery?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SuitePlan(source);
@@ -114,6 +121,7 @@ export namespace core {
 	        this.editable = source["editable"];
 	        this.notes = source["notes"];
 	        this.items = this.convertValues(source["items"], SuiteItem);
+	        this.cuffEmbroidery = source["cuffEmbroidery"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -159,6 +167,7 @@ export namespace core {
 	    description: string;
 	    facts: string;
 	    error: string;
+	    imageNote?: string;
 	    referenceIDs: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -173,6 +182,7 @@ export namespace core {
 	        this.description = source["description"];
 	        this.facts = source["facts"];
 	        this.error = source["error"];
+	        this.imageNote = source["imageNote"];
 	        this.referenceIDs = source["referenceIDs"];
 	    }
 	}
@@ -259,6 +269,7 @@ export namespace core {
 	    }
 	}
 	export class Connection {
+	    managed?: string;
 	    maxOutputTokens?: number;
 	    kind: string;
 	    mode?: string;
@@ -278,6 +289,7 @@ export namespace core {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.managed = source["managed"];
 	        this.maxOutputTokens = source["maxOutputTokens"];
 	        this.kind = source["kind"];
 	        this.mode = source["mode"];
@@ -326,6 +338,9 @@ export namespace core {
 	    status: string;
 	    stage: string;
 	    error: string;
+	    llmReconnects?: number;
+	    llmReconnectError?: string;
+	    waitedMS?: number;
 	    input: AgentInput;
 	    llmConnection: Connection;
 	    skills: SkillRecord[];
@@ -357,6 +372,9 @@ export namespace core {
 	        this.status = source["status"];
 	        this.stage = source["stage"];
 	        this.error = source["error"];
+	        this.llmReconnects = source["llmReconnects"];
+	        this.llmReconnectError = source["llmReconnectError"];
+	        this.waitedMS = source["waitedMS"];
 	        this.input = this.convertValues(source["input"], AgentInput);
 	        this.llmConnection = this.convertValues(source["llmConnection"], Connection);
 	        this.skills = this.convertValues(source["skills"], SkillRecord);
@@ -533,6 +551,217 @@ export namespace core {
 	        this.testRequestID = source["testRequestID"];
 	    }
 	}
+	export class DayCount {
+	    day: string;
+	    counts: Record<string, number>;
+	
+	    static createFrom(source: any = {}) {
+	        return new DayCount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.day = source["day"];
+	        this.counts = source["counts"];
+	    }
+	}
+	export class GatewayCall {
+	    taskID: string;
+	    at: string;
+	    connectionID: string;
+	    name: string;
+	    source: string;
+	    sourceLabel: string;
+	    model: string;
+	    result: string;
+	    downloadFailed: boolean;
+	    failReason?: string;
+	    httpStatus: number;
+	    generationMS: number;
+	    downloadMS: number;
+	    requestID: string;
+	    routedFromName?: string;
+	    autoRetry: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayCall(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.taskID = source["taskID"];
+	        this.at = source["at"];
+	        this.connectionID = source["connectionID"];
+	        this.name = source["name"];
+	        this.source = source["source"];
+	        this.sourceLabel = source["sourceLabel"];
+	        this.model = source["model"];
+	        this.result = source["result"];
+	        this.downloadFailed = source["downloadFailed"];
+	        this.failReason = source["failReason"];
+	        this.httpStatus = source["httpStatus"];
+	        this.generationMS = source["generationMS"];
+	        this.downloadMS = source["downloadMS"];
+	        this.requestID = source["requestID"];
+	        this.routedFromName = source["routedFromName"];
+	        this.autoRetry = source["autoRetry"];
+	    }
+	}
+	export class GatewayHealth {
+	    connectionID: string;
+	    name: string;
+	    model: string;
+	    state: string;
+	    reason: string;
+	    checkedAt?: string;
+	    probeMS: number;
+	    modelsOK: boolean;
+	    modelCount: number;
+	    medianMS: number;
+	    recentTimeouts: number;
+	    inFlight: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayHealth(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionID = source["connectionID"];
+	        this.name = source["name"];
+	        this.model = source["model"];
+	        this.state = source["state"];
+	        this.reason = source["reason"];
+	        this.checkedAt = source["checkedAt"];
+	        this.probeMS = source["probeMS"];
+	        this.modelsOK = source["modelsOK"];
+	        this.modelCount = source["modelCount"];
+	        this.medianMS = source["medianMS"];
+	        this.recentTimeouts = source["recentTimeouts"];
+	        this.inFlight = source["inFlight"];
+	    }
+	}
+	export class GatewayStat {
+	    connectionID: string;
+	    name: string;
+	    role: string;
+	    backupOrder: number;
+	    deleted: boolean;
+	    state: string;
+	    checkedAt?: string;
+	    probeMS: number;
+	    requests: number;
+	    succeeded: number;
+	    unknown: number;
+	    failed: number;
+	    running: number;
+	    medianMS: number;
+	    p90MS: number;
+	    medianDownloadMS: number;
+	    routedIn: number;
+	    routedOut: number;
+	    autoRegenerated: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayStat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionID = source["connectionID"];
+	        this.name = source["name"];
+	        this.role = source["role"];
+	        this.backupOrder = source["backupOrder"];
+	        this.deleted = source["deleted"];
+	        this.state = source["state"];
+	        this.checkedAt = source["checkedAt"];
+	        this.probeMS = source["probeMS"];
+	        this.requests = source["requests"];
+	        this.succeeded = source["succeeded"];
+	        this.unknown = source["unknown"];
+	        this.failed = source["failed"];
+	        this.running = source["running"];
+	        this.medianMS = source["medianMS"];
+	        this.p90MS = source["p90MS"];
+	        this.medianDownloadMS = source["medianDownloadMS"];
+	        this.routedIn = source["routedIn"];
+	        this.routedOut = source["routedOut"];
+	        this.autoRegenerated = source["autoRegenerated"];
+	    }
+	}
+	export class GatewayMonitorResult {
+	    total: number;
+	    succeeded: number;
+	    unknown: number;
+	    failed: number;
+	    failedAuth: number;
+	    failedBalance: number;
+	    running: number;
+	    rerouted: number;
+	    autoRegenerated: number;
+	    gateways: GatewayStat[];
+	    days: DayCount[];
+	    calls: GatewayCall[];
+	    callTotal: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewayMonitorResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.succeeded = source["succeeded"];
+	        this.unknown = source["unknown"];
+	        this.failed = source["failed"];
+	        this.failedAuth = source["failedAuth"];
+	        this.failedBalance = source["failedBalance"];
+	        this.running = source["running"];
+	        this.rerouted = source["rerouted"];
+	        this.autoRegenerated = source["autoRegenerated"];
+	        this.gateways = this.convertValues(source["gateways"], GatewayStat);
+	        this.days = this.convertValues(source["days"], DayCount);
+	        this.calls = this.convertValues(source["calls"], GatewayCall);
+	        this.callTotal = source["callTotal"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GatewaySettings {
+	    primaryID: string;
+	    backupIDs: string[];
+	    autoReroute: boolean;
+	    autoRegenerate524: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GatewaySettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.primaryID = source["primaryID"];
+	        this.backupIDs = source["backupIDs"];
+	        this.autoReroute = source["autoReroute"];
+	        this.autoRegenerate524 = source["autoRegenerate524"];
+	    }
+	}
+	
 	export class GenerateInput {
 	    requestID: string;
 	    connectionID: string;
@@ -601,7 +830,249 @@ export namespace core {
 	        this.downloadMS = source["downloadMS"];
 	    }
 	}
+	export class LLMCall {
+	    id: string;
+	    at: string;
+	    kind: string;
+	    runID?: string;
+	    connectionID: string;
+	    connectionName: string;
+	    model: string;
+	    stage: string;
+	    stream: boolean;
+	    retry: boolean;
+	    firstByteMS: number;
+	    totalMS: number;
+	    inputTokens: number;
+	    outputTokens: number;
+	    status: string;
+	    httpStatus: number;
+	    error?: string;
+	    requestID?: string;
 	
+	    static createFrom(source: any = {}) {
+	        return new LLMCall(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.at = source["at"];
+	        this.kind = source["kind"];
+	        this.runID = source["runID"];
+	        this.connectionID = source["connectionID"];
+	        this.connectionName = source["connectionName"];
+	        this.model = source["model"];
+	        this.stage = source["stage"];
+	        this.stream = source["stream"];
+	        this.retry = source["retry"];
+	        this.firstByteMS = source["firstByteMS"];
+	        this.totalMS = source["totalMS"];
+	        this.inputTokens = source["inputTokens"];
+	        this.outputTokens = source["outputTokens"];
+	        this.status = source["status"];
+	        this.httpStatus = source["httpStatus"];
+	        this.error = source["error"];
+	        this.requestID = source["requestID"];
+	    }
+	}
+	
+	export class LLMDrop {
+	    at: string;
+	    runID: string;
+	    runName: string;
+	    stage: string;
+	    waitedMS: number;
+	    reason: string;
+	    detail: string;
+	    outcome: string;
+	    recovered: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LLMDrop(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = source["at"];
+	        this.runID = source["runID"];
+	        this.runName = source["runName"];
+	        this.stage = source["stage"];
+	        this.waitedMS = source["waitedMS"];
+	        this.reason = source["reason"];
+	        this.detail = source["detail"];
+	        this.outcome = source["outcome"];
+	        this.recovered = source["recovered"];
+	    }
+	}
+	export class LLMRunStat {
+	    runID: string;
+	    startedAt: string;
+	    name: string;
+	    connectionName: string;
+	    requests: number;
+	    inputTokens: number;
+	    outputTokens: number;
+	    dropped: number;
+	    errors: number;
+	    durationMS: number;
+	    result: string;
+	    resultTone: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LLMRunStat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runID = source["runID"];
+	        this.startedAt = source["startedAt"];
+	        this.name = source["name"];
+	        this.connectionName = source["connectionName"];
+	        this.requests = source["requests"];
+	        this.inputTokens = source["inputTokens"];
+	        this.outputTokens = source["outputTokens"];
+	        this.dropped = source["dropped"];
+	        this.errors = source["errors"];
+	        this.durationMS = source["durationMS"];
+	        this.result = source["result"];
+	        this.resultTone = source["resultTone"];
+	    }
+	}
+	export class LLMProviderStat {
+	    connectionID: string;
+	    name: string;
+	    model: string;
+	    deleted: boolean;
+	    capabilityOK: boolean;
+	    requests: number;
+	    analysisRuns: number;
+	    tests: number;
+	    completed: number;
+	    dropped: number;
+	    errors: number;
+	    medianFirstMS: number;
+	    medianTotalMS: number;
+	    maxTotalMS: number;
+	    inputTokens: number;
+	    outputTokens: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LLMProviderStat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connectionID = source["connectionID"];
+	        this.name = source["name"];
+	        this.model = source["model"];
+	        this.deleted = source["deleted"];
+	        this.capabilityOK = source["capabilityOK"];
+	        this.requests = source["requests"];
+	        this.analysisRuns = source["analysisRuns"];
+	        this.tests = source["tests"];
+	        this.completed = source["completed"];
+	        this.dropped = source["dropped"];
+	        this.errors = source["errors"];
+	        this.medianFirstMS = source["medianFirstMS"];
+	        this.medianTotalMS = source["medianTotalMS"];
+	        this.maxTotalMS = source["maxTotalMS"];
+	        this.inputTokens = source["inputTokens"];
+	        this.outputTokens = source["outputTokens"];
+	    }
+	}
+	export class LLMMonitorResult {
+	    requests: number;
+	    analysisRuns: number;
+	    testRequests: number;
+	    inputTokens: number;
+	    outputTokens: number;
+	    dropped: number;
+	    recovered: number;
+	    errors: number;
+	    errorNote: string;
+	    medianRunMS: number;
+	    providers: LLMProviderStat[];
+	    drops: LLMDrop[];
+	    runs: LLMRunStat[];
+	    calls: LLMCall[];
+	    callTotal: number;
+	    runNames: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new LLMMonitorResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requests = source["requests"];
+	        this.analysisRuns = source["analysisRuns"];
+	        this.testRequests = source["testRequests"];
+	        this.inputTokens = source["inputTokens"];
+	        this.outputTokens = source["outputTokens"];
+	        this.dropped = source["dropped"];
+	        this.recovered = source["recovered"];
+	        this.errors = source["errors"];
+	        this.errorNote = source["errorNote"];
+	        this.medianRunMS = source["medianRunMS"];
+	        this.providers = this.convertValues(source["providers"], LLMProviderStat);
+	        this.drops = this.convertValues(source["drops"], LLMDrop);
+	        this.runs = this.convertValues(source["runs"], LLMRunStat);
+	        this.calls = this.convertValues(source["calls"], LLMCall);
+	        this.callTotal = source["callTotal"];
+	        this.runNames = source["runNames"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class LicenseStatus {
+	    mode: string;
+	    softwareID?: string;
+	    customer?: string;
+	    trialLimit: number;
+	    trialUsed: number;
+	    trialPending: number;
+	    trialRemaining: number;
+	    upstreamRemaining?: string;
+	    activatedAt?: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LicenseStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.softwareID = source["softwareID"];
+	        this.customer = source["customer"];
+	        this.trialLimit = source["trialLimit"];
+	        this.trialUsed = source["trialUsed"];
+	        this.trialPending = source["trialPending"];
+	        this.trialRemaining = source["trialRemaining"];
+	        this.upstreamRemaining = source["upstreamRemaining"];
+	        this.activatedAt = source["activatedAt"];
+	        this.message = source["message"];
+	    }
+	}
 	export class LogEntry {
 	    id: number;
 	    time: string;
@@ -656,6 +1127,28 @@ export namespace core {
 		    return a;
 		}
 	}
+	export class MonitorQuery {
+	    days: number;
+	    connectionID: string;
+	    source: string;
+	    result: string;
+	    offset: number;
+	    limit: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MonitorQuery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.days = source["days"];
+	        this.connectionID = source["connectionID"];
+	        this.source = source["source"];
+	        this.result = source["result"];
+	        this.offset = source["offset"];
+	        this.limit = source["limit"];
+	    }
+	}
 	export class Output {
 	    url?: string;
 	    b64_json?: string;
@@ -675,6 +1168,16 @@ export namespace core {
 	    planItemID?: string;
 	    refinedFrom?: string;
 	    refineInstruction?: string;
+	    routedFrom?: string;
+	    routedFromName?: string;
+	    routeReason?: string;
+	    autoRetryOf?: string;
+	    autoRetriedAs?: string;
+	    trial?: boolean;
+	    sample?: boolean;
+	    sampleItem?: string;
+	    samplePending?: boolean;
+	    sampleAssetID?: string;
 	    previousAssetIDs?: string[];
 	    id: string;
 	    batchID: string;
@@ -703,6 +1206,16 @@ export namespace core {
 	        this.planItemID = source["planItemID"];
 	        this.refinedFrom = source["refinedFrom"];
 	        this.refineInstruction = source["refineInstruction"];
+	        this.routedFrom = source["routedFrom"];
+	        this.routedFromName = source["routedFromName"];
+	        this.routeReason = source["routeReason"];
+	        this.autoRetryOf = source["autoRetryOf"];
+	        this.autoRetriedAs = source["autoRetriedAs"];
+	        this.trial = source["trial"];
+	        this.sample = source["sample"];
+	        this.sampleItem = source["sampleItem"];
+	        this.samplePending = source["samplePending"];
+	        this.sampleAssetID = source["sampleAssetID"];
 	        this.previousAssetIDs = source["previousAssetIDs"];
 	        this.id = source["id"];
 	        this.batchID = source["batchID"];

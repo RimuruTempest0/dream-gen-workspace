@@ -30,6 +30,30 @@ func (a *App) ImageConcurrency() int { return a.service.ImageConcurrency() }
 func (a *App) SetImageConcurrency(n int) error {
 	return a.service.SetImageConcurrency(n)
 }
+func (a *App) GetGatewaySettings() (core.GatewaySettings, error) {
+	return a.service.GetGatewaySettings()
+}
+func (a *App) SetGatewaySettings(g core.GatewaySettings) error {
+	return a.service.SetGatewaySettings(g)
+}
+func (a *App) GatewayHealth() ([]core.GatewayHealth, error) { return a.service.GatewayHealth() }
+func (a *App) CheckGateways() ([]core.GatewayHealth, error) { return a.service.CheckGateways() }
+func (a *App) LicenseStatus() core.LicenseStatus            { return a.service.LicenseStatus() }
+func (a *App) Activate(code string) (core.LicenseStatus, error) {
+	return a.service.Activate(code)
+}
+func (a *App) GatewayMonitor(q core.MonitorQuery) (core.GatewayMonitorResult, error) {
+	return a.service.GatewayMonitor(q)
+}
+func (a *App) LLMMonitor(q core.MonitorQuery) (core.LLMMonitorResult, error) {
+	return a.service.LLMMonitor(q)
+}
+func (a *App) ExportGatewayCallsToPath(q core.MonitorQuery, path string) (int, error) {
+	return a.service.ExportGatewayCalls(q, path)
+}
+func (a *App) ExportLLMCallsToPath(q core.MonitorQuery, path string) (int, error) {
+	return a.service.ExportLLMCalls(q, path)
+}
 func (a *App) ListConnectionModels(id string) ([]string, error) {
 	return a.service.ListConnectionModels(id)
 }

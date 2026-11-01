@@ -12,3 +12,5 @@ data/
 cache/
 test-results/
 *.log
+
+cmd/admin/dist/

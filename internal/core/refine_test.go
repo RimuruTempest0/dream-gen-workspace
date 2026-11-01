@@ -105,7 +105,7 @@ func TestRefineAgentImageKeepsVersionsAndExportsCurrent(t *testing.T) {
 	mu.Lock()
 	call := (*calls)[0]
 	mu.Unlock()
-	if call.images != 1 || !strings.Contains(call.prompt, "调整要求：袖口文字改成横排") || !strings.Contains(call.prompt, "原始提示词 slot-1") {
+	if call.images != 1 || !strings.Contains(call.prompt, "本次修改（必须做到，改完后要能明显看出变化）：袖口文字改成横排") || !strings.Contains(call.prompt, "本次修改优先于原图现状") || strings.Contains(call.prompt, "文字方向与排列") || !strings.Contains(call.prompt, "原始提示词 slot-1") {
 		t.Fatalf("unexpected edit request: %+v", call)
 	}
 	tasks, _ := s.GetAgentTasks(first.AgentRunID)
@@ -173,7 +173,7 @@ func TestBuiltinSkillUpgradeKeepsUserEdits(t *testing.T) {
 		t.Fatal("new installs miss current rules")
 	}
 	for _, b := range builtinSkills {
-		if _, _, e := validateSkill(builtinSkillContent(b.id, b.description, b.body)); e != nil {
+		if _, _, e := validateSkill(b.content()); e != nil {
 			t.Fatal("built-in skill fails validation", b.id, e)
 		}
 	}
@@ -193,5 +193,16 @@ func TestBuiltinSkillUpgradeKeepsUserEdits(t *testing.T) {
 	}
 	if !strings.Contains(embroidery.Content, "按我的规则检查") || strings.Contains(embroidery.Content, "阅读方向") {
 		t.Fatal("user-edited skill was overwritten")
+	}
+}
+
+func TestRefineStripsWrappersSavedBefore0611(t *testing.T) {
+	old := Task{RefinedFrom: "earlier", Prompt: "以提供的图片为底图做局部微调。调整要求：袖口改横排" + refinePromptMarkerV1 + "原始提示词"}
+	if baseTaskPrompt(old) != "原始提示词" {
+		t.Fatal("old refine wrapper not stripped", baseTaskPrompt(old))
+	}
+	p := refinePrompt("原始提示词", "把狗掌移到名字左边", false)
+	if strings.Index(p, "把狗掌移到名字左边") > strings.Index(p, "原始提示词") || baseTaskPrompt(Task{RefinedFrom: "x", Prompt: p}) != "原始提示词" {
+		t.Fatal("change must come before the original prompt and strip cleanly", p)
 	}
 }

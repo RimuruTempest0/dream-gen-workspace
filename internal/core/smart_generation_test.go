@@ -342,3 +342,68 @@ func TestSmartQueuedImagesPauseAfterRestart(t *testing.T) {
 		t.Fatal("explicit resume failed")
 	}
 }
+
+const proxyDrop = "read tcp 127.0.0.1:61108->127.0.0.1:10808: wsarecv: An existing connection was forcibly closed by the remote host."
+
+func TestCutLLMStreamThatRecoversIsANoteNotAnError(t *testing.T) {
+	s := testService(t)
+	llm := saveLLM(t, s, "https://example.com/anthropic")
+	images := saveConnection(t, s, "https://example.com/v1")
+	s.agentRunner = func(ctx context.Context, in agentInvocation) error {
+		r := invocationRun(t, in)
+		s.noteLLMReconnect(r.ID, proxyDrop) // Claude Code then retries and finishes
+		if e := saveRunnerPlan(s, r, simplePlan(12, []string{})); e != nil {
+			return e
+		}
+		emitAgentSuccess(in)
+		return nil
+	}
+	in := agentInput(llm, images)
+	in.Instruction += "\n尺寸、P004 已齐全"
+	id, e := s.StartSmartGeneration(in, "cut-stream")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	r, _ := s.GetAgentRun(id)
+	if r.Error != "" || r.LLMReconnects != 1 || r.LLMReconnectError != proxyDrop {
+		t.Fatalf("recovered run still shows an error: status=%s error=%q reconnects=%d", r.Status, r.Error, r.LLMReconnects)
+	}
+	if r.Status == "failed" || r.Status == "interrupted" {
+		t.Fatal("recovered run marked failed", r.Status)
+	}
+}
+
+func TestCutLLMStreamIsNamedWhenTheAnalysisFails(t *testing.T) {
+	s := testService(t)
+	llm := saveLLM(t, s, "https://example.com/anthropic")
+	images := saveConnection(t, s, "https://example.com/v1")
+	s.agentRunner = func(ctx context.Context, in agentInvocation) error {
+		s.noteLLMReconnect(invocationRun(t, in).ID, proxyDrop)
+		return errors.New("Claude Code 退出")
+	}
+	id, e := s.StartSmartGeneration(agentInput(llm, images), "cut-stream-fail")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	r, _ := s.GetAgentRun(id)
+	if r.Status != "failed" || !strings.Contains(r.Error, "Claude Code 退出") || !strings.Contains(r.Error, "LLM 连接中断 1 次") || !strings.Contains(r.Error, "10808") {
+		t.Fatalf("failure must name the cut connection: %s %q", r.Status, r.Error)
+	}
+}
+
+func TestOldStaleStreamErrorShowsAsNote(t *testing.T) {
+	s := testService(t)
+	r := AgentRun{ID: NewID(), Status: "submitted", Stage: "已提交生图队列", Error: proxyDrop}
+	s.store.Put("agent_run", r.ID, r)
+	got, e := s.GetAgentRun(r.ID)
+	if e != nil || got.Error != "" || got.LLMReconnects != 1 || got.LLMReconnectError != proxyDrop {
+		t.Fatalf("old run not converted: %+v", got)
+	}
+	failed := AgentRun{ID: NewID(), Status: "failed", Error: "Agent 未保存套图方案"}
+	s.store.Put("agent_run", failed.ID, failed)
+	if got, _ = s.GetAgentRun(failed.ID); got.Error == "" || got.LLMReconnects != 0 {
+		t.Fatal("a real failure must stay an error")
+	}
+}

@@ -54,6 +54,10 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
   LoadingOutlined,
+  CheckSquareOutlined,
+  CheckOutlined,
+  DashboardOutlined,
+  RobotOutlined,
 } from "@ant-design/icons";
 import type { SmartProgress } from "./agent-api";
 
@@ -130,10 +134,24 @@ import {
   TaskTiming,
   TaskFailureAlert,
   AssetImage,
+  CancelTaskButton,
   time,
 } from "./ui";
 import { SmartImages } from "./SmartImages";
+import {
+  LicenseBadge,
+  LicenseNotice,
+  LicensePanel,
+  useLicense,
+} from "./License";
+import {
+  GatewayFailover,
+  GatewayRow,
+  gatewayLabel,
+  useGateways,
+} from "./Gateways";
 import { Logs } from "./Logs";
+import { GatewayMonitorPage, LLMMonitorPage } from "./Monitor";
 import {
   LLMConnections,
   AgentSettings,
@@ -150,6 +168,12 @@ export default function App() {
     ["/smart", "智能生图", <ApiOutlined aria-hidden="true" />],
     ["/tasks", "任务中心", <ClockCircleOutlined aria-hidden="true" />],
     ["/assets", "素材库", <AppstoreOutlined aria-hidden="true" />],
+    [
+      "/monitor/gateways",
+      "中转站监控",
+      <DashboardOutlined aria-hidden="true" />,
+    ],
+    ["/monitor/llm", "LLM 监控", <RobotOutlined aria-hidden="true" />],
     ["/projects", "项目与模板", <FolderOutlined aria-hidden="true" />],
     ["/settings", "连接与设置", <SettingOutlined aria-hidden="true" />],
     ["/logs", "日志", <FileTextOutlined aria-hidden="true" />],
@@ -215,10 +239,11 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <LicenseBadge />
           <div className="local-status">
             <CheckCircleOutlined aria-hidden="true" /> 本地数据工作区
           </div>
-          <small>Portable · {summary.data?.version || "0.4.0"}</small>
+          <small>Portable · {summary.data?.version || "0.6.20"}</small>
         </div>
       </aside>
       <main className="main">
@@ -234,6 +259,8 @@ export default function App() {
             <Route path="/smart" element={<SmartImages />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/assets" element={<Assets />} />
+            <Route path="/monitor/gateways" element={<GatewayMonitorPage />} />
+            <Route path="/monitor/llm" element={<LLMMonitorPage />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/logs" element={<Logs />} />
@@ -328,6 +355,19 @@ function Workbench() {
     );
     return () => off?.();
   }, []);
+  const gateways = useGateways();
+  // A new draft starts on the primary gateway when one is set up.
+  useEffect(() => {
+    const primary = connections.data?.find(
+      (c) => c.id === gateways.settings.data?.primaryID && c.hasKey,
+    );
+    if (ready && !input.connectionID && primary)
+      setInput((v) =>
+        v.connectionID
+          ? v
+          : { ...v, connectionID: primary.id, model: primary.model || "" },
+      );
+  }, [ready, connections.data, gateways.settings.data]);
   const selected = connections.data?.find((c) => c.id === input.connectionID);
   const prompts = (batch ? prompt.split("\n") : [prompt])
     .map((s) => s.trim())
@@ -399,6 +439,7 @@ function Workbench() {
   }
   return (
     <>
+      <LicenseNotice />
       <Header
         title="把想法变成图片"
         sub="输入提示词，选择连接与模型，结果自动归档到本地。"
@@ -529,7 +570,11 @@ function Workbench() {
                 placeholder="选择已配置连接"
                 options={(connections.data || []).map((c) => ({
                   value: c.id,
-                  label: c.name + (c.hasKey ? "" : " · 未配置密钥"),
+                  label: gatewayLabel(
+                    c,
+                    gateways.settings.data,
+                    gateways.byID.get(c.id),
+                  ),
                 }))}
                 onChange={(id) => {
                   const c = connections.data?.find((c) => c.id === id);
@@ -827,12 +872,13 @@ function Tasks() {
               },
               {
                 title: "操作",
-                width: 230,
+                width: 310,
                 render: (_, t) => (
-                  <Space>
+                  <Space wrap>
                     <Button size="small" onClick={() => setDetail(t)}>
                       详情
                     </Button>
+                    <CancelTaskButton task={t} size="small" />
                     {[
                       "queued",
                       "submitting",
@@ -1025,7 +1071,39 @@ function Assets() {
       : undefined,
   };
   const actions = useActions();
+  const { notification } = AntApp.useApp();
   const nav = useNavigate();
+  // Batch mode: clicking a card selects it. Only loaded, still-listed images count,
+  // in list order, so images moved out of the filter or removed drop out by themselves.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const items = q.data?.items || [];
+  const chosen = items.filter((a) => picked.has(a.id));
+  const ids = chosen.map((a) => a.id);
+  const allPicked = items.length > 0 && chosen.length === items.length;
+  function toggle(id: string) {
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function stopSelecting() {
+    setSelecting(false);
+    setPicked(new Set());
+  }
+  async function exportChosen() {
+    await actions.run(async () => {
+      const path = await call<string>(
+        "ChooseExportPath",
+        `素材-${ids.length}张.zip`,
+      );
+      if (!path) return;
+      const count = await call<number>("ExportAssetsToPath", ids, path);
+      notification.success({ message: `已导出素材 ZIP（${count} 张）` });
+    });
+  }
   async function useReference(a: Asset) {
     await actions.run(async () => {
       const draft = await call<GenerateInput>("GetDraft");
@@ -1049,22 +1127,106 @@ function Assets() {
       <section className="panel">
         <div className="panel-heading">
           <h2>{q.data?.total || 0} 张本地图片</h2>
-          <UISelect
-            aria-label="项目筛选"
-            value={project}
-            onChange={(v) => {
-              setProject(v);
-            }}
-            style={{ width: 200 }}
-            options={[
-              { value: "", label: "全部项目" },
-              ...(projects.data || []).map((p) => ({
-                value: p.id,
-                label: p.name,
-              })),
-            ]}
-          />
+          <Space wrap>
+            <UISelect
+              aria-label="项目筛选"
+              value={project}
+              onChange={(v) => {
+                setProject(v);
+                setPicked(new Set());
+              }}
+              style={{ width: 200 }}
+              options={[
+                { value: "", label: "全部项目" },
+                ...(projects.data || []).map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                })),
+              ]}
+            />
+            {!selecting && (
+              <Button
+                icon={<CheckSquareOutlined aria-hidden="true" />}
+                disabled={!items.length}
+                onClick={() => setSelecting(true)}
+              >
+                批量管理
+              </Button>
+            )}
+          </Space>
         </div>
+        {selecting && (
+          <div
+            className="asset-batch-bar"
+            role="toolbar"
+            aria-label="批量管理素材"
+          >
+            <strong aria-live="polite">已选 {chosen.length} 张</strong>
+            <Button
+              size="small"
+              onClick={() =>
+                setPicked(
+                  allPicked ? new Set() : new Set(items.map((a) => a.id)),
+                )
+              }
+            >
+              {allPicked ? "取消全选" : `全选已加载（${items.length} 张）`}
+            </Button>
+            <UISelect
+              size="small"
+              aria-label="批量归类到项目"
+              placeholder="归类到项目"
+              value={null}
+              disabled={!chosen.length || actions.busy}
+              style={{ width: 160 }}
+              options={[
+                { value: "", label: "不归类" },
+                ...(projects.data || []).map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                })),
+              ]}
+              onChange={(id: string) =>
+                actions.run(
+                  () => call<number>("UpdateAssets", ids, id, false),
+                  id
+                    ? `已将 ${ids.length} 张素材归类到“${projects.data?.find((p) => p.id === id)?.name || "项目"}”`
+                    : `已将 ${ids.length} 张素材设为不归类`,
+                )
+              }
+            />
+            <Button
+              size="small"
+              icon={<DownloadOutlined aria-hidden="true" />}
+              disabled={!chosen.length || actions.busy}
+              onClick={exportChosen}
+            >
+              导出 ZIP
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined aria-hidden="true" />}
+              disabled={!chosen.length || actions.busy}
+              onClick={() =>
+                actions.confirm(
+                  `从素材库移除 ${ids.length} 张图片？`,
+                  "图片会从列表隐藏，文件和任务引用仍保留。",
+                  async () => {
+                    await call("UpdateAssets", ids, "", true);
+                    setPicked(new Set());
+                  },
+                  true,
+                )
+              }
+            >
+              移除
+            </Button>
+            <Button size="small" type="text" onClick={stopSelecting}>
+              完成
+            </Button>
+          </div>
+        )}
         <DataState
           query={q}
           empty={!q.data?.items.length}
@@ -1077,14 +1239,33 @@ function Assets() {
         >
           <div className="asset-grid">
             {q.data?.items.map((a) => (
-              <article className="asset-card" key={a.id}>
-                <button
-                  className="image-button"
-                  onClick={() => setDetail(a)}
-                  aria-label={`预览 ${a.name}`}
-                >
-                  <AssetImage id={a.id} />
-                </button>
+              <article
+                className={
+                  "asset-card" + (picked.has(a.id) ? " asset-card-picked" : "")
+                }
+                key={a.id}
+              >
+                {selecting ? (
+                  <button
+                    className="image-button asset-pick"
+                    onClick={() => toggle(a.id)}
+                    aria-label={`选择 ${a.name}`}
+                    aria-pressed={picked.has(a.id)}
+                  >
+                    <AssetImage id={a.id} />
+                    <span className="asset-pick-box" aria-hidden="true">
+                      {picked.has(a.id) && <CheckOutlined />}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    className="image-button"
+                    onClick={() => setDetail(a)}
+                    aria-label={`预览 ${a.name}`}
+                  >
+                    <AssetImage id={a.id} />
+                  </button>
+                )}
                 <div className="asset-card-copy">
                   <strong title={a.name}>{a.name}</strong>
                   <small>
@@ -1410,6 +1591,8 @@ function Projects() {
 function Settings() {
   const q = useData<Connection[]>(["connections"], "ListConnections");
   const summary = useData<Summary>(["summary"], "Dashboard");
+  const license = useLicense();
+  const customer = !!license.data && license.data.mode !== "developer";
   const actions = useActions();
   const { notification } = AntApp.useApp();
   const [moving, setMoving] = useState(false);
@@ -1541,17 +1724,24 @@ function Settings() {
     <>
       <Header
         title="连接与设置"
-        sub="在应用里配置 Base URL 和 API Key，自由切换兼容的中转站。"
+        sub={
+          customer
+            ? "授权、线路状态和本地数据。线路由软件提供方配置，无需填写地址或 Key。"
+            : "在应用里配置 Base URL 和 API Key，自由切换兼容的中转站。"
+        }
         action={
-          <Button
-            type="primary"
-            icon={<PlusOutlined aria-hidden="true" />}
-            onClick={() => open(null)}
-          >
-            添加连接
-          </Button>
+          customer ? undefined : (
+            <Button
+              type="primary"
+              icon={<PlusOutlined aria-hidden="true" />}
+              onClick={() => open(null)}
+            >
+              添加连接
+            </Button>
+          )
         }
       />
+      <LicensePanel />
       <section className="panel">
         <div className="panel-heading">
           <h2>
@@ -1584,50 +1774,63 @@ function Settings() {
                         {c.hasKey ? "密钥已保存" : "需要密钥"}
                       </Tag>
                     </strong>
-                    <p className="mono">{c.baseURL}</p>
+                    {c.managed ? (
+                      <p className="hint">由软件授权提供</p>
+                    ) : (
+                      <p className="mono">{c.baseURL}</p>
+                    )}
                     <small>
                       默认模型：{c.model || "未设置，可在工作台填写"}
                     </small>
+                    <GatewayRow
+                      connection={c}
+                      images={(q.data || []).filter((x) => x.kind !== "llm")}
+                    />
                   </div>
-                  <Space wrap>
-                    <Button onClick={() => open(c)}>编辑 / 测试</Button>
-                    {c.hasKey && (
+                  {c.managed ? (
+                    <Tag>由软件授权管理</Tag>
+                  ) : (
+                    <Space wrap>
+                      <Button onClick={() => open(c)}>编辑 / 测试</Button>
+                      {c.hasKey && (
+                        <Button
+                          onClick={() =>
+                            actions.confirm(
+                              "清除此连接的密钥？",
+                              "新任务将无法提交。已提交任务保存的加密凭证版本仍用于恢复；密钥不会从任务中返回到界面。",
+                              () =>
+                                call("SaveConnection", {
+                                  ...c,
+                                  key: "",
+                                  clearKey: true,
+                                }),
+                            )
+                          }
+                        >
+                          清除密钥
+                        </Button>
+                      )}
                       <Button
+                        danger
+                        aria-label={`删除连接 ${c.name}`}
+                        icon={<DeleteOutlined aria-hidden="true" />}
                         onClick={() =>
                           actions.confirm(
-                            "清除此连接的密钥？",
-                            "新任务将无法提交。已提交任务保存的加密凭证版本仍用于恢复；密钥不会从任务中返回到界面。",
-                            () =>
-                              call("SaveConnection", {
-                                ...c,
-                                key: "",
-                                clearKey: true,
-                              }),
+                            `删除连接“${c.name}”？`,
+                            "需要先停止队列。历史任务与图片保留，重新生成需要重新配置连接。",
+                            () => call("DeleteConnection", c.id),
+                            true,
                           )
                         }
-                      >
-                        清除密钥
-                      </Button>
-                    )}
-                    <Button
-                      danger
-                      aria-label={`删除连接 ${c.name}`}
-                      icon={<DeleteOutlined aria-hidden="true" />}
-                      onClick={() =>
-                        actions.confirm(
-                          `删除连接“${c.name}”？`,
-                          "需要先停止队列。历史任务与图片保留，重新生成需要重新配置连接。",
-                          () => call("DeleteConnection", c.id),
-                          true,
-                        )
-                      }
-                    />
-                  </Space>
+                      />
+                    </Space>
+                  )}
                 </div>
               ))}
           </div>
         </DataState>
       </section>
+      <GatewayFailover />
       <LLMConnections />
       <AgentSettings />
       <section className="panel storage-panel">

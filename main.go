@@ -88,6 +88,8 @@ func launch(root, data string) {
 	app := &App{service: s, configRoot: root}
 	s.SetAgentExecutable(filepath.Join(root, "agent", "claude-code", "claude.exe"))
 	s.SetProductBrowser(filepath.Join(root, productBrowserExe), runtimePath)
+	// A customer package carries customer.dat beside the program; none = developer mode.
+	s.LoadLicense(root)
 	e = wails.Run(&options.App{Title: "生图工作台", Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: &options.RGBA{R: 245, G: 246, B: 248, A: 1}, AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup: func(ctx context.Context) {
 			if needDirectory {
@@ -105,6 +107,7 @@ func launch(root, data string) {
 				app.service = replacement
 				replacement.SetAgentExecutable(filepath.Join(root, "agent", "claude-code", "claude.exe"))
 				replacement.SetProductBrowser(filepath.Join(root, productBrowserExe), runtimePath)
+				replacement.LoadLicense(root)
 				saveDataPath(root, path)
 			}
 			app.startup(ctx)

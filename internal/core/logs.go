@@ -115,13 +115,17 @@ func (st *Store) logObjectChange(kind, id string, before, after []byte) {
 		if json.Unmarshal(after, &next) != nil {
 			return
 		}
-		if old.Status == next.Status && old.Stage == next.Stage && old.Error == next.Error && old.Product.Error == next.Product.Error {
+		if old.Status == next.Status && old.Stage == next.Stage && old.Error == next.Error && old.Product.Error == next.Product.Error && old.Product.ImageNote == next.Product.ImageNote {
 			return
 		}
 		source = "agent"
 		message = fmt.Sprintf("智能分析：%s；%s", next.Status, next.Stage)
 		if next.Product.Error != "" && next.Product.Error != old.Product.Error {
 			message += "；" + next.Product.Error
+			level = "warn"
+		}
+		if next.Product.ImageNote != "" && next.Product.ImageNote != old.Product.ImageNote {
+			message += "；" + next.Product.ImageNote
 			level = "warn"
 		}
 		if next.Error != "" {

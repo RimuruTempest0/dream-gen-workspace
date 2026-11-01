@@ -38,21 +38,28 @@ import {
 } from "./agent-api";
 import {
   AssetImage,
+  CancelTaskButton,
   DataState,
   Header,
   ImageViewer,
   Status,
   TaskTiming,
   TaskFailureAlert,
+  rejectionOf,
   time,
   useActions,
   useData,
   useImageDownloads,
   type ViewerItem,
 } from "./ui";
+import { gatewayLabel, useGateways } from "./Gateways";
+import { LicenseNotice } from "./License";
 
 export function extractProductLinks(text: string): string[] {
-  const values = text.match(/https?:\/\/[^\s\]\)\\<>"'，。；]+/g) || [];
+  // Full-width brackets and punctuation end a link pasted in Chinese text ("…th=1】").
+  const values =
+    text.match(/https?:\/\/[^\s\]\)\\<>"'【】「」『』（）《》，。；！、]+/g) ||
+    [];
   return [
     ...new Set(
       values.filter((value) => {
@@ -113,14 +120,16 @@ function AgentTiming({ run, tasks }: { run: AgentRun; tasks: Task[] }) {
     Date.parse(run.updatedAt || run.createdAt),
     ...tasks.map((t) => Date.parse(t.updatedAt || t.createdAt)),
   );
+  // Waiting for the user's answers does not count; the timer stands still then.
   const elapsed = Math.max(
     0,
-    Math.floor(((busy ? now : savedEnd) - start) / 1000),
+    Math.floor(((busy ? now : savedEnd) - start - (run.waitedMS || 0)) / 1000),
   );
+  const waiting = run.status === "needs_input";
   return (
     <span className="muted">
       {busy ? "已用时" : "累计用时"} {Math.floor(elapsed / 60)} 分{" "}
-      {elapsed % 60} 秒
+      {elapsed % 60} 秒{waiting && "（等待补充资料，计时已暂停）"}
     </span>
   );
 }
@@ -166,9 +175,27 @@ const ratioSizes: Record<string, string> = {
   "16:9": "1792x1024",
 };
 
-// The backend marks images the relay refused for the API key (HTTP 401/403).
-function isKeyRejected(task: Task) {
-  return task.status === "failed" && !!task.error?.startsWith("API Key 无效");
+// Images the relay refused before generating: a refused key or an empty account.
+const isKeyRejected = (task: Task) => rejectionOf(task) === "auth";
+const isBalanceRejected = (task: Task) => rejectionOf(task) === "balance";
+
+// An image drawn from the suite's detail sample says which image it waits for or
+// copied, so a pause before it starts is not mistaken for a stuck queue.
+function SampleNote({ task, tasks }: { task: Task; tasks: Task[] }) {
+  if (!task.sampleItem) return null;
+  const n = tasks.findIndex((t) => t.planItemID === task.sampleItem) + 1;
+  const which = n > 0 ? `第 ${n} 张样板图` : "样板图";
+  if (task.samplePending)
+    return (
+      <p className="hint">
+        等{which}完成后开始，照它画袖口等细节；等待期间未提交、不计费。
+      </p>
+    );
+  if (task.sampleAssetID)
+    return <p className="hint">已照{which}画袖口等细节。</p>;
+  if (task.status !== "queued")
+    return <p className="hint">{which}没有成功，这张按文字说明生成。</p>;
+  return null;
 }
 
 type RefineTarget = { task: Task; assetID: string };
@@ -232,10 +259,10 @@ function RefineDialog({
         maxLength={1000}
         showCount
         autoSize={{ minRows: 3, maxRows: 8 }}
-        placeholder="例如：袖口名字改成横排，与其他图片一致；其余保持不变"
+        placeholder="例如：把袖口的狗掌和 Amelia 摆正成水平的一行，狗掌在左"
       />
       <p className="hint">
-        将以这张图片为底图发起一次新的生图请求，可能产生费用。只修改你写的内容，原图保留在“之前的版本”中。
+        写清改哪里、改成什么样，比只写“应该是……”更容易改对。将以这张图片为底图发起一次新的生图请求，可能产生费用。只修改你写的内容，原图保留在“之前的版本”中。
       </p>
     </Modal>
   );
@@ -251,6 +278,7 @@ export function SmartImages() {
     "ImageConcurrency",
   );
   const connections = useData<Connection[]>(["connections"], "ListConnections");
+  const gateways = useGateways();
   const projects = useData<Project[]>(["projects"], "ListProjects");
   const runtime = useData<AgentRuntimeInfo>(["agent-runtime"], "AgentRuntime");
   const assets = useData<{ items: Asset[] }>(
@@ -360,12 +388,16 @@ export function SmartImages() {
         v.llmConnectionID ||
         connections.data?.find((c) => c.kind === "llm" && c.hasKey)?.id ||
         "",
+      // New requests start on the primary gateway when one is set up.
       imageConnectionID:
         v.imageConnectionID ||
+        connections.data?.find(
+          (c) => c.id === gateways.settings.data?.primaryID && c.hasKey,
+        )?.id ||
         connections.data?.find((c) => c.kind !== "llm" && c.hasKey)?.id ||
         "",
     }));
-  }, [ready, runID, connections.data]);
+  }, [ready, runID, connections.data, gateways.settings.data]);
   const llms = connections.data?.filter((c) => c.kind === "llm") || [],
     images = connections.data?.filter((c) => c.kind !== "llm") || [];
   const imageConnection = run?.imageConnection?.id
@@ -578,6 +610,7 @@ export function SmartImages() {
   );
   return (
     <>
+      <LicenseNotice />
       <Header
         title="智能生图"
         sub="输入制作需求，自动完成套图。需要补充资料时会集中提示。"
@@ -741,7 +774,11 @@ export function SmartImages() {
                       disabled={!!run || actions.busy}
                       options={images.map((c) => ({
                         value: c.id,
-                        label: c.name,
+                        label: gatewayLabel(
+                          c,
+                          gateways.settings.data,
+                          gateways.byID.get(c.id),
+                        ),
                       }))}
                       onChange={(imageConnectionID) =>
                         change({ imageConnectionID, imageModel: "" })
@@ -917,25 +954,48 @@ export function SmartImages() {
                     取消制作
                   </Button>
                 )}
-                {run.error && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message={
-                      run.status === "interrupted"
-                        ? "制作已中断，资料已保留，可继续制作。"
-                        : "制作未完成，资料已保留。可继续制作，详细错误请查看日志。"
-                    }
-                  />
-                )}
+                {run.error &&
+                  (run.status === "failed" || run.status === "interrupted") && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message={
+                        run.status === "interrupted"
+                          ? "制作已中断，资料已保留，可继续制作。"
+                          : "制作未完成，资料已保留。可继续制作，详细错误请查看日志。"
+                      }
+                    />
+                  )}
+                {!!run.llmReconnects &&
+                  run.status !== "failed" &&
+                  run.status !== "interrupted" && (
+                    <p
+                      className="hint llm-reconnect-note"
+                      title={run.llmReconnectError}
+                    >
+                      LLM 连接中断
+                      {run.llmReconnects > 1
+                        ? ` ${run.llmReconnects} 次`
+                        : "一次"}
+                      ，已自动重试
+                      {analyzing ? "，分析继续进行。" : "并继续完成。"}
+                      不影响生图，也不会额外计费。
+                    </p>
+                  )}
                 {!analyzing && !submitted && (
                   <div className="agent-supplement">
-                    {run.product.error && (
+                    {run.product.error ? (
                       <Alert
                         type="warning"
                         showIcon
                         message="暂时无法读取商品链接，请上传商品参考图或粘贴商品描述。"
                       />
+                    ) : (
+                      run.product.imageNote && (
+                        <p className="hint">
+                          已读取商品页，{run.product.imageNote}。
+                        </p>
+                      )
                     )}
                     {pendingQuestions.length > 0 && <h3>补充必要资料</h3>}
                     {pendingQuestions
@@ -1046,6 +1106,19 @@ export function SmartImages() {
                   </Button>
                 </Space>
               </div>
+              {tasks.some(isBalanceRejected) && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="生图中转站账户余额不足"
+                  description={
+                    <>
+                      这些图片没有生成，也不计费；同批未提交的图片已暂停（设置了备用中转站时会改用备用）。请到该中转站后台充值，再点“重新生成全部失败图片”。API
+                      Key 不需要重新输入。
+                    </>
+                  }
+                />
+              )}
               {tasks.some(isKeyRejected) && (
                 <Alert
                   type="error"
@@ -1084,6 +1157,12 @@ export function SmartImages() {
                     {task.refineInstruction && (
                       <p className="hint refine-note">
                         优化：{task.refineInstruction}
+                      </p>
+                    )}
+                    <SampleNote task={task} tasks={tasks} />
+                    {task.sample && (
+                      <p className="hint">
+                        细节样板：先生成这张，其他看得见袖口等细节的图片照它画
                       </p>
                     )}
                     {task.assetIDs.map((id) => (
@@ -1147,6 +1226,7 @@ export function SmartImages() {
                         </div>
                       </details>
                     )}
+                    <CancelTaskButton task={task} />
                     {task.status === "blocked" && (
                       <Button
                         onClick={() =>

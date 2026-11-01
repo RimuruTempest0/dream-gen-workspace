@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 	"image"
@@ -201,6 +202,81 @@ func (s *Service) UpdateAsset(id, project string, hidden bool) error {
 	a.Hidden = hidden
 	return s.store.Put("asset", id, a)
 }
+
+const maxBatchAssets = 500
+
+// selectedAssets loads every selected asset before anything changes, so a stale
+// or unknown id rejects the whole batch instead of applying it halfway.
+func (s *Service) selectedAssets(ids []string) ([]Asset, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("请先选择素材")
+	}
+	if len(ids) > maxBatchAssets {
+		return nil, fmt.Errorf("一次最多处理 %d 张素材", maxBatchAssets)
+	}
+	seen := map[string]bool{}
+	out := []Asset{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		var a Asset
+		if e := s.store.Get("asset", id, &a); e != nil {
+			return nil, missing(e, "部分素材已不存在，请刷新后重新选择")
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// UpdateAssets assigns the selected assets to a project ("" = 不归类) or removes
+// them from the library. Removing only hides them; files and task links remain.
+func (s *Service) UpdateAssets(ids []string, project string, hidden bool) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	assets, e := s.selectedAssets(ids)
+	if e != nil {
+		return 0, e
+	}
+	if project != "" {
+		var p Project
+		if e := s.store.Get("project", project, &p); e != nil {
+			return 0, missing(e, "所选项目已不存在")
+		}
+	}
+	for _, a := range assets {
+		if !hidden {
+			a.ProjectID = project
+		}
+		a.Hidden = hidden
+		if e := s.store.Put("asset", a.ID, a); e != nil {
+			return 0, e
+		}
+	}
+	return len(assets), nil
+}
+
+// ExportAssets writes the selected originals into one ZIP in selection order.
+func (s *Service) ExportAssets(ids []string, path string) (int, error) {
+	s.mu.Lock()
+	root := s.store.Root
+	assets, e := s.selectedAssets(ids)
+	s.mu.Unlock()
+	if e != nil {
+		return 0, e
+	}
+	names := make([]string, len(assets))
+	for i, a := range assets {
+		base := strings.TrimSuffix(filepath.Base(a.Name), filepath.Ext(a.Name))
+		if base == "" || base == "." {
+			base = a.ID
+		}
+		names[i] = fmt.Sprintf("%03d-%s%s", i+1, base, filepath.Ext(a.Path))
+	}
+	return len(assets), writeAssetZip(root, assets, names, path)
+}
+
 func (s *Service) outputBytes(ctx context.Context, out Output) ([]byte, error) {
 	if out.Base64 != "" {
 		if len(out.Base64) > MaxImageBytes*4/3+16 {

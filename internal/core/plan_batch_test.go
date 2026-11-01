@@ -71,8 +71,25 @@ func TestOutputLimitIsReportedInsteadOfFollowUpError(t *testing.T) {
 	}
 	s.waitAgent()
 	r, _ := s.GetAgentRun(id)
-	if !strings.Contains(r.Error, "单次输出超过上限（8192 tokens）") || strings.Contains(r.Error, "unrecognized_model") {
+	if !strings.Contains(r.Error, "单次输出超过上限（32768 tokens）") || strings.Contains(r.Error, "unrecognized_model") {
 		t.Fatal("real cause hidden", r.Error)
+	}
+
+	// A customer cannot edit a line from customer.dat, so the hint points to the provider.
+	s.mu.Lock()
+	var managed Connection
+	s.store.Get("connection", llm.ID, &managed)
+	managed.Managed = "llm-1"
+	s.store.Put("connection", llm.ID, managed)
+	s.mu.Unlock()
+	id, e = s.StartAgentAnalysis(agentInput(llm, images))
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	r, _ = s.GetAgentRun(id)
+	if !strings.Contains(r.Error, "单次输出超过上限（32768 tokens）") || !strings.Contains(r.Error, "请联系软件提供方") || strings.Contains(r.Error, "连接与设置") {
+		t.Fatal("customer told to edit a locked line", r.Error)
 	}
 }
 
@@ -80,7 +97,7 @@ func TestSkillCopiedFrom033IsUpgraded(t *testing.T) {
 	s := testService(t)
 	var suite SkillRecord
 	s.store.Get("skill", "etsy-suite", &suite)
-	suite.Content = builtinSkillContent("etsy-suite", builtinSkills[1].description, embeddedSkillText("builtin_skills/history/etsy-suite-0.3.3.md"))
+	suite.Content = shippedContent("etsy-suite", embeddedSkillText("builtin_skills/history/etsy-suite-0.3.3.md"))
 	suite.Version = 4
 	s.store.Put("skill", suite.ID, suite)
 	if e := s.initializeAgents(); e != nil {
@@ -99,10 +116,10 @@ func TestSkillsFrom034AreUpgraded(t *testing.T) {
 		"etsy-suite":       "builtin_skills/history/etsy-suite-0.3.4.md",
 		"embroidery-rules": "builtin_skills/history/embroidery-rules-0.3.3.md",
 	}
-	for i, b := range builtinSkills[:3] {
+	for _, b := range builtinSkills[:3] {
 		var rec SkillRecord
 		s.store.Get("skill", b.id, &rec)
-		rec.Content = builtinSkillContent(b.id, builtinSkills[i].description, embeddedSkillText(old[b.id]))
+		rec.Content = shippedContent(b.id, embeddedSkillText(old[b.id]))
 		rec.Version = 7
 		s.store.Put("skill", rec.ID, rec)
 	}
@@ -112,7 +129,7 @@ func TestSkillsFrom034AreUpgraded(t *testing.T) {
 	for _, b := range builtinSkills[:3] {
 		var rec SkillRecord
 		s.store.Get("skill", b.id, &rec)
-		if rec.Version != 8 || rec.Content != builtinSkillContent(b.id, b.description, b.body) {
+		if rec.Version != 8 || rec.Content != b.content() {
 			t.Fatal("0.3.4 copy not upgraded", b.id, rec.Version)
 		}
 	}
@@ -124,5 +141,33 @@ func TestSkillsFrom034AreUpgraded(t *testing.T) {
 	}
 	if !strings.Contains(builtinSkills[0].body, "文字沿袖子长度方向排列") || !strings.Contains(builtinSkills[1].body, "不要额外添加细节") {
 		t.Fatal("new direction or panel rules missing")
+	}
+}
+
+func TestOldDefaultOutputLimitIsRaised(t *testing.T) {
+	s := testService(t)
+	llm := saveLLM(t, s, "https://example.com/anthropic")
+	// Saved by a version before 0.6.10 (or a customer package without a limit).
+	s.mu.Lock()
+	var stored Connection
+	s.store.Get("connection", llm.ID, &stored)
+	stored.MaxOutputTokens = 8192
+	s.store.Put("connection", llm.ID, stored)
+	s.mu.Unlock()
+	if got := normalizeConnection(stored).MaxOutputTokens; got != DefaultMaxOutputTokens {
+		t.Fatal("old default kept", got)
+	}
+	cs, _ := s.ListConnections()
+	for _, c := range cs {
+		if c.ID == llm.ID && c.MaxOutputTokens != DefaultMaxOutputTokens {
+			t.Fatal("settings still show the old default", c.MaxOutputTokens)
+		}
+	}
+	// Saving an empty or old-default value stores 32768; a deliberate other value is kept.
+	for in, want := range map[int]int{0: 32768, 8192: 32768, 16000: 16000, 65536: 65536} {
+		saved, e := s.SaveConnection(ConnectionInput{ID: llm.ID, Kind: "llm", Name: "LLM", BaseURL: "https://example.com/anthropic", Model: "m", MaxOutputTokens: in})
+		if e != nil || saved.MaxOutputTokens != want {
+			t.Fatal(in, saved.MaxOutputTokens, e)
+		}
 	}
 }

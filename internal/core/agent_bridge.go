@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type agentBridge struct {
@@ -90,13 +91,33 @@ func (b *agentBridge) serve(w http.ResponseWriter, r *http.Request) {
 	if b.connection.Mode != "compatible" && r.Header.Get("anthropic-beta") != "" {
 		upstream.Header.Set("anthropic-beta", r.Header.Get("anthropic-beta"))
 	}
+	// Each Messages request is recorded for the LLM monitor (never its content).
+	var call *LLMCall
+	if suffix == "/messages" {
+		c := b.service.startLLMCall("analysis", b.runID, b.connection, body)
+		call = &c
+	}
+	started := time.Now()
+	finish := func(status string, httpStatus int, message string) {
+		if call != nil {
+			call.Status, call.HTTPStatus, call.Error = status, httpStatus, redact(message, b.key)
+			b.service.saveLLMCall(*call, started)
+		}
+	}
 	b.service.updateAgent(b.runID, "等待 LLM 响应", nil)
 	resp, e := b.client.Do(upstream)
 	if e != nil {
+		finish("error", 0, e.Error())
 		http.Error(w, redact(e.Error(), b.key), 502)
 		return
 	}
 	defer resp.Body.Close()
+	if call != nil {
+		call.RequestID = resp.Header.Get("request-id")
+		if call.RequestID == "" {
+			call.RequestID = resp.Header.Get("x-request-id")
+		}
+	}
 	for _, key := range []string{"Content-Type", "Retry-After", "x-should-retry", "request-id"} {
 		if value := resp.Header.Get(key); value != "" {
 			w.Header().Set(key, value)
@@ -105,6 +126,7 @@ func (b *agentBridge) serve(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != 200 {
 		var raw json.RawMessage
 		json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&raw)
+		finish("error", resp.StatusCode, apiMessage(raw, b.key))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{"type": "api_error", "message": apiMessage(raw, b.key)}})
@@ -114,6 +136,12 @@ func (b *agentBridge) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		flush, _ := w.(http.Flusher)
 		e = readSSE(b.ctx, resp.Body, func(frame []byte) error {
+			if call != nil {
+				if call.FirstByteMS == 0 {
+					call.FirstByteMS = max(time.Since(started).Milliseconds(), 1)
+				}
+				call.readStreamUsage(frame)
+			}
 			frame = bytes.ReplaceAll(frame, []byte(b.key), []byte("[已隐藏]"))
 			_, err := w.Write(frame)
 			if flush != nil {
@@ -122,15 +150,24 @@ func (b *agentBridge) serve(w http.ResponseWriter, r *http.Request) {
 			return err
 		})
 		if e != nil {
-			b.service.updateAgent(b.runID, "LLM 流中断", func(run *AgentRun) error { run.Error = redact(e.Error(), b.key); return nil })
+			b.service.noteLLMReconnect(b.runID, redact(e.Error(), b.key))
+			finish("dropped", 200, e.Error())
+		} else {
+			finish("completed", 200, "")
 		}
 	} else {
 		var raw json.RawMessage
 		e = json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&raw)
 		if e != nil {
+			finish("dropped", 200, "incomplete Messages JSON: "+e.Error())
 			http.Error(w, "incomplete Messages JSON", 502)
 			return
 		}
+		if call != nil {
+			call.FirstByteMS = max(time.Since(started).Milliseconds(), 1)
+			call.readBodyUsage(raw)
+		}
+		finish("completed", 200, "")
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(bytes.ReplaceAll(raw, []byte(b.key), []byte("[已隐藏]")))
 	}
@@ -157,8 +194,8 @@ func textProperty(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description}
 }
 func agentTools() []any {
-	itemSchema := toolSchema(map[string]any{"id": textProperty("可省略，后台生成稳定 ID"), "purpose": textProperty("图片用途"), "scene": textProperty("场景"), "prompt": textProperty("完整的生图提示词"), "references": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "maxItems": 4}, "size": textProperty("像素尺寸或 auto"), "quality": textProperty("质量")}, "purpose", "scene", "prompt", "references")
-	planSchema := toolSchema(map[string]any{"locked": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "editable": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "notes": textProperty("规划说明"), "items": map[string]any{"type": "array", "items": itemSchema, "minItems": 1, "maxItems": 200}, "append": map[string]any{"type": "boolean", "description": "分批保存：true 表示暂存这批张数（每批不超过6张），不立即保存；最后一次省略或为 false，与已暂存的张数合并后保存。locked 和 editable 只需在第一次或最后一次提供"}}, "items")
+	itemSchema := toolSchema(map[string]any{"id": textProperty("可省略，后台生成稳定 ID"), "purpose": textProperty("图片用途"), "scene": textProperty("场景"), "prompt": textProperty("完整的生图提示词"), "references": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "maxItems": 4}, "size": textProperty("像素尺寸或 auto"), "quality": textProperty("质量"), "sample": map[string]any{"type": "boolean", "description": "本张是整套的细节样板图（例如袖口名字和图标的特写），整套最多一张。后台先生成它，再把它作为参考图交给标了 useSample 的图片"}, "useSample": map[string]any{"type": "boolean", "description": "本张画面里看得见样板图里的细节（例如袖口），要照样板图画。后台等样板图完成后，把它加为本张最后一张参考图并在提示词里说明，所以本张 references 最多 3 张，提示词的参考图行不要写样板图"}, "noProduct": map[string]any{"type": "boolean", "description": "本张画面里完全没有商品（例如线色卡、布样、字体样张）。后台不附加统一锁定项和商品规则，否则生图模型会照着商品描述把整件衣服和袖口刺绣画出来。只要画面里出现商品就不要标"}}, "purpose", "scene", "prompt", "references")
+	planSchema := toolSchema(map[string]any{"locked": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "editable": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "notes": textProperty("规划说明"), "cuffEmbroidery": map[string]any{"type": "boolean", "description": "商品袖口有没有刺绣或其他设计：有为 true；用户要求袖口不加设计、或参考图与指令都没有袖口元素时为 false。为 false 时后台不再附加 P004 的袖口规则，改为说明两只袖口都没有刺绣。分批保存时在任一批提供即可"}, "items": map[string]any{"type": "array", "items": itemSchema, "minItems": 1, "maxItems": 200}, "append": map[string]any{"type": "boolean", "description": "分批保存：true 表示暂存这批张数（每批不超过6张），不立即保存；最后一次省略或为 false，与已暂存的张数合并后保存。locked 和 editable 只需在第一次或最后一次提供"}}, "items")
 	questionSchema := toolSchema(map[string]any{"id": textProperty("稳定的字段 ID，如 real-size、thread-colors、p004"), "label": textProperty("需用户补充什么"), "required": map[string]any{"type": "boolean"}}, "id", "label", "required")
 	return []any{
 		map[string]any{"name": "get_run_context", "description": "读取需求、事实、参考图 IDs、已补充答案、已有方案和选定 Skills。", "inputSchema": toolSchema(map[string]any{})},
@@ -200,7 +237,7 @@ func (b *agentBridge) mcp(w http.ResponseWriter, r *http.Request) {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
 		json.Unmarshal(rpc.Params, &p)
-		result = map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "workbench", "version": "0.4.0"}}
+		result = map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "workbench", "version": "0.6.20"}}
 	case "ping":
 		result = map[string]any{}
 	case "tools/list":
@@ -360,6 +397,9 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		if plan.Notes != "" {
 			b.staged.Notes = plan.Notes
 		}
+		if plan.CuffEmbroidery != nil {
+			b.staged.CuffEmbroidery = plan.CuffEmbroidery
+		}
 		b.staged.Items = append(b.staged.Items, plan.Items...)
 		if mode.Append {
 			if len(plan.Items) > 6 {
@@ -383,6 +423,9 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		e = b.service.updateAgent(b.runID, "套图方案已保存", func(run *AgentRun) error {
 			if len(plan.Items) < run.Input.TargetCount {
 				return fmt.Errorf("方案应至少包含 %d 张图", run.Input.TargetCount)
+			}
+			if plan.CuffEmbroidery == nil && usesP004(*run) {
+				return errors.New("方案缺少 cuffEmbroidery：请说明商品袖口有没有刺绣（true/false）")
 			}
 			if run.AutoGeneration {
 				if e := b.service.validateAutoPlan(run, &plan); e != nil {
@@ -424,4 +467,14 @@ func (s *Service) readSkillAttachment(path string) ([]byte, error) {
 		return nil, errors.New("附件不在技能目录")
 	}
 	return readOwned(s.store.Root, path)
+}
+
+// noteLLMReconnect records a cut LLM stream. Claude Code retries it itself, so it
+// is shown as a note; the run fails only if the analysis then gives up.
+func (s *Service) noteLLMReconnect(runID, message string) {
+	s.updateAgent(runID, "LLM 连接中断，自动重试", func(run *AgentRun) error {
+		run.LLMReconnects++
+		run.LLMReconnectError = message
+		return nil
+	})
 }

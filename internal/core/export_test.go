@@ -94,3 +94,86 @@ func TestTenImageSetExportIncludesWholeBatch(t *testing.T) {
 		t.Fatal("empty batch reported success")
 	}
 }
+
+func TestAssetBatchManagement(t *testing.T) {
+	s := testService(t)
+	png := tinyPNG()
+	ids := []string{}
+	for _, name := range []string{"红色卫衣.png", "蓝色.png", "绿色.png"} {
+		a, e := s.ImportImage(name, base64.StdEncoding.EncodeToString(png))
+		if e != nil {
+			t.Fatal(e)
+		}
+		ids = append(ids, a.ID)
+	}
+	p, e := s.SaveProject(Project{Name: "批量项目"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Duplicates count once; the third asset is untouched.
+	if n, e := s.UpdateAssets([]string{ids[0], ids[1], ids[0]}, p.ID, false); e != nil || n != 2 {
+		t.Fatal(n, e)
+	}
+	page, _ := s.ListAssets(p.ID, 0, 24)
+	if page.Total != 2 {
+		t.Fatal("assets not assigned", page.Total)
+	}
+	// An unknown id or project rejects the whole batch without partial changes.
+	if _, e := s.UpdateAssets([]string{ids[2], "missing"}, p.ID, false); e == nil {
+		t.Fatal("unknown asset accepted")
+	}
+	if _, e := s.UpdateAssets([]string{ids[2]}, "missing-project", false); e == nil {
+		t.Fatal("unknown project accepted")
+	}
+	if page, _ = s.ListAssets(p.ID, 0, 24); page.Total != 2 {
+		t.Fatal("rejected batch changed assets", page.Total)
+	}
+	if _, e := s.UpdateAssets(nil, "", false); e == nil {
+		t.Fatal("empty selection accepted")
+	}
+
+	dest := filepath.Join(t.TempDir(), "素材.zip")
+	if n, e := s.ExportAssets([]string{ids[2], ids[0]}, dest); e != nil || n != 2 {
+		t.Fatal(n, e)
+	}
+	z, e := zip.OpenReader(dest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	names := []string{}
+	for _, f := range z.File {
+		names = append(names, f.Name)
+		r, _ := f.Open()
+		b, _ := io.ReadAll(r)
+		r.Close()
+		if !bytes.Equal(b, png) {
+			t.Fatal("exported file is not the original")
+		}
+	}
+	z.Close()
+	if strings.Join(names, ",") != "001-绿色.png,002-红色卫衣.png" {
+		t.Fatal("unexpected ZIP names", names)
+	}
+
+	// Removing hides the assets but keeps their project and files.
+	if n, e := s.UpdateAssets([]string{ids[0], ids[2]}, "", true); e != nil || n != 2 {
+		t.Fatal(n, e)
+	}
+	all, _ := s.ListAssets("", 0, 24)
+	if all.Total != 1 || all.Items[0].ID != ids[1] {
+		t.Fatal("remove did not hide selection", all.Total)
+	}
+	var hidden Asset
+	s.store.Get("asset", ids[0], &hidden)
+	if hidden.ProjectID != p.ID {
+		t.Fatal("remove cleared the project")
+	}
+	if source, _ := owned(s.Root(), hidden.Path); fileMissing(source) {
+		t.Fatal("remove deleted the file")
+	}
+}
+
+func fileMissing(path string) bool {
+	_, e := os.Stat(path)
+	return e != nil
+}

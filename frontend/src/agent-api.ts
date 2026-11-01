@@ -28,7 +28,9 @@ export type ProductInfo = {
   title: string;
   description: string;
   facts: string;
+  // error: the page could not be read; imageNote: page read, some images not saved.
   error: string;
+  imageNote?: string;
   referenceIDs: string[];
 };
 export type AgentQuestion = {
@@ -76,6 +78,10 @@ export type AgentRun = {
   status: string;
   stage: string;
   error: string;
+  llmReconnects?: number;
+  llmReconnectError?: string;
+  // Time spent waiting for the user's answers; the timer leaves it out.
+  waitedMS?: number;
   input: AgentInput;
   llmConnection: Connection;
   skills: SkillRecord[];

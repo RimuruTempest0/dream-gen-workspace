@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sort"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -89,10 +88,24 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	t.Diagnostic = GenerationDiagnostic{}
 	t.Connection = c
 	t.References = []string{in.AssetID}
+	// The suite's sample goes along as the second image, so the edit has a picture of
+	// the cuff detail to draw instead of only words.
+	t.SampleAssetID = ""
+	var sample Asset
+	if source.SampleAssetID != "" && s.store.Get("asset", source.SampleAssetID, &sample) == nil {
+		t.SampleAssetID = source.SampleAssetID
+		t.References = append(t.References, source.SampleAssetID)
+	} else {
+		t.SampleItem = ""
+	}
 	t.RefinedFrom = source.ID
 	t.RefineInstruction = in.Instruction
 	t.PreviousAssetIDs = nil
-	t.Prompt = refinePrompt(baseTaskPrompt(source), in.Instruction)
+	t.Prompt = refinePrompt(baseTaskPrompt(source), in.Instruction, t.SampleAssetID != "")
+	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
+		return "", e
+	}
+	t.Trial = s.trialLocked()
 	batch, e := s.store.Submit(in.RequestID, source.BatchID, []Task{t})
 	if e != nil {
 		return "", e
@@ -117,28 +130,91 @@ func (s *Service) ListConnectionModels(id string) ([]string, error) {
 	if e != nil {
 		return nil, e
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
+	// Same limit as the connection test: some relays answer /models slowly.
+	ctx, cancel := context.WithTimeout(s.ctx, probeTimeout)
 	defer cancel()
 	ids, e := s.provider.Models(ctx, normalizeConnection(c), key)
 	if e != nil {
+		// Fall back to the last list this relay returned (connection test, a
+		// health check or an earlier lookup), so the picker is not left empty.
+		if saved := s.savedModels(id); len(saved) > 0 {
+			return saved, nil
+		}
 		return nil, e
 	}
 	sort.Strings(ids)
+	s.saveModels(id, "", ids)
 	return ids, nil
 }
 
-const refinePromptMarker = "\n\n原图制作要求（仅用于保持一致，不要重新构图）：\n"
+const modelListKind = "connection_models"
+
+func (s *Service) savedModels(id string) []string {
+	var ids []string
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.store.Get(modelListKind, id, &ids) != nil || len(ids) == 0 {
+		if p, ok := s.probes[id]; ok && p.ok {
+			ids = append([]string{}, p.models...)
+			sort.Strings(ids)
+		}
+	}
+	return ids
+}
+
+// saveModels remembers a relay's model list; it never holds a key. A non-empty
+// base must match the saved connection (a test of edited, unsaved fields is skipped).
+func (s *Service) saveModels(id, base string, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	sorted := append([]string{}, ids...)
+	sort.Strings(sorted)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var c Connection
+	if s.store.Get("connection", id, &c) == nil && (base == "" || c.BaseURL == base) {
+		_ = s.store.Put(modelListKind, id, sorted)
+	}
+}
+
+const refinePromptMarker = "\n\n原图制作要求（只用于保持没有要求修改的部分；与本次修改冲突的内容作废，不要重新构图）：\n"
+
+// refinePromptMarkerV1 is the marker of refine prompts saved before 0.6.11.
+const refinePromptMarkerV1 = "\n\n原图制作要求（仅用于保持一致，不要重新构图）：\n"
 
 // baseTaskPrompt drops the refine wrapper of earlier rounds so prompts do not nest.
 func baseTaskPrompt(t Task) string {
 	if t.RefinedFrom != "" {
-		if _, base, ok := strings.Cut(t.Prompt, refinePromptMarker); ok {
-			return base
+		for _, marker := range []string{refinePromptMarker, refinePromptMarkerV1} {
+			if _, base, ok := strings.Cut(t.Prompt, marker); ok {
+				return base
+			}
 		}
 	}
 	return t.Prompt
 }
 
-func refinePrompt(base, instruction string) string {
-	return "以提供的图片为底图做局部微调。只修改下面的调整要求，其余内容保持完全一致：商品造型与比例、图案、文字内容、字体、文字方向与排列、颜色、人物、背景和构图都不要变化。\n调整要求：" + instruction + refinePromptMarker + base
+// refinePrompt puts the requested change ahead of everything that must stay. The
+// original prompt still describes the old state (and earlier wrappers listed text
+// arrangement as unchangeable), so without an explicit priority the edit model
+// keeps the image as it was. The original's sample line points at a reference
+// position the edit no longer has; left in, the model took the image being edited
+// as the sample and copied its cuff unchanged, so it is replaced by withSample's line.
+func refinePrompt(base, instruction string, withSample bool) string {
+	// Prompts saved before 0.6.13 told the model to tilt cuff text with the sleeve,
+	// which argues against straightening it; use the current wording instead.
+	base = strings.ReplaceAll(base, p004TiltWording, p004LevelWording)
+	if strings.HasPrefix(base, "样板图：参考图第") {
+		if _, rest, ok := strings.Cut(base, "\n"); ok {
+			base = rest
+		}
+	}
+	head := "以提供的第 1 张图片为底图修改。\n本次修改（必须做到，改完后要能明显看出变化）：" + instruction + "\n本次修改优先于原图现状和下面的原图制作要求，二者冲突时按本次修改画。为做到本次修改，可以一并调整与它直接相关的局部，例如要把袖口文字摆正时，把有刺绣的手臂和袖子改成在画面里竖直下垂、袖口接缝水平。除此以外保持完全一致：商品造型与比例、图案、文字内容、字体、颜色、人物、背景和构图都不要变化。"
+	if withSample {
+		head += "\n" + refineSampleLine
+	}
+	return head + refinePromptMarker + base
 }
+
+const refineSampleLine = "第 2 张图片是本套的细节样板（袖口等局部特写），不是底图，只用来看这些细节应该画成什么样：图标和文字的排列方式、左右顺序、文字方向、字体、颜色和相对大小照样板画；不照它的衣服颜色、构图和背景。"

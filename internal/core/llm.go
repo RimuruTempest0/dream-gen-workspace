@@ -17,14 +17,28 @@ import (
 	"time"
 )
 
+// DefaultMaxOutputTokens is the LLM single-reply output limit when none is set.
+// Versions before 0.6.10 used 8192, which cut long set plans short; a stored 8192
+// is that old default (customer packages never set a value) and is raised too.
+const (
+	DefaultMaxOutputTokens       = 32768
+	legacyDefaultMaxOutputTokens = 8192
+)
+
+// LLMOutputLimit returns the limit to use for a stored value (0 or the old default means the default).
+func LLMOutputLimit(n int) int {
+	if n == 0 || n == legacyDefaultMaxOutputTokens {
+		return DefaultMaxOutputTokens
+	}
+	return n
+}
+
 func normalizeConnection(c Connection) Connection {
 	if c.Kind == "" {
 		c.Kind = "image"
 	}
 	if c.Kind == "llm" {
-		if c.MaxOutputTokens == 0 {
-			c.MaxOutputTokens = 8192
-		}
+		c.MaxOutputTokens = LLMOutputLimit(c.MaxOutputTokens)
 		if c.Mode == "" {
 			c.Mode = "claude"
 		}
@@ -96,6 +110,7 @@ type messageBlock struct {
 }
 type messageResponse struct {
 	Content []messageBlock `json:"content"`
+	Usage   usage          `json:"usage"`
 }
 
 func readMessage(resp *http.Response, key string) (messageResponse, error) {
@@ -222,14 +237,24 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 			// the output limit configured for this provider.
 			body["max_tokens"] = min(c.MaxOutputTokens, 2048)
 		}
+		call := s.startLLMCall("test", "", c, nil)
+		call.Stage = "能力验证：" + label
+		started := time.Now()
 		resp, e := messagesRequest(ctx, client, c, key, body)
 		if e == nil {
+			call.HTTPStatus = resp.StatusCode
+			call.RequestID = resp.Header.Get("request-id")
 			v, err := readMessage(resp, key)
 			if err == nil {
+				call.Status, call.FirstByteMS = "completed", max(time.Since(started).Milliseconds(), 1)
+				call.addUsage(v.Usage)
+				s.saveLLMCall(call, started)
 				return v, nil
 			}
 			e = err
 		}
+		call.Status, call.Error = "error", redact(e.Error(), key)
+		s.saveLLMCall(call, started)
 		cap.Details = append(cap.Details, label+"："+redact(e.Error(), key))
 		return messageResponse{}, e
 	}
@@ -277,11 +302,19 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	}
 	if ctx.Err() == nil {
 		body := map[string]any{"model": c.Model, "max_tokens": 64, "stream": true, "messages": []any{map[string]any{"role": "user", "content": "Reply exactly OK."}}}
+		call := s.startLLMCall("test", "", c, nil)
+		call.Stage, call.Stream = "能力验证：流式响应", true
+		started := time.Now()
 		resp, err := messagesRequest(ctx, client, c, key, body)
 		if err == nil {
+			call.HTTPStatus = resp.StatusCode
 			if resp.StatusCode == 200 && strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
 				text := ""
 				err = readSSE(ctx, resp.Body, func(f []byte) error {
+					if call.FirstByteMS == 0 {
+						call.FirstByteMS = max(time.Since(started).Milliseconds(), 1)
+					}
+					call.readStreamUsage(f)
 					for _, l := range strings.Split(string(f), "\n") {
 						if strings.HasPrefix(l, "data:") {
 							var v struct {
@@ -304,9 +337,12 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 			}
 			resp.Body.Close()
 		}
+		call.Status = "completed"
 		if err != nil {
+			call.Status, call.Error = "error", redact(err.Error(), key)
 			cap.Details = append(cap.Details, "流式响应："+redact(err.Error(), key))
 		}
+		s.saveLLMCall(call, started)
 	}
 	if ctx.Err() != nil {
 		return cap, errors.New("Agent 能力验证已取消或超时；未更新连接能力")

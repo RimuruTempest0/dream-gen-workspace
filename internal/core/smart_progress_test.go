@@ -55,3 +55,22 @@ func TestCurrentSmartProgressFollowsOnlyTheNewestRun(t *testing.T) {
 		t.Fatal("finished run should open a new request", p)
 	}
 }
+
+func TestWaitingForAnswersIsLeftOutOfTheTimer(t *testing.T) {
+	stopped := time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339Nano)
+	for _, status := range []string{"needs_input", "review", "interrupted", "failed"} {
+		r := AgentRun{Status: status, UpdatedAt: stopped, WaitedMS: 1000}
+		resumeTimer(&r)
+		if r.WaitedMS < 1000+299_000 || r.WaitedMS > 1000+310_000 {
+			t.Fatal(status, "waited", r.WaitedMS)
+		}
+	}
+	// A run that was working, or ready to submit, did not wait for the user.
+	for _, status := range []string{"analyzing", "ready", "submitted"} {
+		r := AgentRun{Status: status, UpdatedAt: stopped}
+		resumeTimer(&r)
+		if r.WaitedMS != 0 {
+			t.Fatal(status, "counted as waiting", r.WaitedMS)
+		}
+	}
+}

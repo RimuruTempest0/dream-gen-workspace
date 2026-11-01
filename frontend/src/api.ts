@@ -1,5 +1,7 @@
 import type { LLMCapabilities } from "./agent-api";
 export type Connection = {
+  // Set on lines provided by the customer licence; they cannot be edited.
+  managed?: string;
   kind: "image" | "llm";
   maxOutputTokens?: number;
   mode?: "claude" | "compatible";
@@ -41,6 +43,11 @@ export type Task = {
   refinedFrom?: string;
   refineInstruction?: string;
   previousAssetIDs?: string[];
+  // Detail sample: the sample image itself, and images drawn from it.
+  sample?: boolean;
+  sampleItem?: string;
+  samplePending?: boolean;
+  sampleAssetID?: string;
   id: string;
   batchID: string;
   createdAt: string;
@@ -55,6 +62,11 @@ export type Task = {
   projectID: string;
   connection: Connection;
   assetIDs: string[];
+  routedFrom?: string;
+  routedFromName?: string;
+  routeReason?: string;
+  autoRetryOf?: string;
+  autoRetriedAs?: string;
   diagnostic?: {
     stage: string;
     startedAt: string;

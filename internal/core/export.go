@@ -139,9 +139,19 @@ func (s *Service) ExportBatch(batchID, path string) (int, error) {
 	if len(assets) == 0 {
 		return 0, errors.New("这套任务还没有可下载的图片")
 	}
+	names := make([]string, len(assets))
+	for i, a := range assets {
+		names[i] = fmt.Sprintf("%03d%s", i+1, filepath.Ext(a.Path))
+	}
+	return len(assets), writeAssetZip(root, assets, names, path)
+}
+
+// writeAssetZip stores local originals under the given entry names. A failure
+// leaves no partial ZIP at path.
+func writeAssetZip(root string, assets []Asset, names []string, path string) error {
 	f, e := os.CreateTemp(filepath.Dir(path), ".image-set-*.partial")
 	if e != nil {
-		return 0, e
+		return e
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
@@ -150,20 +160,20 @@ func (s *Service) ExportBatch(batchID, path string) (int, error) {
 		filePath, err := owned(root, a.Path)
 		if err != nil {
 			zw.Close()
-			return 0, err
+			return err
 		}
 		source, err := os.Open(filePath)
 		if err != nil {
 			zw.Close()
-			return 0, fmt.Errorf("第 %d 张原图不可读取：%w", i+1, err)
+			return fmt.Errorf("第 %d 张原图不可读取：%w", i+1, err)
 		}
 		info, err := source.Stat()
 		if err != nil || !info.Mode().IsRegular() || info.Size() > MaxImageBytes {
 			source.Close()
 			zw.Close()
-			return 0, errors.New("原图文件不可用或超过大小限制")
+			return errors.New("原图文件不可用或超过大小限制")
 		}
-		header := &zip.FileHeader{Name: fmt.Sprintf("%03d%s", i+1, filepath.Ext(a.Path)), Method: zip.Store}
+		header := &zip.FileHeader{Name: names[i], Method: zip.Store}
 		header.SetModTime(info.ModTime())
 		entry, err := zw.CreateHeader(header)
 		if err == nil {
@@ -172,20 +182,17 @@ func (s *Service) ExportBatch(batchID, path string) (int, error) {
 		source.Close()
 		if err != nil {
 			zw.Close()
-			return 0, err
+			return err
 		}
 	}
 	if e = zw.Close(); e != nil {
-		return 0, e
+		return e
 	}
 	if e = f.Sync(); e != nil {
-		return 0, e
+		return e
 	}
 	if e = f.Close(); e != nil {
-		return 0, e
+		return e
 	}
-	if e = os.Rename(f.Name(), path); e != nil {
-		return 0, e
-	}
-	return len(assets), nil
+	return os.Rename(f.Name(), path)
 }

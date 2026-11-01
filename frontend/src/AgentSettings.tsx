@@ -112,7 +112,7 @@ export function ConnectionFields({
         <UIForm.Item
           name="maxOutputTokens"
           label="单次输出上限（tokens）"
-          extra="默认 8192；按模型支持的上限调整。"
+          extra="默认 32768；模型支持的上限更低时再调低。"
         >
           <InputNumber min={256} max={65536} className="full-width" />
         </UIForm.Item>
@@ -179,7 +179,7 @@ export function LLMConnections() {
             key: "",
             mode: "claude",
             authMode: "api-key",
-            maxOutputTokens: 8192,
+            maxOutputTokens: 32768,
           },
     );
   }
@@ -290,12 +290,14 @@ export function LLMConnections() {
         <h2>
           <ApiOutlined aria-hidden="true" /> LLM 供应商
         </h2>
-        <Button
-          icon={<PlusOutlined aria-hidden="true" />}
-          onClick={() => open(null)}
-        >
-          添加 LLM 供应商
-        </Button>
+        {!llms.some((c) => c.managed) && (
+          <Button
+            icon={<PlusOutlined aria-hidden="true" />}
+            onClick={() => open(null)}
+          >
+            添加 LLM 供应商
+          </Button>
+        )}
       </div>
       <p className="hint">
         用于链接分析、图片分析和套图规划。其他模型需提供 Anthropic Messages
@@ -320,7 +322,11 @@ export function LLMConnections() {
                   </Tag>
                   <Tag>{c.mode === "compatible" ? "兼容接入" : "Claude"}</Tag>
                 </strong>
-                <p className="mono">{c.baseURL}</p>
+                {c.managed ? (
+                  <p className="hint">由软件授权提供</p>
+                ) : (
+                  <p className="mono">{c.baseURL}</p>
+                )}
                 <small>{c.model || "未设置模型"}</small>
                 <div className="capability-tags">
                   {(
@@ -351,51 +357,55 @@ export function LLMConnections() {
                   ))}
                 </div>
               </div>
-              <Space wrap>
-                <Button disabled={!!validating} onClick={() => open(c)}>
-                  编辑 / 获取模型
-                </Button>
-                <Button
-                  disabled={!c.hasKey || !c.model || !!validating}
-                  loading={validating === c.id}
-                  onClick={() => validate(c)}
-                >
-                  验证 Agent 能力
-                </Button>
-                {c.hasKey && (
+              {c.managed ? (
+                <Tag>由软件授权管理</Tag>
+              ) : (
+                <Space wrap>
+                  <Button disabled={!!validating} onClick={() => open(c)}>
+                    编辑 / 获取模型
+                  </Button>
                   <Button
+                    disabled={!c.hasKey || !c.model || !!validating}
+                    loading={validating === c.id}
+                    onClick={() => validate(c)}
+                  >
+                    验证 Agent 能力
+                  </Button>
+                  {c.hasKey && (
+                    <Button
+                      disabled={!!validating}
+                      onClick={() =>
+                        actions.confirm(
+                          "清除 LLM 密钥？",
+                          "新分析将无法启动，模型能力验证会重置。",
+                          () =>
+                            call("SaveConnection", {
+                              ...c,
+                              key: "",
+                              clearKey: true,
+                            }),
+                        )
+                      }
+                    >
+                      清除密钥
+                    </Button>
+                  )}
+                  <Button
+                    danger
                     disabled={!!validating}
+                    aria-label={`删除 LLM 连接 ${c.name}`}
+                    icon={<DeleteOutlined aria-hidden="true" />}
                     onClick={() =>
                       actions.confirm(
-                        "清除 LLM 密钥？",
-                        "新分析将无法启动，模型能力验证会重置。",
-                        () =>
-                          call("SaveConnection", {
-                            ...c,
-                            key: "",
-                            clearKey: true,
-                          }),
+                        `删除连接“${c.name}”？`,
+                        "历史分析与方案保留。",
+                        () => call("DeleteConnection", c.id),
+                        true,
                       )
                     }
-                  >
-                    清除密钥
-                  </Button>
-                )}
-                <Button
-                  danger
-                  disabled={!!validating}
-                  aria-label={`删除 LLM 连接 ${c.name}`}
-                  icon={<DeleteOutlined aria-hidden="true" />}
-                  onClick={() =>
-                    actions.confirm(
-                      `删除连接“${c.name}”？`,
-                      "历史分析与方案保留。",
-                      () => call("DeleteConnection", c.id),
-                      true,
-                    )
-                  }
-                />
-              </Space>
+                  />
+                </Space>
+              )}
             </div>
           ))}
         </div>

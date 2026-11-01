@@ -34,7 +34,20 @@ type Service struct {
 	imageConcurrency int
 	inflight         map[string]bool
 	downloads        map[string]bool
-	workers          sync.WaitGroup
+	// genGateway maps an in-flight generation to its gateway (per-gateway limits).
+	genGateway map[string]string
+	// genCancel stops the request of an in-flight generation; canceled marks the
+	// ones the user cancelled, so the result is recorded as cancelled.
+	genCancel map[string]context.CancelFunc
+	canceled  map[string]bool
+	// probes holds the latest free health check (model list) of each image relay.
+	probes  map[string]probeResult
+	probing map[string]bool
+	// lic is the customer licence (empty in developer mode).
+	lic licenseState
+	// llmCallsSaved counts LLM call records written; old ones are pruned now and then.
+	llmCallsSaved int
+	workers       sync.WaitGroup
 }
 
 const (
@@ -126,10 +139,15 @@ func NewService(root string) (*Service, error) {
 	}
 	s.inflight = map[string]bool{}
 	s.downloads = map[string]bool{}
+	s.genGateway = map[string]string{}
+	s.genCancel = map[string]context.CancelFunc{}
+	s.canceled = map[string]bool{}
+	s.probes = map[string]probeResult{}
+	s.probing = map[string]bool{}
 	s.imageConcurrency = defaultImageConcurrency
 	var saved int
 	if st.Get("preferences", "image-concurrency", &saved) == nil && saved >= 1 {
-		// Versions before 0.4.0 allowed up to 8; keep such a choice at the new maximum.
+		// Versions before 0.5.0 allowed up to 8; keep such a choice at the new maximum.
 		s.imageConcurrency = min(saved, maxImageConcurrency)
 	}
 	if e = s.initializeAgents(); e != nil {
@@ -181,6 +199,12 @@ func cleanConnection(c Connection) Connection {
 func (s *Service) SaveConnection(in ConnectionInput) (Connection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if e := s.refuseManagedLocked(in.ID); e != nil {
+		return Connection{}, e
+	}
+	return s.saveConnectionLocked(in)
+}
+func (s *Service) saveConnectionLocked(in ConnectionInput) (Connection, error) {
 	base, e := NormalizeURL(in.BaseURL)
 	if e != nil {
 		return Connection{}, e
@@ -215,10 +239,7 @@ func (s *Service) SaveConnection(in ConnectionInput) (Connection, error) {
 	c.Model = strings.TrimSpace(in.Model)
 	c.Protocol = "openai-images"
 	if kind == "llm" {
-		maximum := in.MaxOutputTokens
-		if maximum == 0 {
-			maximum = 8192
-		}
+		maximum := LLMOutputLimit(in.MaxOutputTokens)
 		if maximum < 256 || maximum > 65536 {
 			return c, errors.New("LLM 输出上限应为 256–65536 tokens")
 		}
@@ -267,9 +288,14 @@ func (s *Service) SaveConnection(in ConnectionInput) (Connection, error) {
 func (s *Service) ListConnections() ([]Connection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cs, e := List[Connection](s.store, "connection")
-	for i := range cs {
-		cs[i] = cleanConnection(cs[i])
+	all, e := List[Connection](s.store, "connection")
+	cs := []Connection{}
+	for _, c := range all {
+		// During the trial the customer sees only the main lines.
+		if s.lic.mode == "trial" && !mainLine(c) {
+			continue
+		}
+		cs = append(cs, cleanConnection(c))
 	}
 	return cs, e
 }
@@ -342,6 +368,9 @@ func (s *Service) TestConnection(in ConnectionInput) (result TestResult, resultE
 	r.Auth = "模型查询认证通过"
 	r.Models = fmt.Sprintf("已获取 %d 个模型；生图权限仍需实际请求验证", len(ids))
 	r.IDs = ids
+	if in.ID != "" && strings.TrimSpace(in.Key) == "" {
+		s.saveModels(in.ID, base, ids)
+	}
 	if in.Kind == "llm" {
 		r.Models = fmt.Sprintf("已获取 %d 个模型；Agent 能力需另外验证", len(ids))
 		r.Generation = "仅查询模型，未调用 LLM"
@@ -359,6 +388,9 @@ func (s *Service) CancelConnectionTest(id string) {
 func (s *Service) DeleteConnection(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if e := s.refuseManagedLocked(id); e != nil {
+		return e
+	}
 	if s.agentRunID != "" {
 		var run AgentRun
 		if s.store.Get("agent_run", s.agentRunID, &run) == nil && (run.Input.LLMConnectionID == id || run.Input.ImageConnectionID == id) {
@@ -374,7 +406,12 @@ func (s *Service) DeleteConnection(id string) error {
 			return errors.New("此连接有待执行或活动任务，请先停止待执行项并等待活动任务结束")
 		}
 	}
-	return s.store.Delete("connection", id)
+	if e = s.store.Delete("connection", id); e != nil {
+		return e
+	}
+	_ = s.store.Delete(modelListKind, id)
+	s.removeGatewayLocked(id)
+	return nil
 }
 func active(status string) bool {
 	return status == "queued" || status == "submitting" || status == "running" || status == "downloading"
@@ -459,6 +496,12 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 			tasks = append(tasks, Task{ID: NewID(), BatchID: batch, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: in.Size, Quality: in.Quality, References: append([]string{}, in.References...), ProjectID: in.ProjectID, Connection: c, AssetIDs: []string{}})
 		}
 	}
+	if e := s.ensureCanGenerateLocked(len(tasks), c.ID); e != nil {
+		return "", e
+	}
+	for i := range tasks {
+		tasks[i].Trial = s.trialLocked()
+	}
 	result, e := s.store.Submit(in.RequestID, batch, tasks)
 	if e == nil {
 		s.signal()
@@ -511,6 +554,45 @@ func (s *Service) StopBatch(batch string) error {
 	s.signal()
 	return nil
 }
+
+const (
+	canceledUnsent   = "已取消生成。这张图尚未提交，未计费。"
+	canceledInFlight = "已取消生成，不再等待中转站结果。请求此前已发送，中转站可能仍会生成并计费，请以中转站记录为准。"
+)
+
+// CancelTask cancels one image: an unsent one is simply dropped; an in-flight
+// request is aborted. A result already returned (downloading) is not cancelled.
+func (s *Service) CancelTask(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var t Task
+	if e := s.store.Get("task", id, &t); e != nil {
+		return e
+	}
+	switch t.Status {
+	case "queued", "blocked":
+		// A worker that already claimed it re-reads the status before sending.
+		t.Status, t.Error, t.UpdatedAt = "canceled", canceledUnsent, Now()
+		if e := s.store.Put("task", t.ID, t); e != nil {
+			return e
+		}
+		_ = s.store.appendLog("info", "image", t.ID, "已取消生成：图片尚未提交")
+	case "submitting", "running":
+		cancel := s.genCancel[id]
+		if cancel == nil {
+			return errors.New("这张图正在提交，请稍后再取消")
+		}
+		s.canceled[id] = true
+		cancel()
+	case "downloading":
+		return errors.New("中转站已返回这张图，正在保存，不能取消")
+	default:
+		return errors.New("这张图已结束，无需取消")
+	}
+	s.signal()
+	return nil
+}
+
 func (s *Service) Retry(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -572,11 +654,18 @@ func (s *Service) retryAgentLocked(t Task) error {
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
 		return missing(e, "这张图片使用的生图中转站已删除，请新建需求")
 	}
+	_, e := s.queueAttemptLocked(t, c, "")
+	return e
+}
+
+// queueAttemptLocked queues a new attempt of t in the same batch on connection c.
+// autoRetryOf marks an automatic re-generation after a relay timeout.
+func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (Task, error) {
 	if normalizeConnection(c).Kind != "image" {
-		return errors.New("请选择生图中转站")
+		return Task{}, errors.New("请选择生图中转站")
 	}
 	if _, e := s.key(c.Credential); e != nil {
-		return e
+		return Task{}, e
 	}
 	t.ID = NewID()
 	t.CreatedAt = Now()
@@ -587,15 +676,24 @@ func (s *Service) retryAgentLocked(t Task) error {
 	t.AssetIDs = []string{}
 	t.Diagnostic = GenerationDiagnostic{}
 	t.PreviousAssetIDs = nil
+	t.RoutedFrom, t.RoutedFromName, t.RouteReason = "", "", ""
+	t.AutoRetryOf, t.AutoRetriedAs = autoRetryOf, ""
 	t.Connection = c
+	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
+		return Task{}, e
+	}
+	t.Trial = s.trialLocked()
 	_, e := s.store.Submit(NewID(), t.BatchID, []Task{t})
-	return e
+	return t, e
 }
 
 // resumeBlockedLocked puts an unsent, paused task back in the queue.
 func (s *Service) resumeBlockedLocked(t Task) error {
 	if t.Status != "blocked" {
 		return errors.New("只有未提交的暂停任务可恢复")
+	}
+	if e := s.ensureCanGenerateLocked(1, t.Connection.ID); e != nil {
+		return e
 	}
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
@@ -659,7 +757,7 @@ func (s *Service) Dashboard() (Summary, error) {
 		return Summary{}, e
 	}
 	as, e := List[Asset](s.store, "asset")
-	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.4.0"}
+	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.6.20"}
 	if s.agentRunID != "" {
 		r.Active++
 	}
@@ -742,9 +840,39 @@ func (s *Service) claimTask(download bool) bool {
 		return false
 	}
 	var chosen *Task
+	var hc *healthCache
+	var g GatewaySettings
+	if !download {
+		s.maybeProbeLocked(tasks)
+		hc = &healthCache{s: s, tasks: tasks, now: time.Now(), seen: map[string]GatewayHealth{}}
+		g = s.gatewaySettingsLocked()
+	}
 	for i := len(tasks) - 1; i >= 0; i-- {
 		if tasks[i].Status == status && !s.inflight[tasks[i].ID] && !s.downloads[tasks[i].ID] {
 			t := tasks[i]
+			// An image drawn from the suite's detail sample waits until the sample
+			// is done; nothing is sent (or billed) while it waits.
+			if !download && t.SamplePending {
+				if !attachSample(&t, tasks) {
+					continue
+				}
+				_ = s.store.Put("task", t.ID, t)
+			}
+			// Past the trial limit (or with an invalid licence) nothing more is sent.
+			if !download && s.trialStopLocked(tasks) {
+				t.Status, t.UpdatedAt = "blocked", Now()
+				t.Error = "此图尚未提交、未计费。" + trialUsedUp
+				if msg := s.licenseBlockMessageLocked(); msg != "" {
+					t.Error = "此图尚未提交、未计费。" + msg
+				}
+				_ = s.store.Put("task", t.ID, t)
+				continue
+			}
+			// An image is sent only to a gateway that is not known to be failing;
+			// it may move to a healthy backup first (it was never sent, no cost).
+			if !download && !s.routeLocked(&t, g, hc) {
+				continue
+			}
 			chosen = &t
 			break
 		}
@@ -754,12 +882,16 @@ func (s *Service) claimTask(download bool) bool {
 		return false
 	}
 	pool[chosen.ID] = true
+	if !download {
+		s.genGateway[chosen.ID] = chosen.Connection.ID
+	}
 	s.workers.Add(1)
 	s.mu.Unlock()
 	go func(t Task) {
 		defer func() {
 			s.mu.Lock()
 			delete(pool, t.ID)
+			delete(s.genGateway, t.ID)
 			s.mu.Unlock()
 			s.workers.Done()
 			s.signal()
@@ -814,9 +946,12 @@ func (s *Service) step(claimed Task) bool {
 		s.mu.Unlock()
 		return false
 	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	s.genCancel[t.ID] = cancel
 	s.mu.Unlock()
 	s.signal()
-	outputs, unknown, e := s.provider.GenerateWithProgress(s.ctx, t, key, refs, s.store.Root, func(d GenerationDiagnostic) {
+	outputs, unknown, e := s.provider.GenerateWithProgress(ctx, t, key, refs, s.store.Root, func(d GenerationDiagnostic) {
 		s.mu.Lock()
 		t.Diagnostic = d
 		s.store.Put("task", t.ID, t)
@@ -824,21 +959,54 @@ func (s *Service) step(claimed Task) bool {
 		s.signal()
 	})
 	s.mu.Lock()
-	// A rejected key fails every remaining image the same way, so the rest of the
-	// batch is paused unsent; the user fixes the key and resumes explicitly.
-	authRejected := e != nil && !unknown && (t.Diagnostic.HTTPStatus == 401 || t.Diagnostic.HTTPStatus == 403)
+	delete(s.genCancel, t.ID)
+	userCanceled := s.canceled[t.ID]
+	delete(s.canceled, t.ID)
+	// A result that arrived anyway is kept (it may be billed); otherwise the
+	// cancellation is recorded instead of a failure.
+	if userCanceled && e != nil {
+		t.Status, t.UpdatedAt = "canceled", Now()
+		t.Error = canceledInFlight
+		saveErr := s.store.Put("task", t.ID, t)
+		_ = s.store.appendLog("warn", "image", t.ID, fmt.Sprintf("已取消生成：请求发出后等待 %d 秒时取消", t.Diagnostic.ElapsedMS/1000))
+		s.mu.Unlock()
+		s.signal()
+		return saveErr == nil
+	}
+	// A rejected key or an empty account fails every remaining image the same way.
+	// With a gateway setup, the gateway is marked down and unsent images move to a
+	// backup or pause there; without one, the rest of the batch pauses unsent.
+	rejected := ""
+	if e != nil && !unknown {
+		rejected = rejectionKind(t.Diagnostic.HTTPStatus, e.Error())
+	}
 	if e != nil {
 		t.Status = "failed"
 		if unknown {
 			t.Status = "unknown"
 		}
 		t.Error = redact(e.Error(), key)
-		if authRejected {
+		switch {
+		case rejected == "balance" && t.Trial:
+			// The trial key's upstream quota is the hard trial limit.
+			t.Error = fmt.Sprintf("试用额度已用完（HTTP %d，中转站返回额度不足），此图未生成也不计费。请在“连接与设置”输入激活码后继续使用。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+		case rejected == "balance":
+			t.Error = fmt.Sprintf("中转站账户余额不足（HTTP %d），中转站拒绝了请求，未生成也不计费。请到该中转站后台充值后重新生成，API Key 不需要重新输入。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+		case rejected == "auth":
 			t.Error = fmt.Sprintf("API Key 无效（HTTP %d），生图中转站拒绝了请求，未生成也不计费。请在“连接与设置”重新输入该生图中转站的 API Key 后重新生成。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
-			s.pauseBatchForAuthLocked(t)
+			// Re-check the key right away with the free probe.
+			delete(s.probes, t.Connection.ID)
+		}
+		// A trial key at its quota ends the trial: pause the rest, whatever the routing.
+		if rejected != "" && (!s.gatewaySetupLocked() || t.Trial) {
+			kind := rejected
+			if kind == "balance" && t.Trial {
+				kind = "trial"
+			}
+			s.pauseBatchForRejectionLocked(t, kind)
 		}
 		if unknown && relayTimedOut(t.Diagnostic) {
-			t.Error = fmt.Sprintf("中转站等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在中转站生成并已计费，请先核对中转站记录。降低同时生成张数或质量可能减少这类超时，但不能保证避免；程序不会自动重发生图。原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), t.Error)
+			t.Error = fmt.Sprintf("中转站等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在中转站生成并已计费，请先核对中转站记录。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), s.autoRegenerateLocked(&t), t.Error)
 		}
 	} else {
 		t.Status = "downloading"
@@ -876,9 +1044,16 @@ func timeoutLabel(d GenerationDiagnostic) string {
 	return "连接被关闭"
 }
 
-// pauseBatchForAuthLocked blocks the batch's queued, unsent images after the relay
-// rejected the API key. Requests already in flight finish on their own.
-func (s *Service) pauseBatchForAuthLocked(failed Task) {
+// pauseBatchForRejectionLocked blocks the batch's queued, unsent images after the
+// relay rejected the API key or the account has no balance. Requests already in
+// flight finish on their own.
+func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
+	reason, fix, logText := "API Key 无效", "重新输入密钥后可恢复生成。", "生图中转站拒绝 API Key"
+	if kind == "balance" {
+		reason, fix, logText = "中转站账户余额不足", "到中转站充值后可恢复生成。", "生图中转站账户余额不足"
+	} else if kind == "trial" {
+		reason, fix, logText = "试用额度已用完", "输入激活码后可恢复生成。", "试用额度已用完"
+	}
 	if failed.BatchID == "" {
 		return
 	}
@@ -890,7 +1065,7 @@ func (s *Service) pauseBatchForAuthLocked(failed Task) {
 	for _, t := range tasks {
 		if t.BatchID == failed.BatchID && t.Status == "queued" && t.Connection.ID == failed.Connection.ID {
 			t.Status = "blocked"
-			t.Error = "同批图片因 API Key 无效已暂停，尚未提交、未计费。重新输入密钥后可恢复生成。"
+			t.Error = "同批图片因" + reason + "已暂停，尚未提交、未计费。" + fix
 			t.UpdatedAt = Now()
 			if s.store.Put("task", t.ID, t) == nil {
 				paused++
@@ -898,7 +1073,7 @@ func (s *Service) pauseBatchForAuthLocked(failed Task) {
 		}
 	}
 	if paused > 0 {
-		_ = s.store.appendLog("warn", "image", failed.BatchID, fmt.Sprintf("生图中转站拒绝 API Key，已暂停同批 %d 张未提交图片", paused))
+		_ = s.store.appendLog("warn", "image", failed.BatchID, fmt.Sprintf("%s，已暂停同批 %d 张未提交图片", logText, paused))
 	}
 }
 

@@ -20,11 +20,37 @@ let browser: Browser,
   requests = 0;
 let modelMode = "normal",
   modelRequests = 0;
+const gatewayHits = { models: 0, gw524: 0, gwok: 0 };
 const png = fs
   .readFileSync(path.resolve(import.meta.dirname, "fixture.png"))
   .toString("base64");
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
+    // Two extra gateways for failover: one always cut by a 524, one healthy.
+    const gateway = req.url?.match(
+      /^\/(gw524|gwok)\/v1\/(models|images\/generations)$/,
+    );
+    if (gateway) {
+      const [, name, path] = gateway;
+      req.resume();
+      if (path === "models") {
+        gatewayHits.models++;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ data: [{ id: "qa-image" }] }));
+        return;
+      }
+      gatewayHits[name as "gw524" | "gwok"]++;
+      setTimeout(() => {
+        if (name === "gw524") {
+          res.writeHead(524);
+          res.end("error code: 524");
+          return;
+        }
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ data: [{ b64_json: png }] }));
+      }, 50);
+      return;
+    }
     if (req.url === "/custom/v1/models") {
       modelRequests++;
       if (modelMode === "denied") {
@@ -56,6 +82,8 @@ test.beforeAll(async () => {
       req.on("data", (c) => (body += c));
       req.on("end", () => {
         const v = JSON.parse(body);
+        // Never answers, like a relay that keeps an image waiting.
+        if (v.prompt.includes("hang")) return;
         if (v.prompt.includes("timeout")) {
           res.writeHead(503);
           res.end(
@@ -81,7 +109,7 @@ test.beforeAll(async () => {
   );
   page = browser.contexts().flatMap((c) => c.pages())[0];
   await page.waitForFunction(() => !!window.go?.main?.App);
-  await page.evaluate(async()=>window.go!.main!.App!.ResetDesktopQA());
+  await page.evaluate(async () => window.go!.main!.App!.ResetDesktopQA());
   await page.reload();
   await page.waitForFunction(() => !!window.go?.main?.App);
   await page.waitForLoadState("domcontentloaded");
@@ -179,6 +207,45 @@ test("real desktop generates locally and unknown completion never retries", asyn
   await expect(page.getByRole("dialog")).not.toContainText("qa-key-123");
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   expect(requests).toBe(2);
+});
+test("an image waiting on the relay can be cancelled after confirming", async () => {
+  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByLabel("提示词", { exact: true }).fill("hang");
+  await page.getByRole("button", { name: "生成图片", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "继续", exact: true })
+    .click();
+  await expect.poll(() => requests).toBe(3);
+  await page.getByRole("link", { name: /任务中心/ }).click();
+  const row = page.getByRole("row").filter({ hasText: "等待中转站" });
+  await row.getByRole("button", { name: "取消生成" }).click();
+  const dialog = page.getByRole("dialog", { name: "是否确认取消生成？" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("中转站可能仍会生成并计费");
+  // Keeping it is the default choice.
+  await dialog.getByRole("button", { name: "继续生成" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.getByText("等待中转站")).toBeVisible();
+  await row.getByRole("button", { name: "取消生成" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "取消生成", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const r = (await window.go!.main!.App!.ListTasks("", 0, 10)) as {
+          items: { status: string }[];
+        };
+        return r.items[0]?.status;
+      }),
+    )
+    .toBe("canceled");
+  await expect(
+    page.getByRole("row").first().getByRole("button", { name: "取消生成" }),
+  ).toHaveCount(0);
+  expect(requests).toBe(3);
 });
 test("project/template CRUD,素材归档 and keyboard select", async () => {
   await page.getByRole("link", { name: "项目与模板" }).click();
@@ -495,6 +562,331 @@ test("recent results: single download, whole ten-image set and cancelled export"
   ).toBe(false);
   await page.screenshot({
     path: path.join(docs, "recent-downloads-narrow.png"),
+    fullPage: true,
+  });
+  await session.send("Emulation.clearDeviceMetricsOverride");
+  await session.detach();
+});
+test("素材库批量管理：多选、归类、导出 ZIP 和移除", async () => {
+  await page.getByRole("link", { name: "素材库" }).click();
+  const go = (name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
+      [name, args] as const,
+    );
+  const total = async () =>
+    ((await go("ListAssets", "", 0, 1)) as { total: number }).total;
+  const before = await total();
+  expect(before).toBeGreaterThan(3);
+  await page.getByRole("button", { name: "批量管理", exact: true }).click();
+  const bar = page.getByRole("toolbar", { name: "批量管理素材" });
+  await expect(bar.getByText("已选 0 张")).toBeVisible();
+  await expect(
+    bar.getByRole("button", { name: "导出 ZIP", exact: true }),
+  ).toBeDisabled();
+  // In batch mode a card click selects instead of opening the preview.
+  const picks = page.getByRole("button", { name: /^选择 / });
+  await picks.nth(0).click();
+  await picks.nth(1).press("Enter");
+  await expect(picks.nth(0)).toHaveAttribute("aria-pressed", "true");
+  await expect(bar.getByText("已选 2 张")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "图片详情" })).toBeHidden();
+
+  const projects = (await go("ListProjects")) as { id: string; name: string }[];
+  const target = projects.find((p) => p.name === "测试商品")!;
+  await bar.getByRole("combobox", { name: "批量归类到项目" }).click();
+  await page
+    .locator(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="测试商品"]',
+    )
+    .click();
+  await expect(
+    page.getByText("已将 2 张素材归类到“测试商品”", { exact: true }),
+  ).toBeVisible();
+  expect(
+    ((await go("ListAssets", target.id, 0, 50)) as { total: number }).total,
+  ).toBe(2);
+
+  const output = fs.mkdtempSync(
+    path.resolve(import.meta.dirname, "../../.tools/qa-assets-"),
+  );
+  const zipPath = path.join(output, "素材.zip");
+  await page.evaluate((p) => {
+    (window as any).originalExportPicker =
+      window.go!.main!.App!.ChooseExportPath;
+    window.go!.main!.App!.ChooseExportPath = async () => p;
+  }, zipPath);
+  await bar.getByRole("button", { name: "导出 ZIP", exact: true }).click();
+  await expect(
+    page.getByText("已导出素材 ZIP（2 张）", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    window.go!.main!.App!.ChooseExportPath = (
+      window as any
+    ).originalExportPicker;
+  });
+  const zip = fs.readFileSync(zipPath);
+  let entries = 0;
+  for (let i = 0; i < zip.length - 4; i++) {
+    if (zip.readUInt32LE(i) === 0x02014b50) entries++;
+  }
+  expect(entries).toBe(2);
+
+  await bar.getByRole("button", { name: /全选已加载/ }).click();
+  await expect(
+    bar.getByRole("button", { name: "取消全选", exact: true }),
+  ).toBeVisible();
+  await bar.getByRole("button", { name: "取消全选", exact: true }).click();
+  await expect(bar.getByText("已选 0 张")).toBeVisible();
+  await picks.nth(0).click();
+  await picks.nth(1).click();
+  await bar.getByRole("button", { name: "移除", exact: true }).click();
+  const confirm = page.getByRole("dialog", {
+    name: "从素材库移除 2 张图片？",
+  });
+  await confirm.getByRole("button", { name: "确认执行" }).click();
+  await expect.poll(total).toBe(before - 2);
+  // Scan only after the confirmation has finished fading out.
+  await expect(confirm).toBeHidden();
+  await expect(bar.getByText("已选 0 张")).toBeVisible();
+
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+  const session = await browser.contexts()[0].newCDPSession(page);
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    width: 900,
+    height: 740,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.screenshot({
+    path: path.join(docs, "asset-batch-0.4.1.png"),
+    fullPage: true,
+  });
+  await session.send("Emulation.clearDeviceMetricsOverride");
+  await session.detach();
+  await bar.getByRole("button", { name: "完成", exact: true }).click();
+  await expect(bar).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: /^预览 / }).first(),
+  ).toBeVisible();
+});
+test("备用中转站：免费检查、主用/备用、524 自动重新生成提示与自动切换", async () => {
+  const go = (name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
+      [name, args] as const,
+    );
+  const root = baseURL.replace("/custom/v1", "");
+  const a = (await go("SaveConnection", {
+    name: "QA 超时站",
+    baseURL: `${root}/gw524/v1`,
+    model: "qa-image",
+    key: "qa-key-123",
+  })) as { id: string };
+  const b = (await go("SaveConnection", {
+    name: "QA 备用站",
+    baseURL: `${root}/gwok/v1`,
+    model: "qa-image",
+    key: "qa-key-123",
+  })) as { id: string };
+  await page.getByRole("link", { name: "连接与设置" }).click();
+  const rowOf = (name: string) =>
+    page.locator(".connection-row").filter({ hasText: name });
+  await rowOf("QA 超时站").getByRole("radio", { name: "主用" }).click();
+  await expect
+    .poll(async () => ((await go("GetGatewaySettings")) as any).primaryID)
+    .toBe(a.id);
+  await rowOf("QA 备用站")
+    .getByRole("switch", { name: "将 QA 备用站 设为备用中转站" })
+    .click();
+  await expect(rowOf("QA 备用站").getByText("备用 1")).toBeVisible();
+
+  // The free check only reads model lists.
+  const generationsBefore = gatewayHits.gw524 + gatewayHits.gwok;
+  await page
+    .getByRole("button", { name: "立即检查（免费）", exact: true })
+    .click();
+  await expect(
+    page.getByText("免费检查完成（只读取模型列表，不产生费用）"),
+  ).toBeVisible();
+  expect(gatewayHits.models).toBeGreaterThanOrEqual(2);
+  expect(gatewayHits.gw524 + gatewayHits.gwok).toBe(generationsBefore);
+  await expect(
+    rowOf("QA 备用站").getByText("正常", { exact: true }),
+  ).toBeVisible();
+
+  // Auto re-generation is off by default and needs the cost confirmation.
+  const autoSwitch = page.getByRole("switch", {
+    name: "524 后自动换中转站重新生成",
+  });
+  await expect(autoSwitch).not.toBeChecked();
+  await autoSwitch.click();
+  const notice = page.getByRole("dialog", { name: "开启 524 自动重新生成？" });
+  await expect(notice.getByText(/可能产生两次费用/)).toBeVisible();
+  await notice.getByRole("button", { name: "取消" }).click();
+  await expect(notice).toBeHidden();
+  expect(((await go("GetGatewaySettings")) as any).autoRegenerate524).toBe(
+    false,
+  );
+  await autoSwitch.click();
+  await notice
+    .getByRole("button", { name: "确认开启（可能重复计费）" })
+    .click();
+  await expect(autoSwitch).toBeChecked();
+  await expect(notice).toBeHidden();
+
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+
+  // Two images on the primary: the first is cut by 524 and re-generated once
+  // on the backup; the second was never sent there and moves for free.
+  await go("SetImageConcurrency", 1);
+  await go("Submit", {
+    requestID: crypto.randomUUID(),
+    connectionID: a.id,
+    model: "qa-image",
+    prompts: ["gateway failover qa"],
+    count: 2,
+    references: [],
+    size: "auto",
+    quality: "auto",
+    projectID: "",
+  });
+  await expect.poll(() => gatewayHits.gwok, { timeout: 20000 }).toBe(2);
+  await page.waitForTimeout(500);
+  expect(gatewayHits.gw524).toBe(1);
+  expect(gatewayHits.gwok).toBe(2);
+  await page.getByRole("link", { name: "生图工作台" }).click();
+  const latest = page.locator(".recent-batch").first();
+  await expect(
+    latest.getByText(/524 后自动重新生成 · 「QA 备用站」/),
+  ).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(
+    latest.getByText(/已从「QA 超时站」转到「QA 备用站」/),
+  ).toBeVisible();
+  await expect(
+    latest.getByText(
+      /已自动转到「QA 备用站」重新生成一次.*这张图可能产生两次费用/,
+    ),
+  ).toBeVisible();
+  const session = await browser.contexts()[0].newCDPSession(page);
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    width: 900,
+    height: 740,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.getByRole("link", { name: "连接与设置" }).click();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.screenshot({
+    path: path.join(docs, "gateway-failover-0.5.0.png"),
+    fullPage: true,
+  });
+  await session.send("Emulation.clearDeviceMetricsOverride");
+  await session.detach();
+  await go("SetGatewaySettings", {
+    primaryID: "",
+    backupIDs: [],
+    autoReroute: true,
+    autoRegenerate524: false,
+  });
+  await go("SetImageConcurrency", 3);
+  expect(b.id).toBeTruthy();
+});
+test("中转站监控：按中转站统计、调用记录筛选与导出 CSV", async () => {
+  await page.getByRole("link", { name: "中转站监控" }).click();
+  await expect(
+    page.getByRole("heading", { name: "中转站监控", level: 1 }),
+  ).toBeVisible();
+  const card = (name: string) =>
+    page.locator(".monitor-card").filter({ hasText: name });
+  // From the failover test: one 524 on the timeout gateway; the backup got the
+  // moved image and the automatic re-generation.
+  await expect(card("QA 超时站").locator(".monitor-big strong")).toHaveText(
+    "1",
+  );
+  await expect(card("QA 备用站").locator(".monitor-big strong")).toHaveText(
+    "2",
+  );
+  await expect(card("QA 超时站")).toContainText("转出 1 张到备用");
+  await expect(card("QA 备用站")).toContainText("转入 1 张");
+  await expect(card("QA 备用站")).toContainText("524 后自动重新生成 1 张");
+  await expect(page.getByText("从 QA 超时站 转入").first()).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "调用结果" })
+    .locator("..")
+    .locator("..")
+    .click();
+  await page
+    .locator(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="结果未知"]',
+    )
+    .click();
+  const rows = page.locator(".ant-table-tbody tr.ant-table-row");
+  await expect(rows.filter({ hasText: "QA 超时站" }).first()).toContainText(
+    "结果未知 · HTTP 524",
+  );
+  await expect(rows.filter({ hasText: "成功" })).toHaveCount(0);
+
+  const output = fs.mkdtempSync(
+    path.resolve(import.meta.dirname, "../../.tools/qa-monitor-"),
+  );
+  const csvPath = path.join(output, "调用记录.csv");
+  await page.evaluate((p) => {
+    (window as any).originalExportPicker =
+      window.go!.main!.App!.ChooseExportPath;
+    window.go!.main!.App!.ChooseExportPath = async () => p;
+  }, csvPath);
+  await page.getByRole("button", { name: "导出 CSV" }).click();
+  await expect(page.getByText(/已导出 \d+ 条调用记录/)).toBeVisible();
+  await page.evaluate(() => {
+    window.go!.main!.App!.ChooseExportPath = (
+      window as any
+    ).originalExportPicker;
+  });
+  const csv = fs.readFileSync(csvPath, "utf8");
+  expect(csv.startsWith("﻿时间,中转站")).toBe(true);
+  expect(csv).toContain("QA 超时站");
+  expect(csv).not.toContain("QA 备用站"); // the result filter applies to the export
+  expect(csv).not.toContain("qa-key-123");
+
+  await expect(
+    page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)"),
+  ).toHaveCount(0);
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+  const session = await browser.contexts()[0].newCDPSession(page);
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    width: 900,
+    height: 740,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.screenshot({
+    path: path.join(docs, "gateway-monitor-0.5.4.png"),
     fullPage: true,
   });
   await session.send("Emulation.clearDeviceMetricsOverride");

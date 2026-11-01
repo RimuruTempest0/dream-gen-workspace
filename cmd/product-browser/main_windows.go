@@ -270,8 +270,8 @@ func main() {
 const pageScript = `(function(){
 if (window.top !== window) return;
 const post = o => window.chrome.webview.postMessage(JSON.stringify(o));
-const challengeText = /(enable JS and disable any ad blocker|verify you are (a )?human|checking your browser|just a moment\.\.\.|press (&|and) hold)/i;
-const challengeFrame = 'iframe[src*="captcha-delivery"],iframe[src*="challenges.cloudflare.com"],iframe[src*="hcaptcha.com"],iframe[src*="recaptcha"],#px-captcha';
+const challengeText = /(enable JS and disable any ad blocker|verify you are (a )?human|checking your browser|just a moment\.\.\.|press (&|and) hold|click the button below to continue shopping|enter the characters you see below)/i;
+const challengeFrame = 'iframe[src*="captcha-delivery"],iframe[src*="challenges.cloudflare.com"],iframe[src*="hcaptcha.com"],iframe[src*="recaptcha"],#px-captcha,form[action*="validateCaptcha"]';
 function hasProduct(){
   for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
     try {
