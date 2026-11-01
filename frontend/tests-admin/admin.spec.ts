@@ -183,6 +183,10 @@ async function importKeys(
 }
 
 test("管理工具：上游与 Key 池、客户、自动分配、能力验证、交付包与换 Key", async () => {
+  // The tool has its own version, separate from the app's.
+  await expect(page.locator(".sidebar-bottom")).toContainText(
+    /管理工具 \d+\.\d+\.\d+/,
+  );
   await page.getByRole("link", { name: "设置与签名密钥" }).click();
   await expect(page.getByText("公钥指纹")).toBeVisible();
   await expect(page.getByText(repo)).toBeVisible();

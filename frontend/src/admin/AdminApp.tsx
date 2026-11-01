@@ -25,6 +25,7 @@ const links = [
 export default function AdminApp() {
   const loc = useLocation();
   const state = useAdminState();
+  const version = useData<string>(["admin-version"], "ToolVersion");
   useEffect(() => {
     document.title = "ImageWorkbench 管理工具";
   }, []);
@@ -53,6 +54,8 @@ export default function AdminApp() {
             {state.data?.keys.filter((k) => k.status === "available").length ??
               0}{" "}
             个可用 Key
+            <br />
+            管理工具 {version.data}
           </small>
         </div>
       </aside>

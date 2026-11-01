@@ -7,6 +7,7 @@ import { HashRouter } from "react-router-dom";
 import { colors, font, installTokens } from "../tokens";
 import AdminApp from "./AdminApp";
 import "../styles.css";
+import "./admin.css";
 installTokens();
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } },

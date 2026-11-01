@@ -757,7 +757,7 @@ func (s *Service) Dashboard() (Summary, error) {
 		return Summary{}, e
 	}
 	as, e := List[Asset](s.store, "asset")
-	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.6.20"}
+	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.6.19"}
 	if s.agentRunID != "" {
 		r.Active++
 	}

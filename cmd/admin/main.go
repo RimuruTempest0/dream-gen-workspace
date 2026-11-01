@@ -102,6 +102,7 @@ func (x *App) detectRepo() {
 }
 
 func (x *App) State() admin.State                                    { return x.a.State() }
+func (x *App) ToolVersion() string                                   { return admin.ToolVersion }
 func (x *App) SaveUpstream(u admin.Upstream) (admin.Upstream, error) { return x.a.SaveUpstream(u) }
 func (x *App) DeleteUpstream(id string) error                        { return x.a.DeleteUpstream(id) }
 func (x *App) ImportKeys(upstreamID, use, text, note string) (admin.ImportResult, error) {

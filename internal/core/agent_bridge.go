@@ -237,7 +237,7 @@ func (b *agentBridge) mcp(w http.ResponseWriter, r *http.Request) {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
 		json.Unmarshal(rpc.Params, &p)
-		result = map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "workbench", "version": "0.6.20"}}
+		result = map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "workbench", "version": "0.6.19"}}
 	case "ping":
 		result = map[string]any{}
 	case "tools/list":

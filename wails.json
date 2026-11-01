@@ -7,5 +7,5 @@
   "frontend:dev:watcher": "pnpm dev",
   "frontend:dev:serverUrl": "auto",
   "author": { "name": "ImageWorkbench" },
-  "info": { "productName": "ImageWorkbench", "productVersion": "0.6.20", "copyright": "ImageWorkbench", "comments": "Portable image workbench with Claude Code" }
+  "info": { "productName": "ImageWorkbench", "productVersion": "0.6.19", "copyright": "ImageWorkbench", "comments": "Portable image workbench with Claude Code" }
 }

@@ -4,7 +4,7 @@ Windows x64 便携桌面应用，采用 Wails v2、React、Go、SQLite。Base UR
 
 ## 使用
 
-1. 完整解压 `release/ImageWorkbench-portable-x64-0.6.20.zip`，保留 EXE 同级的 `runtime`、`agent` 目录和 `product-browser.exe`。
+1. 完整解压 `release/ImageWorkbench-portable-x64-0.6.19.zip`，保留 EXE 同级的 `runtime`、`agent` 目录和 `product-browser.exe`。
 2. 双击 `ImageWorkbench.exe`，打开“连接与设置”，分别添加生图连接与 LLM 连接。
 3. 填写 API 前缀地址（例如 `https://example.com/v1`）、API Key 和默认模型 ID。测试连接只查询模型，不提交付费生成。
 4. 在工作台选择连接，填写提示词。添加参考图后使用图生图；批量模式每行是一条提示词。
