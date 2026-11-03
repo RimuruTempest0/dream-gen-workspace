@@ -19,13 +19,13 @@ import {
   UploadOutlined,
   DeleteOutlined,
 } from "@ant-design/icons";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   call,
   errorText,
   type Asset,
   type Connection,
-  type Project,
+  type Template,
   type Task,
 } from "./api";
 import {
@@ -36,8 +36,17 @@ import {
   type AgentRuntimeInfo,
   type SmartProgress,
 } from "./agent-api";
+import { TemplateBar, type TemplateMode } from "./Templates";
+import { RunActivity, RunSteps, runStepLabel } from "./RunSteps";
 import {
+  ModelSelect,
+  assetLabel,
+  coalesce,
+  presetQualities,
+  presetSizes,
+  withCurrent,
   AssetImage,
+  AssetOption,
   CancelTaskButton,
   DataState,
   Header,
@@ -159,15 +168,6 @@ function VerificationWait({ run }: { run: AgentRun }) {
   );
 }
 
-// Common OpenAI-compatible sizes; a previously saved custom size stays selectable.
-const presetSizes = [
-  { value: "auto", label: "自动（由模型决定）" },
-  { value: "1024x1024", label: "1024×1024（1:1 方图）" },
-  { value: "1536x1024", label: "1536×1024（3:2 横图）" },
-  { value: "1024x1536", label: "1024×1536（2:3 竖图）" },
-  { value: "1792x1024", label: "1792×1024（16:9 横图）" },
-  { value: "1024x1792", label: "1024×1792（9:16 竖图）" },
-];
 const ratioSizes: Record<string, string> = {
   "1:1": "1024x1024",
   "3:2": "1536x1024",
@@ -261,8 +261,12 @@ function RefineDialog({
         autoSize={{ minRows: 3, maxRows: 8 }}
         placeholder="例如：把袖口的狗掌和 Amelia 摆正成水平的一行，狗掌在左"
       />
+      <p className="hint" style={{ marginTop: 28 }}>
+        写清要去掉什么、换成什么，并点名是谁或哪个位置。例如：右侧女性脱掉米白色针织衫，改穿和左侧同款的卫衣，颜色
+        Maroon，胸前图案和袖口刺绣与左侧完全相同。
+      </p>
       <p className="hint">
-        写清改哪里、改成什么样，比只写“应该是……”更容易改对。将以这张图片为底图发起一次新的生图请求，可能产生费用。只修改你写的内容，原图保留在“之前的版本”中。
+        将以这张图片为底图发起一次新的生图请求，可能产生费用。原图保留在“之前的版本”中。
       </p>
     </Modal>
   );
@@ -279,7 +283,6 @@ export function SmartImages() {
   );
   const connections = useData<Connection[]>(["connections"], "ListConnections");
   const gateways = useGateways();
-  const projects = useData<Project[]>(["projects"], "ListProjects");
   const runtime = useData<AgentRuntimeInfo>(["agent-runtime"], "AgentRuntime");
   const assets = useData<{ items: Asset[] }>(
     ["agent-assets"],
@@ -317,8 +320,12 @@ export function SmartImages() {
   });
   const run = runQuery.data,
     tasks = taskQuery.data || [];
+  const incomingTemplate = (
+    useLocation().state as { templateID?: string } | null
+  )?.templateID;
   const initialized = useRef(""),
-    autoOpen = useRef(false),
+    answersSynced = useRef(""),
+    autoOpen = useRef(!!incomingTemplate),
     autoURL = useRef(""),
     startRequest = useRef<string | null>(null),
     continuationRequest = useRef<string | null>(null);
@@ -330,6 +337,7 @@ export function SmartImages() {
         ...draft.data,
         references: draft.data.references || [],
         skillIDs: draft.data.skillIDs || [],
+        projectID: "",
       });
       setReady(true);
     }
@@ -346,21 +354,30 @@ export function SmartImages() {
       .catch(() => {});
   }, []);
   useEffect(() => {
-    if (run && initialized.current !== run.id) {
+    if (!run) return;
+    const stop = run.status === "needs_input" ? run.updatedAt : "";
+    const opened = initialized.current !== run.id;
+    if (opened) {
       initialized.current = run.id;
       setInput(run.input);
       setProductText(run.input.productText);
+    }
+    // Each new stop shows the saved answers, so a question asked again starts empty
+    // instead of showing the answer that did not settle it.
+    if (opened || (stop && answersSynced.current !== stop)) {
       setAnswers(
         Object.fromEntries(run.questions.map((q) => [q.id, q.answer || ""])),
       );
     }
+    answersSynced.current = stop;
   }, [run]);
   useEffect(() => {
-    const off = window.runtime?.EventsOn("agent:changed", () => {
+    const refresh = coalesce(() => {
       qc.invalidateQueries({ queryKey: ["agent-run"] });
       qc.invalidateQueries({ queryKey: ["agent-runs"] });
       qc.invalidateQueries({ queryKey: ["agent-tasks"] });
     });
+    const off = window.runtime?.EventsOn("agent:changed", refresh);
     return () => off?.();
   }, [qc]);
   useEffect(() => {
@@ -408,27 +425,6 @@ export function SmartImages() {
       ? run.llmConnection
       : llms.find((c) => c.id === input.llmConnectionID);
   const model = input.imageModel || imageConnection?.model || "未设置";
-  // Model list is a GET /models of the saved connection (no generation, no cost),
-  // fetched only while the settings panel is open.
-  const imageModels = useQuery({
-    queryKey: ["connection-models", imageConnection?.id],
-    queryFn: () => call<string[]>("ListConnectionModels", imageConnection!.id),
-    enabled: !!imageConnection?.id && advanced.includes("settings") && !run,
-    staleTime: 5 * 60 * 1000,
-    retry: false,
-  });
-  const modelOptions = [
-    {
-      value: "",
-      label: `使用连接默认（${imageConnection?.model || "未设置"}）`,
-    },
-    ...[
-      ...new Set([
-        ...(imageModels.data || []),
-        ...(input.imageModel ? [input.imageModel] : []),
-      ]),
-    ].map((value) => ({ value, label: value })),
-  ];
   // Viewer walks the set in slot order: each slot's current image, then its earlier versions.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerItems: ViewerItem[] = [];
@@ -455,12 +451,7 @@ export function SmartImages() {
     (t) => t.status === "failed" || t.status === "blocked",
   ).length;
   const pendingDownloads = tasks.filter((t) => t.status === "download_failed");
-  const sizeOptions = [
-    ...presetSizes,
-    ...(presetSizes.some((s) => s.value === input.size)
-      ? []
-      : [{ value: input.size, label: input.size }]),
-  ];
+  const sizeOptions = withCurrent(presetSizes, input.size);
   const analyzing = run?.status === "analyzing",
     submitted = !!run?.batchID;
   const completed = tasks.filter((t) => t.status === "succeeded").length,
@@ -473,11 +464,13 @@ export function SmartImages() {
   const stage = !run
     ? "等待开始"
     : analyzing
-      ? run.stage === "准备素材" ||
-        run.stage === browserReadingStage ||
-        run.stage === browserVerifyStage
+      ? run.stage === browserVerifyStage
         ? run.stage
-        : "处理中"
+        : run.progress
+          ? runStepLabel(run.progress)
+          : run.stage === "准备素材" || run.stage === browserReadingStage
+            ? run.stage
+            : "处理中"
       : submitted
         ? tasks.length > 0 && completed === tasks.length
           ? "已完成"
@@ -518,6 +511,18 @@ export function SmartImages() {
     }
     change(p);
   }
+  function applyTemplate(t: Template, mode: TemplateMode) {
+    const current = input.instruction.trimEnd();
+    changeInstruction(
+      mode === "append" ? current + "\n\n" + t.prompt : t.prompt,
+    );
+    if (mode === "replace")
+      change({
+        ...(t.size ? { size: t.size } : {}),
+        ...(t.quality ? { quality: t.quality } : {}),
+      });
+    document.getElementById("agent-instruction")?.focus();
+  }
   async function addFiles() {
     const out = await actions.run(() => call<Asset[]>("ImportAgentFiles"));
     if (out?.length) {
@@ -543,6 +548,8 @@ export function SmartImages() {
       setRunID(out);
       latestDraft.current = null;
       setError("");
+      // The steps are at the top of the page; the button can be far below them.
+      window.scrollTo(0, 0);
     }
   }
   async function continueRun() {
@@ -563,6 +570,7 @@ export function SmartImages() {
       ),
     );
     continuationRequest.current = null;
+    window.scrollTo(0, 0);
   }
   function newRun() {
     setRunID("");
@@ -592,9 +600,18 @@ export function SmartImages() {
         disabled={analyzing || submitted}
         value={input.references}
         placeholder="也可选择已有素材"
+        optionFilterProp="label"
+        listItemHeight={44}
+        listHeight={308}
         options={
-          assets.data?.items.map((a) => ({ value: a.id, label: a.name })) || []
+          assets.data?.items.map((a) => ({
+            value: a.id,
+            label: assetLabel(a),
+          })) || []
         }
+        optionRender={(option) => (
+          <AssetOption id={String(option.value)} name={String(option.label)} />
+        )}
         onChange={(v) => change({ references: v.slice(0, 20) })}
       />
       <ReferenceStrip
@@ -646,17 +663,31 @@ export function SmartImages() {
             <h2>制作需求</h2>
             <Tag>{run ? "已保存需求" : "草稿"}</Tag>
           </div>
-          <label htmlFor="agent-instruction" className="field-label">
-            完整制作指令
-          </label>
+          <div className="field-header prompt-header">
+            <label htmlFor="agent-instruction" className="field-label">
+              完整制作指令
+            </label>
+            <TemplateBar
+              text={input.instruction}
+              size={input.size}
+              quality={input.quality}
+              ready={ready && !run}
+              disabled={!!run || actions.busy}
+              onApply={applyTemplate}
+            />
+          </div>
           <Input.TextArea
             id="agent-instruction"
             value={input.instruction}
             disabled={!!run || actions.busy}
-            autoSize={{ minRows: 8, maxRows: 18 }}
+            autoSize={{ minRows: 6, maxRows: 12 }}
             style={{ resize: "none" }}
             placeholder="粘贴商品链接和完整套图需求，上传参考图后开始制作。"
             onChange={(e) => changeInstruction(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing)
+                start();
+            }}
           />
           <label htmlFor="agent-url" className="field-label">
             商品链接
@@ -787,21 +818,14 @@ export function SmartImages() {
                     <label htmlFor="agent-image-model" className="field-label">
                       生图模型
                     </label>
-                    <UISelect
+                    <ModelSelect
                       id="agent-image-model"
-                      className="full-width"
-                      showSearch
+                      connection={imageConnection}
                       value={input.imageModel}
-                      disabled={!!run || actions.busy || !imageConnection}
-                      loading={imageModels.isFetching}
-                      options={modelOptions}
+                      disabled={!!run || actions.busy}
+                      load={advanced.includes("settings") && !run}
                       onChange={(imageModel) => change({ imageModel })}
                     />
-                    {imageModels.isError && (
-                      <p className="hint">
-                        暂时无法获取模型列表，可使用连接默认模型。
-                      </p>
-                    )}
                     <div className="parameter-grid">
                       <div>
                         <label htmlFor="agent-size" className="field-label">
@@ -825,12 +849,7 @@ export function SmartImages() {
                           className="full-width"
                           disabled={!!run || actions.busy}
                           value={input.quality}
-                          options={[
-                            { value: "auto", label: "自动" },
-                            { value: "low", label: "低" },
-                            { value: "medium", label: "中" },
-                            { value: "high", label: "高" },
-                          ]}
+                          options={withCurrent(presetQualities, input.quality)}
                           onChange={(quality) => change({ quality })}
                         />
                       </div>
@@ -861,23 +880,6 @@ export function SmartImages() {
                       生成中也可调整，立即生效；调低时已在生成的图片会继续完成。对生图工作台同样生效。中转站可能限制并发，出现大量失败或
                       429 时请调低。
                     </p>
-                    <label htmlFor="agent-project" className="field-label">
-                      所属项目
-                    </label>
-                    <UISelect
-                      id="agent-project"
-                      className="full-width"
-                      allowClear
-                      value={input.projectID || undefined}
-                      disabled={!!run || actions.busy}
-                      options={
-                        projects.data?.map((p) => ({
-                          value: p.id,
-                          label: p.name,
-                        })) || []
-                      }
-                      onChange={(v) => change({ projectID: v || "" })}
-                    />
                   </>
                 ),
               },
@@ -889,24 +891,26 @@ export function SmartImages() {
               <Link to="/settings">连接与设置</Link>添加供应商。
             </p>
           )}
-          <p className="hint">
-            本次 {input.targetCount} 张 · 生图模型：{model}
-            <br />
-            LLM：{llmConnection?.model || "未设置"}
-            。将调用LLM与生图服务，可能产生费用。
-          </p>
-          {!run && (
-            <Button
-              className="agent-primary"
-              type="primary"
-              block
-              loading={actions.busy}
-              disabled={!ready || runtime.data?.available === false}
-              onClick={start}
-            >
-              开始生成套图
-            </Button>
-          )}
+          <div className="sticky-actions">
+            <p className="hint">
+              本次 {input.targetCount} 张 · 生图模型：{model}
+              <br />
+              LLM：{llmConnection?.model || "未设置"}
+              。将调用LLM与生图服务，可能产生费用。
+            </p>
+            {!run && (
+              <Button
+                className="agent-primary"
+                type="primary"
+                block
+                loading={actions.busy}
+                disabled={!ready || runtime.data?.available === false}
+                onClick={start}
+              >
+                开始生成套图
+              </Button>
+            )}
+          </div>
         </section>
         <div className="agent-content">
           <section className="panel">
@@ -939,9 +943,15 @@ export function SmartImages() {
             )}
             {run && (
               <>
-                <p role="status" aria-live="polite">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={analyzing && run.progress ? "sr-only" : undefined}
+                >
                   {stage}
                 </p>
+                {analyzing && run.progress && <RunSteps run={run} />}
+                <RunActivity run={run} />
                 {analyzing && run.stage === browserVerifyStage && (
                   <VerificationWait run={run} />
                 )}
@@ -1332,7 +1342,9 @@ export function SmartImages() {
                     {r.batchID
                       ? "已提交生图"
                       : r.status === "analyzing"
-                        ? "处理中"
+                        ? r.progress
+                          ? runStepLabel(r.progress)
+                          : "处理中"
                         : r.status === "needs_input"
                           ? "等待补充"
                           : "可继续制作"}

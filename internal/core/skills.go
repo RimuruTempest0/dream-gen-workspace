@@ -218,6 +218,8 @@ func (s *Service) upgradeBuiltinSkills() error {
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.3.6.md")),
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.5.4.md")),
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.6.7.md")),
+			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.6.20.md")),
+			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.6.25.md")),
 		},
 		"etsy-suite": {
 			builtinSkillContent("etsy-suite", etsySuiteDescriptionV1, etsySuiteBodyV1),
@@ -234,6 +236,8 @@ func (s *Service) upgradeBuiltinSkills() error {
 			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.6.11.md")),
 			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.6.12.md")),
 			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.6.16.md")),
+			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.6.20.md")),
+			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.6.25.md")),
 		},
 		"embroidery-rules": {
 			builtinSkillContent("embroidery-rules", embroideryDescriptionV1, embroideryBodyV1),
@@ -241,12 +245,16 @@ func (s *Service) upgradeBuiltinSkills() error {
 			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.3.3.md")),
 			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.3.5.md")),
 			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.3.6.md")),
+			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.6.20.md")),
+			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.6.25.md")),
 		},
 		p004SkillID: {
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.3.6.md")),
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.5.1.md")),
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.10.md")),
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.12.md")),
+			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.20.md")),
+			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.25.md")),
 		},
 		"image-prompting": {
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.5.4.md")),
@@ -255,6 +263,9 @@ func (s *Service) upgradeBuiltinSkills() error {
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.11.md")),
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.12.md")),
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.16.md")),
+			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.20.md")),
+			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.25.md")),
+			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.27.md")),
 		},
 	}
 	for _, b := range builtinSkills {

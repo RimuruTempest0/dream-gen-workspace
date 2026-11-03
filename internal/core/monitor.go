@@ -381,7 +381,7 @@ func (s *Service) ExportGatewayCalls(q MonitorQuery, path string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	rows := [][]string{{"时间", "中转站", "来源", "模型", "结果", "HTTP 状态", "生成秒数", "下载秒数", "中转站请求 ID", "转入自", "524 后自动重新生成", "任务 ID"}}
+	rows := [][]string{{"时间", "中转站", "来源", "模型", "结果", "HTTP 状态", "生成秒数", "下载秒数", "中转站请求 ID", "转入自", "自动重新生成", "任务 ID"}}
 	for _, c := range calls {
 		if q.Result != "" && c.Result != q.Result {
 			continue

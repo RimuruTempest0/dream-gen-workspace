@@ -74,7 +74,7 @@ function SmartProgressRing() {
   if (!p?.runID) return null;
   const label =
     p.state === "analyzing"
-      ? "智能生图正在分析"
+      ? `智能生图正在分析${p.step ? "：" + runStepNames[p.step] : ""}`
       : p.state === "needs_input"
         ? "智能生图等待补充资料"
         : p.state === "paused"
@@ -115,7 +115,6 @@ import {
   type GenerateInput,
   type Task,
   type Asset,
-  type Project,
   type Template,
   type Summary,
   type TestResult,
@@ -133,11 +132,21 @@ import {
   Status,
   TaskTiming,
   TaskFailureAlert,
+  autoHandledNote,
   AssetImage,
   CancelTaskButton,
+  ModelSelect,
+  assetLabel,
+  coalesce,
+  presetQualities,
+  presetSizes,
+  taskTitle,
   time,
+  withCurrent,
 } from "./ui";
+import { TemplateBar, TemplatesPage, type TemplateMode } from "./Templates";
 import { SmartImages } from "./SmartImages";
+import { runStepNames } from "./RunSteps";
 import {
   LicenseBadge,
   LicenseNotice,
@@ -174,19 +183,23 @@ export default function App() {
       <DashboardOutlined aria-hidden="true" />,
     ],
     ["/monitor/llm", "LLM 监控", <RobotOutlined aria-hidden="true" />],
-    ["/projects", "项目与模板", <FolderOutlined aria-hidden="true" />],
+    ["/templates", "提示词模板", <FileTextOutlined aria-hidden="true" />],
     ["/settings", "连接与设置", <SettingOutlined aria-hidden="true" />],
     ["/logs", "日志", <FileTextOutlined aria-hidden="true" />],
   ] as const;
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [loc.pathname]);
+  useEffect(() => {
     document.title = `${links.find((l) => l[0] === loc.pathname)?.[1] || "生图工作台"} · ImageWorkbench`;
   }, [loc.pathname]);
   useEffect(() => {
-    const off = window.runtime?.EventsOn("tasks:changed", () => {
+    const refresh = coalesce(() => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["assets"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
     });
+    const off = window.runtime?.EventsOn("tasks:changed", refresh);
     const close = window.runtime?.EventsOn("app:close-requested", () =>
       modal.confirm({
         title: "退出并暂停本地执行？",
@@ -243,7 +256,7 @@ export default function App() {
           <div className="local-status">
             <CheckCircleOutlined aria-hidden="true" /> 本地数据工作区
           </div>
-          <small>Portable · {summary.data?.version || "0.6.19"}</small>
+          <small>Portable · {summary.data?.version || "0.7.1"}</small>
         </div>
       </aside>
       <main className="main">
@@ -261,7 +274,7 @@ export default function App() {
             <Route path="/assets" element={<Assets />} />
             <Route path="/monitor/gateways" element={<GatewayMonitorPage />} />
             <Route path="/monitor/llm" element={<LLMMonitorPage />} />
-            <Route path="/projects" element={<Projects />} />
+            <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/logs" element={<Logs />} />
             <Route
@@ -292,8 +305,6 @@ function Workbench() {
     ...allConnections,
     data: allConnections.data?.filter((c) => c.kind !== "llm"),
   };
-  const projects = useData<Project[]>(["projects"], "ListProjects");
-  const templates = useData<Template[]>(["templates"], "ListTemplates");
   const tasks = useData<RecentBatch[]>(
     ["tasks", "recent"],
     "ListRecentBatches",
@@ -326,7 +337,7 @@ function Workbench() {
   );
   useEffect(() => {
     if (draft.data && !ready) {
-      setInput({ ...blankDraft, ...draft.data });
+      setInput({ ...blankDraft, ...draft.data, projectID: "" });
       setPrompt((draft.data.prompts || []).join("\n"));
       setBatch((draft.data.prompts?.length || 0) > 1);
       setReady(true);
@@ -363,9 +374,7 @@ function Workbench() {
     );
     if (ready && !input.connectionID && primary)
       setInput((v) =>
-        v.connectionID
-          ? v
-          : { ...v, connectionID: primary.id, model: primary.model || "" },
+        v.connectionID ? v : { ...v, connectionID: primary.id, model: "" },
       );
   }, [ready, connections.data, gateways.settings.data]);
   const selected = connections.data?.find((c) => c.id === input.connectionID);
@@ -382,7 +391,7 @@ function Workbench() {
       return;
     }
     if (!(input.model || selected.model)) {
-      setFormError("请填写模型 ID。");
+      setFormError("请选择模型。");
       return;
     }
     if (!prompts.length) {
@@ -407,6 +416,24 @@ function Workbench() {
         await qc.invalidateQueries({ queryKey: ["tasks"] });
       },
     );
+  }
+  function applyTemplate(t: Template, mode: TemplateMode) {
+    if (mode === "replace") {
+      setPrompt(t.prompt);
+      // One template is one prompt: lines in it must not become separate images.
+      if (t.prompt.includes("\n")) setBatch(false);
+      change({
+        ...(t.size ? { size: t.size } : {}),
+        ...(t.quality ? { quality: t.quality } : {}),
+      });
+    } else {
+      setPrompt((v) =>
+        batch
+          ? v.trimEnd() + "\n" + t.prompt.replace(/\s*\n\s*/g, " ")
+          : v.trimEnd() + "\n\n" + t.prompt,
+      );
+    }
+    promptRef.current?.focus();
   }
   async function addFiles() {
     const as = await actions.run(() => call<Asset[]>("ImportFiles"));
@@ -472,9 +499,18 @@ function Workbench() {
               />
             </Space>
           </div>
-          <label className="field-label" htmlFor="prompt">
-            {batch ? "提示词（每行一条）" : "提示词"}
-          </label>
+          <div className="field-header prompt-header">
+            <label className="field-label" htmlFor="prompt">
+              {batch ? "提示词（每行一条）" : "提示词"}
+            </label>
+            <TemplateBar
+              text={prompt}
+              size={input.size}
+              quality={input.quality}
+              ready={ready}
+              onApply={applyTemplate}
+            />
+          </div>
           <Input.TextArea
             ref={promptRef}
             id="prompt"
@@ -482,6 +518,10 @@ function Workbench() {
             onCompositionEnd={() => setComposing(false)}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing)
+                generate();
+            }}
             autoSize={{ minRows: 7, maxRows: 16 }}
             style={{ resize: "none" }}
             placeholder="例如：白色背景上的陶瓷咖啡杯，柔和自然光，突出釉面质感，电商产品摄影"
@@ -493,27 +533,6 @@ function Workbench() {
               {prompt.length} 字 ·{" "}
               {batch ? "每行独立生成" : "文生图 / 添加参考图后转为图生图"}
             </span>
-            <UISelect
-              aria-label="套用模板"
-              placeholder="套用模板"
-              value={null}
-              className="template-select"
-              options={(templates.data || []).map((t) => ({
-                value: t.id,
-                label: t.name,
-              }))}
-              onChange={(id) => {
-                const t = templates.data?.find((t) => t.id === id);
-                if (t) {
-                  setPrompt(t.prompt);
-                  setBatch(false);
-                  change({
-                    size: t.size || "auto",
-                    quality: t.quality || "auto",
-                  });
-                }
-              }}
-            />
           </div>
           <div className="field-header">
             <label className="field-label">
@@ -576,43 +595,40 @@ function Workbench() {
                     gateways.byID.get(c.id),
                   ),
                 }))}
-                onChange={(id) => {
-                  const c = connections.data?.find((c) => c.id === id);
-                  change({ connectionID: id, model: c?.model || "" });
-                }}
+                onChange={(id) => change({ connectionID: id, model: "" })}
               />
             </div>
             <div>
               <label className="field-label" htmlFor="model">
-                模型 ID
+                模型
               </label>
-              <Input
+              <ModelSelect
                 id="model"
+                connection={selected}
                 value={input.model}
-                onChange={(e) => change({ model: e.target.value })}
-                placeholder={selected?.model || "填写模型 ID"}
+                onChange={(model) => change({ model })}
               />
             </div>
             <div>
               <label className="field-label" htmlFor="size">
                 尺寸
               </label>
-              <Input
+              <UISelect
                 id="size"
                 value={input.size}
-                onChange={(e) => change({ size: e.target.value })}
-                placeholder="auto 或 1024x1024"
+                options={withCurrent(presetSizes, input.size)}
+                onChange={(size) => change({ size })}
               />
             </div>
             <div>
               <label className="field-label" htmlFor="quality">
                 质量
               </label>
-              <Input
+              <UISelect
                 id="quality"
                 value={input.quality}
-                onChange={(e) => change({ quality: e.target.value })}
-                placeholder="auto；按模型能力填写"
+                options={withCurrent(presetQualities, input.quality)}
+                onChange={(quality) => change({ quality })}
               />
             </div>
             <div>
@@ -627,24 +643,8 @@ function Workbench() {
                 onChange={(v) => change({ count: v || 1 })}
               />
             </div>
-            <div>
-              <label className="field-label">归属项目</label>
-              <UISelect
-                aria-label="归属项目"
-                value={input.projectID || undefined}
-                allowClear
-                placeholder="不归类"
-                options={(projects.data || []).map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                }))}
-                onChange={(id) => change({ projectID: id || "" })}
-              />
-            </div>
           </div>
-          <p className="hint">
-            auto 参数不发送；其他参数请按中转站模型支持范围填写。
-          </p>
+          <p className="hint">选“自动”时不发送该参数；尺寸需由所选模型支持。</p>
           {formError && (
             <Alert
               id="generate-error"
@@ -658,7 +658,7 @@ function Workbench() {
               {draftError
                 ? "草稿未保存：" + draftError
                 : ready
-                  ? "草稿保存在本机"
+                  ? "草稿保存在本机 · Ctrl + Enter 生成"
                   : "正在读取草稿"}
             </span>
             <Button
@@ -755,7 +755,14 @@ function Workbench() {
                             {t.model} · {time(t.createdAt)}
                           </small>
                           <TaskTiming task={t} />
-                          {t.error && <p className="error-text">{t.error}</p>}
+                          {t.error &&
+                            (autoHandledNote(t) ? (
+                              <p className="hint" title={t.error}>
+                                {autoHandledNote(t)}
+                              </p>
+                            ) : (
+                              <p className="error-text">{t.error}</p>
+                            ))}
                         </div>
                       </div>
                     ))}
@@ -836,7 +843,7 @@ function Tasks() {
             rowKey="id"
             loading={q.isFetching && q.isPending}
             dataSource={q.data?.items || []}
-            scroll={{ x: 850 }}
+            scroll={{ x: 1000 }}
             pagination={{
               current: page,
               pageSize: 10,
@@ -847,16 +854,31 @@ function Tasks() {
             }}
             columns={[
               {
+                title: "图片",
+                width: 76,
+                render: (_, t) =>
+                  t.assetIDs[0] ? (
+                    <div className="task-thumb">
+                      <AssetImage id={t.assetIDs[0]} />
+                    </div>
+                  ) : (
+                    <div className="task-thumb task-thumb-empty">
+                      <PictureOutlined aria-hidden="true" />
+                    </div>
+                  ),
+              },
+              {
                 title: "提示词",
                 dataIndex: "prompt",
-                ellipsis: true,
-                width: 300,
+                ellipsis: { showTitle: false },
+                width: 290,
+                render: (_, t) => <span title={t.prompt}>{taskTitle(t)}</span>,
               },
-              { title: "模型", dataIndex: "model", width: 180 },
+              { title: "模型", dataIndex: "model", width: 130 },
               {
                 title: "状态",
                 dataIndex: "status",
-                width: 120,
+                width: 190,
                 render: (v, task) => (
                   <>
                     <Status state={v} task={task} />
@@ -872,7 +894,7 @@ function Tasks() {
               },
               {
                 title: "操作",
-                width: 310,
+                width: 250,
                 render: (_, t) => (
                   <Space wrap>
                     <Button size="small" onClick={() => setDetail(t)}>
@@ -1048,14 +1070,12 @@ function Tasks() {
 
 function Assets() {
   const downloads = useImageDownloads();
-  const [project, setProject] = useState("");
   const [detail, setDetail] = useState<Asset | null>(null);
-  const projects = useData<Project[]>(["projects"], "ListProjects");
   const pages = useInfiniteQuery({
-    queryKey: ["assets", project],
+    queryKey: ["assets"],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
-      call<Page<Asset>>("ListAssets", project, pageParam, 24),
+      call<Page<Asset>>("ListAssets", "", pageParam, 24),
     getNextPageParam: (last, all) => {
       const count = all.reduce((sum, p) => sum + p.items.length, 0);
       return count < last.total ? count : undefined;
@@ -1074,7 +1094,7 @@ function Assets() {
   const { notification } = AntApp.useApp();
   const nav = useNavigate();
   // Batch mode: clicking a card selects it. Only loaded, still-listed images count,
-  // in list order, so images moved out of the filter or removed drop out by themselves.
+  // in list order, so removed images drop out by themselves.
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const items = q.data?.items || [];
@@ -1128,22 +1148,6 @@ function Assets() {
         <div className="panel-heading">
           <h2>{q.data?.total || 0} 张本地图片</h2>
           <Space wrap>
-            <UISelect
-              aria-label="项目筛选"
-              value={project}
-              onChange={(v) => {
-                setProject(v);
-                setPicked(new Set());
-              }}
-              style={{ width: 200 }}
-              options={[
-                { value: "", label: "全部项目" },
-                ...(projects.data || []).map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                })),
-              ]}
-            />
             {!selecting && (
               <Button
                 icon={<CheckSquareOutlined aria-hidden="true" />}
@@ -1172,29 +1176,6 @@ function Assets() {
             >
               {allPicked ? "取消全选" : `全选已加载（${items.length} 张）`}
             </Button>
-            <UISelect
-              size="small"
-              aria-label="批量归类到项目"
-              placeholder="归类到项目"
-              value={null}
-              disabled={!chosen.length || actions.busy}
-              style={{ width: 160 }}
-              options={[
-                { value: "", label: "不归类" },
-                ...(projects.data || []).map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                })),
-              ]}
-              onChange={(id: string) =>
-                actions.run(
-                  () => call<number>("UpdateAssets", ids, id, false),
-                  id
-                    ? `已将 ${ids.length} 张素材归类到“${projects.data?.find((p) => p.id === id)?.name || "项目"}”`
-                    : `已将 ${ids.length} 张素材设为不归类`,
-                )
-              }
-            />
             <Button
               size="small"
               icon={<DownloadOutlined aria-hidden="true" />}
@@ -1249,7 +1230,7 @@ function Assets() {
                   <button
                     className="image-button asset-pick"
                     onClick={() => toggle(a.id)}
-                    aria-label={`选择 ${a.name}`}
+                    aria-label={`选择 ${assetLabel(a)}`}
                     aria-pressed={picked.has(a.id)}
                   >
                     <AssetImage id={a.id} />
@@ -1261,13 +1242,15 @@ function Assets() {
                   <button
                     className="image-button"
                     onClick={() => setDetail(a)}
-                    aria-label={`预览 ${a.name}`}
+                    aria-label={`预览 ${assetLabel(a)}`}
                   >
                     <AssetImage id={a.id} />
                   </button>
                 )}
                 <div className="asset-card-copy">
-                  <strong title={a.name}>{a.name}</strong>
+                  <strong title={a.name}>
+                    {a.kind === "reference" ? a.name : time(a.createdAt)}
+                  </strong>
                   <small>
                     {a.width} × {a.height} ·{" "}
                     {a.kind === "reference" ? "参考图" : "生成图片"}
@@ -1322,27 +1305,9 @@ function Assets() {
           <>
             <AssetImage id={detail.id} thumbnail={false} />
             <p>
-              {detail.name} · {detail.width} × {detail.height}
+              {assetLabel(detail)} · {detail.width} × {detail.height}
             </p>
             <Space wrap>
-              <UISelect
-                aria-label="素材归属项目"
-                value={detail.projectID || ""}
-                style={{ width: 200 }}
-                options={[
-                  { value: "", label: "不归类" },
-                  ...(projects.data || []).map((p) => ({
-                    value: p.id,
-                    label: p.name,
-                  })),
-                ]}
-                onChange={(id) =>
-                  actions.run(async () => {
-                    await call("UpdateAsset", detail.id, id, false);
-                    setDetail({ ...detail, projectID: id });
-                  }, "素材归类已保存")
-                }
-              />
               <Button
                 icon={<DownloadOutlined aria-hidden="true" />}
                 disabled={downloads.busy}
@@ -1375,214 +1340,6 @@ function Assets() {
             </Space>
           </>
         )}
-      </Modal>
-    </>
-  );
-}
-
-function Projects() {
-  const projects = useData<Project[]>(["projects"], "ListProjects");
-  const templates = useData<Template[]>(["templates"], "ListTemplates");
-  const actions = useActions();
-  const [editing, setEditing] = useState<{
-    kind: "project" | "template";
-    value: Partial<Project & Template>;
-  } | null>(null);
-  const [form] = UIForm.useForm();
-  const nav = useNavigate();
-  function open(
-    kind: "project" | "template",
-    value: Partial<Project & Template> = {},
-  ) {
-    setEditing({ kind, value });
-    form.resetFields();
-    form.setFieldsValue(value);
-  }
-  async function save() {
-    try {
-      const values = await form.validateFields();
-      const result = await actions.run(
-        () =>
-          call(editing?.kind === "project" ? "SaveProject" : "SaveTemplate", {
-            ...editing?.value,
-            ...values,
-          }),
-        "已保存",
-      );
-      if (result !== undefined) setEditing(null);
-    } catch {
-      form.scrollToField("name");
-    }
-  }
-  function close() {
-    if (form.isFieldsTouched())
-      actions.confirm(
-        "放弃未保存的修改？",
-        "关闭后这些修改不会保存。",
-        async () => setEditing(null),
-      );
-    else setEditing(null);
-  }
-  return (
-    <>
-      <Header
-        title="项目与模板"
-        sub="按项目整理图片，把常用的表达保存为可复用模板。"
-      />
-      <div className="management-grid">
-        <section className="panel">
-          <div className="panel-heading">
-            <h2>
-              <FolderOutlined aria-hidden="true" /> 项目
-            </h2>
-            <Button
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => open("project")}
-            >
-              新建项目
-            </Button>
-          </div>
-          <DataState
-            query={projects}
-            empty={!projects.data?.length}
-            emptyText="创建项目，把同一商品的图片放在一起"
-          >
-            <div className="object-list">
-              {projects.data?.map((p) => (
-                <div className="object-row" key={p.id}>
-                  <div>
-                    <strong>{p.name}</strong>
-                    <small>{time(p.createdAt)}</small>
-                  </div>
-                  <Space>
-                    <Button size="small" onClick={() => open("project", p)}>
-                      编辑
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      onClick={() =>
-                        actions.confirm(
-                          `删除项目“${p.name}”？`,
-                          "项目分类会移除，图片和生成历史仍然保留。",
-                          () => call("DeleteProject", p.id),
-                          true,
-                        )
-                      }
-                    >
-                      删除
-                    </Button>
-                  </Space>
-                </div>
-              ))}
-            </div>
-          </DataState>
-        </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <h2>
-              <FileTextOutlined aria-hidden="true" /> 提示词模板
-            </h2>
-            <Button
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => open("template")}
-            >
-              新建模板
-            </Button>
-          </div>
-          <DataState
-            query={templates}
-            empty={!templates.data?.length}
-            emptyText="保存常用提示词，减少重复输入"
-          >
-            <div className="object-list">
-              {templates.data?.map((t) => (
-                <div className="object-row" key={t.id}>
-                  <div>
-                    <strong>{t.name}</strong>
-                    <p className="line-clamp">{t.prompt}</p>
-                  </div>
-                  <Space wrap>
-                    <Button
-                      size="small"
-                      onClick={() =>
-                        actions.run(async () => {
-                          const draft = await call<GenerateInput>("GetDraft");
-                          await call("SetDraft", {
-                            ...blankDraft,
-                            ...draft,
-                            prompts: [t.prompt],
-                            size: t.size || "auto",
-                            quality: t.quality || "auto",
-                          });
-                          nav("/");
-                        })
-                      }
-                    >
-                      使用
-                    </Button>
-                    <Button size="small" onClick={() => open("template", t)}>
-                      编辑
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      onClick={() =>
-                        actions.confirm(
-                          `删除模板“${t.name}”？`,
-                          "已有任务不受影响。",
-                          () => call("DeleteTemplate", t.id),
-                          true,
-                        )
-                      }
-                    >
-                      删除
-                    </Button>
-                  </Space>
-                </div>
-              ))}
-            </div>
-          </DataState>
-        </section>
-      </div>
-      <Modal
-        title={editing?.kind === "project" ? "项目设置" : "提示词模板"}
-        open={!!editing}
-        onCancel={close}
-        onOk={save}
-        confirmLoading={actions.busy}
-        okText="保存"
-        cancelText="取消"
-      >
-        <UIForm form={form} layout="vertical" noValidate>
-          <UIForm.Item
-            name="name"
-            label="名称"
-            rules={[{ required: true, message: "请填写名称" }]}
-          >
-            <Input maxLength={100} />
-          </UIForm.Item>
-          {editing?.kind === "template" && (
-            <>
-              <UIForm.Item
-                name="prompt"
-                label="提示词"
-                rules={[{ required: true, message: "请填写提示词" }]}
-              >
-                <Input.TextArea
-                  autoSize={{ minRows: 5, maxRows: 12 }}
-                  style={{ resize: "none" }}
-                />
-              </UIForm.Item>
-              <UIForm.Item name="size" label="尺寸（可选）">
-                <Input placeholder="auto" />
-              </UIForm.Item>
-              <UIForm.Item name="quality" label="质量（可选）">
-                <Input placeholder="auto" />
-              </UIForm.Item>
-            </>
-          )}
-        </UIForm>
       </Modal>
     </>
   );
@@ -1866,7 +1623,7 @@ function Settings() {
           可以自选空文件夹作为保存位置，现有数据会一起迁移。新位置立即生效，重启后继续使用。
         </p>
         <p className="hint">
-          备份包含项目、模板、任务与图片，不包含 API Key
+          备份包含模板、任务与图片，不包含 API Key
           或界面缓存。换电脑后重新输入密钥。
         </p>
         <Space wrap>

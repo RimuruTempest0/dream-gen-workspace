@@ -135,7 +135,13 @@ type AgentRun struct {
 	LLMReconnectError string `json:"llmReconnectError,omitempty"`
 	// WaitedMS is the time the run stood waiting for the user (answers, plan
 	// review, a decision to continue); the elapsed timer leaves it out.
-	WaitedMS          int64           `json:"waitedMS,omitempty"`
+	WaitedMS int64 `json:"waitedMS,omitempty"`
+	// Progress is the current step of the analysis, shown to the customer.
+	Progress *RunProgress `json:"progress,omitempty"`
+	// Activity is the feed of what Claude Code and the LLM did. Never sent to the LLM.
+	Activity []ActivityEntry `json:"activity,omitempty"`
+	// StopReason says why the app ended this attempt itself.
+	StopReason        string          `json:"stopReason,omitempty"`
 	Input             AgentInput      `json:"input"`
 	LLMConnection     Connection      `json:"llmConnection"`
 	Skills            []SkillRecord   `json:"skills"`

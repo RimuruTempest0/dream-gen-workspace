@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -46,6 +47,7 @@ func helperService(t *testing.T) *Service {
 
 func mockShop(t *testing.T) *httptest.Server {
 	var server *httptest.Server
+	var flakySince atomic.Int64
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		passed, _ := r.Cookie("qa_passed")
@@ -64,6 +66,29 @@ func mockShop(t *testing.T) *httptest.Server {
 			io.WriteString(w, fmt.Sprintf(mockChallenge, delay))
 		case "/redirect":
 			http.Redirect(w, r, "/js", http.StatusFound)
+		case "/flaky":
+			// Direct requests always, and browser visits for 2.5 s after the first
+			// one, lose their connection like a proxy dropping it. That outlasts
+			// the browser's own immediate retry, so only the helper's later reload works.
+			direct := strings.Contains(r.UserAgent(), "ImageWorkbench")
+			if !direct {
+				flakySince.CompareAndSwap(0, time.Now().UnixMilli())
+			}
+			if direct || time.Now().UnixMilli()-flakySince.Load() < 2500 {
+				conn, _, _ := w.(http.Hijacker).Hijack()
+				conn.Close()
+				return
+			}
+			io.WriteString(w, mockProductHTML(server.URL, "重试后商品"))
+		case "/challenge-403":
+			// A verification page served with 403 (DataDome style) is a page the
+			// site answered, not a connection failure: it must not be reloaded.
+			if passed != nil {
+				io.WriteString(w, mockProductHTML(server.URL, "403 验证后商品"))
+				return
+			}
+			w.WriteHeader(403)
+			io.WriteString(w, fmt.Sprintf(mockChallenge, 2000))
 		case "/blank":
 			io.WriteString(w, `<html><body></body></html>`)
 		case "/photo.png":
@@ -146,4 +171,33 @@ func TestRealHelperBlankPageTimesOut(t *testing.T) {
 		t.Fatal("profile still locked")
 	}
 	s.browserMu.Unlock()
+}
+
+func TestRealHelperRetriesADroppedConnection(t *testing.T) {
+	s := helperService(t)
+	server := mockShop(t)
+	info, e := s.fetchProduct(context.Background(), productRun(t, s, server.URL+"/flaky").ID)
+	if e != nil || info.Title != "重试后商品" || info.Error != "" || !strings.Contains(logText(t, s), "第 1 次重新打开") {
+		t.Fatalf("%+v %v\n%s", info, e, logText(t, s))
+	}
+	// A 403 verification page passes on its own and is never reloaded.
+	info, e = s.fetchProduct(context.Background(), productRun(t, s, server.URL+"/challenge-403").ID)
+	if e != nil || info.Title != "403 验证后商品" || strings.Count(logText(t, s), "重新打开") != 1 {
+		t.Fatalf("%+v %v\n%s", info, e, logText(t, s))
+	}
+}
+
+func TestRealHelperReportsAnUnreachableSite(t *testing.T) {
+	s := helperService(t)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	link := closed.URL + "/listing"
+	closed.Close()
+	started := time.Now()
+	info, e := s.fetchProduct(context.Background(), productRun(t, s, link).ID)
+	if e != nil || !strings.Contains(info.Error, "浏览器也打不开商品页（网络连接失败，已重试 3 次）") || strings.Contains(info.Error, "不受支持") {
+		t.Fatalf("%+v %v\n%s", info, e, logText(t, s))
+	}
+	if time.Since(started) > 60*time.Second {
+		t.Fatal("unreachable site took too long", time.Since(started))
+	}
 }

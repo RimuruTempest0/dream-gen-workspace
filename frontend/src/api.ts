@@ -67,6 +67,12 @@ export type Task = {
   routeReason?: string;
   autoRetryOf?: string;
   autoRetriedAs?: string;
+  autoDownloads?: number;
+  downloadRetryAt?: string;
+  policyRetryOf?: string;
+  policyRetriedAs?: string;
+  policyStep?: number;
+  rewording?: boolean;
   diagnostic?: {
     stage: string;
     startedAt: string;

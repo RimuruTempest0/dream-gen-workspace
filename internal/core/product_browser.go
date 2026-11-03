@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,6 +80,7 @@ type browserEvent struct {
 	Data      string `json:"data"`
 	Error     string `json:"error"`
 	ElapsedMs int64  `json:"elapsedMs"`
+	Attempt   int    `json:"attempt"`
 }
 
 type browserSession struct {
@@ -238,6 +240,8 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 				return nil, "", nil, failure
 			}
 			switch ev.Event {
+			case "retry":
+				_ = s.store.appendLog("warn", "agent", id, fmt.Sprintf("浏览器打不开商品页（网络连接失败），稍后第 %d 次重新打开", ev.Attempt))
 			case "verify":
 				_ = s.store.appendLog("warn", "agent", id, "商品页出现人机验证，已弹出验证窗口")
 				// The page shows live waiting seconds from this event's time.
@@ -266,16 +270,23 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 func (s *Service) productFromBrowser(ctx context.Context, id, target, reason string) (ProductInfo, []string, *browserSession, error) {
 	_ = s.store.appendLog("info", "agent", id, "商品页直连受阻（"+reason+"），改用浏览器读取："+target)
 	started := time.Now()
+	s.setProgress(id, func(p *RunProgress) { p.ProductVia = "browser" })
 	page, finalURL, b, e := s.readProductWithBrowser(ctx, id, target)
+	s.setProgress(id, func(p *RunProgress) { p.ProductBrowserMS = time.Since(started).Milliseconds() })
 	if e == nil {
-		if s.allowLocalProduct {
+		if u, err := url.Parse(finalURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			// The browser's own error page: the site could not be reached.
+			e = errors.New("浏览器也打不开商品页（网络连接失败）")
+		} else if s.allowLocalProduct {
 			e = validateProductURL(finalURL)
 		} else {
 			e = publicProductURL(ctx, finalURL)
 		}
+		if errors.Is(e, errProductTarget) {
+			e = fmt.Errorf("页面跳转到不受支持的地址：%w", e)
+		}
 		if e != nil {
 			b.Close()
-			e = fmt.Errorf("页面跳转到不受支持的地址：%w", e)
 		}
 	}
 	var info ProductInfo
@@ -410,7 +421,7 @@ func browserFallbackReason(ctx context.Context, page []byte, info ProductInfo, e
 	case errors.Is(e, errProductTarget), errors.Is(e, errProductTooLarge):
 		return ""
 	case e != nil:
-		return "直连请求失败"
+		return "请求失败"
 	case looksLikeChallenge(page), challengeInfo(info):
 		return "返回人机验证页"
 	case info.Error != "":

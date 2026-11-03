@@ -82,6 +82,9 @@ export type AgentRun = {
   llmReconnectError?: string;
   // Time spent waiting for the user's answers; the timer leaves it out.
   waitedMS?: number;
+  progress?: RunProgress;
+  activity?: ActivityEntry[];
+  stopReason?: string;
   input: AgentInput;
   llmConnection: Connection;
   skills: SkillRecord[];
@@ -93,7 +96,40 @@ export type AgentRun = {
   submittedRevision: number;
 };
 export type AgentPage = { items: AgentRun[]; total: number };
+export type RunProgress = {
+  step: RunStep;
+  stepStartedAt: string;
+  visited: RunStep[];
+  productVia?: "direct" | "browser";
+  productBrowserMS?: number;
+  imagesFound?: number;
+  imagesSaved?: number;
+  referencesSeen?: number;
+  planWritten?: number;
+  agentVersion?: string;
+  llmRequests?: number;
+  contextTokens?: number;
+  outputTokens?: number;
+  lineNote?: string;
+  replyThinking?: boolean;
+  replyActive?: boolean;
+  replyChars?: number;
+  replyLastAt?: string;
+};
+export type ActivityEntry = {
+  at: string;
+  kind: "agent" | "tool" | "llm" | "warn";
+  text: string;
+};
+export type RunStep =
+  | "prepare"
+  | "product"
+  | "images"
+  | "references"
+  | "plan"
+  | "submit";
 export type SmartProgress = {
+  step?: RunStep;
   runID: string;
   state: "" | "analyzing" | "needs_input" | "generating" | "paused";
   done: number;

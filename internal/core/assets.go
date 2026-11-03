@@ -141,16 +141,20 @@ func (s *Service) ImportImage(name, data string) (Asset, error) {
 }
 func (s *Service) ReadAsset(id string, thumbnail bool) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	var a Asset
-	if e := s.store.Get("asset", id, &a); e != nil {
+	e := s.store.Get("asset", id, &a)
+	root := s.store.Root
+	s.mu.Unlock()
+	if e != nil {
 		return "", e
 	}
 	path := a.Path
 	if thumbnail {
 		path = a.Thumbnail
 	}
-	b, e := readOwned(s.store.Root, path)
+	// Read and encode outside the lock: a large original must not hold up the queue
+	// or every other screen.
+	b, e := readOwned(root, path)
 	if e != nil {
 		return "", e
 	}

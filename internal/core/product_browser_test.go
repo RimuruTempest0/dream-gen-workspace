@@ -60,6 +60,9 @@ func TestFakeProductBrowser(t *testing.T) {
 		os.Exit(1)
 	case "private":
 		page("http://127.0.0.1/private")
+	case "errorpage":
+		// WebView2's own page when the site cannot be reached (old helpers sent it on).
+		emit(map[string]any{"event": "page", "url": "chrome-error://chromewebdata/", "html": "<html><body>无法访问此页面 ERR_CONNECTION_RESET</body></html>"})
 	case "crash":
 		os.Exit(3)
 	case "hang":
@@ -374,5 +377,47 @@ func TestBlockPageNeverBecomesProductData(t *testing.T) {
 	}
 	if info.Title != "" || info.Description != "" || len(info.ReferenceIDs) != 0 {
 		t.Fatal("block page kept as product data", info)
+	}
+}
+
+func TestBrowserErrorPageIsANetworkFailure(t *testing.T) {
+	server := productServer(t)
+	s := fakeBrowserService(t, "errorpage", "")
+	info, e := s.fetchProduct(context.Background(), productRun(t, s, server.URL+"/listing").ID)
+	if e != nil || !strings.Contains(info.Error, "浏览器也打不开商品页") || strings.Contains(info.Error, "不受支持") || !strings.Contains(info.Error, "直连返回 HTTP 403") {
+		t.Fatal(info.Error, e)
+	}
+}
+
+func TestUnreadablePageUsesRecentReadingOfSameLink(t *testing.T) {
+	server := productServer(t)
+	s := fakeBrowserService(t, "errorpage", "")
+	link := server.URL + "/listing"
+	kept, e := s.ImportImage("kept.png", base64.StdEncoding.EncodeToString(tinyPNG()))
+	if e != nil {
+		t.Fatal(e)
+	}
+	put := func(age time.Duration, p ProductInfo) {
+		r := AgentRun{ID: NewID(), Input: AgentInput{ProductURL: link}, CreatedAt: time.Now().Add(-age).UTC().Format(time.RFC3339Nano), Product: p}
+		if e := s.store.Put("agent_run", r.ID, r); e != nil {
+			t.Fatal(e)
+		}
+	}
+	put(10*24*time.Hour, ProductInfo{SourceURL: link, Title: "太旧的读取", Description: "旧描述"})
+	put(2*time.Hour, ProductInfo{SourceURL: link, Title: "上次读取的商品", Description: "上次读到的完整描述", ReferenceIDs: []string{kept.ID, "deleted-asset"}, ImageSources: map[string]string{"https://img/a.png": kept.ID, "https://img/b.png": "deleted-asset"}})
+	put(time.Hour, ProductInfo{SourceURL: link, Error: "商品页无法读取（直连请求失败）"})
+	r := productRun(t, s, link)
+	info, e := s.fetchProduct(context.Background(), r.ID)
+	if e != nil || info.Error != "" || info.Title != "上次读取的商品" || len(info.ReferenceIDs) != 1 || info.ReferenceIDs[0] != kept.ID || len(info.ImageSources) != 1 {
+		t.Fatalf("recent reading not used: %+v %v", info, e)
+	}
+	saved, _ := s.GetAgentRun(r.ID)
+	if saved.Product.Title != "上次读取的商品" || saved.Progress == nil || saved.Progress.ImagesSaved != 1 || !strings.Contains(logText(t, s), "沿用") {
+		t.Fatalf("fallback not saved or logged: %+v", saved.Progress)
+	}
+	// Another link has no earlier reading: the upload hint stays.
+	other := productRun(t, s, server.URL+"/other")
+	if info, _ := s.fetchProduct(context.Background(), other.ID); !strings.Contains(info.Error, "请上传图片或粘贴商品描述") {
+		t.Fatal("unrelated reading reused", info)
 	}
 }

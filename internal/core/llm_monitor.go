@@ -14,7 +14,7 @@ import (
 type LLMCall struct {
 	ID             string `json:"id"`
 	At             string `json:"at"`
-	Kind           string `json:"kind"` // analysis, test
+	Kind           string `json:"kind"` // analysis, test, rewrite (a prompt the image model refused)
 	RunID          string `json:"runID,omitempty"`
 	ConnectionID   string `json:"connectionID"`
 	ConnectionName string `json:"connectionName"`
@@ -490,8 +490,11 @@ func (s *Service) ExportLLMCalls(q MonitorQuery, path string) (int, error) {
 			continue
 		}
 		kind := "智能生图分析"
-		if c.Kind == "test" {
+		switch c.Kind {
+		case "test":
 			kind = "能力验证"
+		case "rewrite":
+			kind = "改写被拒提示词"
 		}
 		status := ""
 		if c.HTTPStatus != 0 {

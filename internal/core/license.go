@@ -197,8 +197,7 @@ func (s *Service) setLicenseGatewaysLocked(ids map[string]string) error {
 			}
 		}
 	}
-	old := s.gatewaySettingsLocked()
-	g := GatewaySettings{PrimaryID: ids["image-1"], BackupIDs: []string{}, AutoReroute: true, AutoRegenerate524: old.AutoRegenerate524 && s.lic.mode == "active"}
+	g := GatewaySettings{PrimaryID: ids["image-1"], BackupIDs: []string{}, AutoReroute: true}
 	if s.lic.mode == "active" {
 		for _, slot := range s.lic.profile.ImageBackups {
 			if id := ids[slot]; id != "" {

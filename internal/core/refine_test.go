@@ -169,7 +169,7 @@ func TestBuiltinSkillUpgradeKeepsUserEdits(t *testing.T) {
 	var suite, embroidery SkillRecord
 	s.store.Get("skill", "etsy-suite", &suite)
 	s.store.Get("skill", "embroidery-rules", &embroidery)
-	if !strings.Contains(suite.Content, "容易画坏的图") || !strings.Contains(embroidery.Content, "穿着者左袖") {
+	if !strings.Contains(suite.Content, "容易画坏的图") || !strings.Contains(embroidery.Content, "同一事实只定义一次") {
 		t.Fatal("new installs miss current rules")
 	}
 	for _, b := range builtinSkills {

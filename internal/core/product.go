@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -377,6 +378,12 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	}
 	// A run with images still missing reads the page again on continue, keeping saved images.
 	if r.Product.SourceURL != "" && r.Product.Error == "" && r.Product.ImageNote == "" {
+		s.setProgress(id, func(p *RunProgress) {
+			p.visit(stepProduct)
+			p.visit(stepImages)
+			p.ImagesFound, p.ImagesSaved = len(r.Product.ReferenceIDs), len(r.Product.ReferenceIDs)
+			p.ProductDone = true
+		})
 		return r.Product, nil
 	}
 	if r.Input.ProductURL == "" {
@@ -384,7 +391,12 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	}
 	// Runs saved before 0.6.14 may hold the link with a trailing "】" or tracking parameters.
 	target := cleanProductURL(r.Input.ProductURL)
-	s.updateAgent(id, "提取商品链接", nil)
+	s.updateAgent(id, "提取商品链接", func(run *AgentRun) error {
+		p := progressOf(run)
+		p.enter(stepProduct)
+		p.ProductVia = "direct"
+		return nil
+	})
 	client := productClient(ctx, s.allowLocalProduct)
 	data, e := getPublicBytes(ctx, client, target, 4<<20, s.allowLocalProduct)
 	info := ProductInfo{SourceURL: target, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
@@ -403,7 +415,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			e = ctx.Err()
 		} else if e != nil || reason == "返回人机验证页" {
 			// The direct page is unusable; the permanent fallback is uploaded images or pasted text.
-			e = fmt.Errorf("商品页无法读取（直连%s；浏览器：%v）；请上传图片或粘贴商品描述", reason, be)
+			e = fmt.Errorf("商品页无法读取（%s；浏览器：%v）；请上传图片或粘贴商品描述", directLabel(reason), be)
 		} else {
 			info.Error = cutProductText(info.Error+"（浏览器读取失败："+be.Error()+"）", 1500)
 		}
@@ -422,8 +434,32 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 		// Discard anything parsed from a blocked or challenge page.
 		info = ProductInfo{SourceURL: target, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
 		info.Error = cutProductText(e.Error(), 1500)
+		// A page that read fine in an earlier run but not now (usually a passing
+		// network or proxy problem) is not asked for again: that run's product
+		// data and saved images are used.
+		if cached, at, ok := s.recentProduct(id, target); ok && ctx.Err() == nil {
+			for _, ref := range r.Product.ReferenceIDs {
+				if !slices.Contains(cached.ReferenceIDs, ref) {
+					cached.ReferenceIDs = append(cached.ReferenceIDs, ref)
+				}
+			}
+			info = cached
+			_ = s.store.appendLog("warn", "agent", id, fmt.Sprintf("商品页这次没打开（%s），沿用 %s 读取的同一链接商品资料", cutProductText(e.Error(), 300), localTime(at)))
+			s.addActivity(id, "warn", fmt.Sprintf("商品页这次没打开，已沿用 %s 读取的同一商品资料和 %d 张商品图", localTime(at), len(info.ReferenceIDs)))
+			s.setProgress(id, func(p *RunProgress) {
+				p.visit(stepImages)
+				p.ImagesFound, p.ImagesSaved = len(info.ReferenceIDs), len(info.ReferenceIDs)
+			})
+		}
 	}
 	if e == nil {
+		found := min(len(images), 20)
+		s.setProgress(id, func(p *RunProgress) {
+			if found > 0 {
+				p.enter(stepImages)
+			}
+			p.ImagesFound, p.ImagesSaved = found, min(len(info.ReferenceIDs), found)
+		})
 		failed, firstFailure := 0, ""
 		defer func() {
 			if failed > 0 {
@@ -467,13 +503,67 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			info.ReferenceIDs = append(info.ReferenceIDs, asset.ID)
 			info.ImageSources[rawURL] = asset.ID
 			// Persist after every download so cancellation does not discard usable images.
-			s.updateAgent(id, "保存商品参考图", func(run *AgentRun) error { run.Product = info; return nil })
+			s.updateAgent(id, "保存商品参考图", func(run *AgentRun) error {
+				run.Product = info
+				progressOf(run).ImagesSaved = len(info.ReferenceIDs)
+				return nil
+			})
 		}
 	}
 	if len(info.ReferenceIDs) == 0 && len(r.Product.ReferenceIDs) > 0 {
 		info.ReferenceIDs = r.Product.ReferenceIDs
 	}
-	s.updateAgent(id, "商品资料已提取", func(run *AgentRun) error { run.Product = info; return nil })
+	s.updateAgent(id, "商品资料已提取", func(run *AgentRun) error {
+		run.Product = info
+		progressOf(run).ProductDone = true
+		return nil
+	})
 	// Extraction failures are information for the Agent, not a reason to invent product facts.
 	return info, nil
+}
+
+// directLabel names why the direct request did not give a usable page.
+func directLabel(reason string) string {
+	if strings.HasPrefix(reason, "HTTP ") {
+		return "直连返回 " + reason
+	}
+	return "直连" + reason
+}
+
+// productCacheAge is how old another run's reading of the same link may be to
+// stand in for a page that cannot be opened now.
+const productCacheAge = 7 * 24 * time.Hour
+
+// recentProduct returns the newest successful reading of the same product link
+// by another run, keeping only images that are still saved, and when it was read.
+func (s *Service) recentProduct(id, target string) (ProductInfo, string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	runs, e := List[AgentRun](s.store, "agent_run")
+	if e != nil {
+		return ProductInfo{}, "", false
+	}
+	for _, r := range runs { // newest first
+		p := r.Product
+		at, err := time.Parse(time.RFC3339Nano, r.CreatedAt)
+		if r.ID == id || err != nil || time.Since(at) > productCacheAge || p.Error != "" || challengeInfo(p) ||
+			cleanProductURL(p.SourceURL) != target || strings.TrimSpace(p.Title+p.Description) == "" {
+			continue
+		}
+		refs, sources := []string{}, map[string]string{}
+		for _, ref := range p.ReferenceIDs {
+			var a Asset
+			if s.store.Get("asset", ref, &a) == nil {
+				refs = append(refs, ref)
+			}
+		}
+		for src, ref := range p.ImageSources {
+			if slices.Contains(refs, ref) {
+				sources[src] = ref
+			}
+		}
+		p.ReferenceIDs, p.ImageSources, p.ImageNote, p.SourceURL = refs, sources, "", target
+		return p, r.CreatedAt, true
+	}
+	return ProductInfo{}, "", false
 }

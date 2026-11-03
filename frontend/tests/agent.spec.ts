@@ -12,6 +12,8 @@ import { inflateSync } from "node:zlib";
 import AxeBuilder from "@axe-core/playwright";
 
 let browser: Browser, page: Page, server: http.Server, baseURL: string;
+// While set, the mock holds its reply that saves the plan, to look at the steps.
+let planGate: Promise<void> | null = null;
 let imageRequests = 0,
   modelRequests = 0,
   analysisRequests = 0;
@@ -109,6 +111,10 @@ let emptyImageAccount = false;
 let cutStreamOnce = false;
 let returnImageURL = false;
 let resultLinkUnavailable = false;
+// The next image requests are refused by the image model's content check.
+let refuseImages = 0,
+  refusedRequests = 0,
+  rewriteRequests = 0;
 let shopPhotoRequests = 0;
 function shopPage(req: http.IncomingMessage, res: http.ServerResponse) {
   res.setHeader("content-type", "text/html; charset=utf-8");
@@ -174,6 +180,21 @@ test.beforeAll(async () => {
       res.end(JSON.stringify({ error: { message: "insufficient balance" } }));
       return;
     }
+    if (req.url?.includes("/images/") && refuseImages > 0) {
+      refuseImages--;
+      refusedRequests++;
+      req.resume();
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message:
+              "非常抱歉，该提示可能违反了我们的内容政策。如果你认为此判断有误，请重试或修改提示语。",
+          },
+        }),
+      );
+      return;
+    }
     if (req.url?.includes("/images/") && rejectImageKey) {
       req.resume();
       res.writeHead(401, { "content-type": "application/json" });
@@ -213,6 +234,25 @@ test.beforeAll(async () => {
           res.setHeader("content-type", "application/json");
           res.end(JSON.stringify({ content: [{ type: "text", text: "OK" }] }));
         }
+        return;
+      }
+      if (
+        typeof first === "string" &&
+        first.startsWith("图片模型的内容安全审核拒绝了")
+      ) {
+        rewriteRequests++;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            content: [
+              {
+                type: "text",
+                text: "改写后：" + first.split("原提示词：\n")[1],
+              },
+            ],
+            usage: { input_tokens: 400, output_tokens: 200 },
+          }),
+        );
         return;
       }
       if (Array.isArray(first) && first[0]?.type === "image") {
@@ -287,7 +327,9 @@ test.beforeAll(async () => {
       const marker = text.indexOf("以下为规范化需求上下文");
       const ctx = firstJSON(text.slice(text.indexOf("{", marker)));
       const answered = ctx.questions?.some((q: any) => q.answer);
-      const key = ctx.id + ":" + answered;
+      // An answer that does not settle the question: it is asked again.
+      const vague = ctx.questions?.some((q: any) => q.answer === "上传了");
+      const key = ctx.id + ":" + answered + ":" + vague;
       const step = flows.get(key) || 0;
       if (cutStreamOnce && answered) {
         cutStreamOnce = false;
@@ -305,6 +347,24 @@ test.beforeAll(async () => {
         input,
       });
       let block: any;
+      if (vague) {
+        block =
+          step === 0
+            ? tool("mcp__workbench__get_run_context", {})
+            : step === 1
+              ? tool("mcp__workbench__request_information", {
+                  questions: [
+                    {
+                      id: "p004",
+                      label: "这个回答没有说明规则，请写出 P004 机绣规则",
+                      required: true,
+                    },
+                  ],
+                })
+              : { type: "text", text: "请写出 P004 机绣规则。" };
+        reply(block, `tool_${step}`);
+        return;
+      }
       if (ctx.input.productURL?.includes("/qa-shop/")) {
         block =
           step === 0
@@ -323,8 +383,6 @@ test.beforeAll(async () => {
       }
       if (step === 0) block = tool("mcp__workbench__get_run_context", {});
       else if (!answered && step === 1)
-        block = tool("Skill", { skill: "listing-suite" });
-      else if (!answered && step === 2)
         block = tool("mcp__workbench__request_information", {
           questions: [
             {
@@ -362,6 +420,10 @@ test.beforeAll(async () => {
             ? "已保存12张方案，等待确认生图。"
             : "请补充 P004 规则。",
         };
+      if (answered && step === 2 && planGate) {
+        planGate.then(() => reply(block, `tool_${step}`));
+        return;
+      }
       reply(block, `tool_${step}`);
     });
   });
@@ -548,6 +610,35 @@ test("native agent requests necessary materials and automatically generates twel
   await expect(page.getByLabel("完整制作指令", { exact: true })).toHaveValue(
     /Etsy/,
   );
+  // The asset picker shows a thumbnail beside each name; hovering it enlarges it.
+  await page.getByRole("combobox", { name: "从素材库选择参考图" }).click();
+  const pickerOption = page
+    .locator(".asset-option")
+    .filter({ hasText: "qa-product.png" });
+  await expect(pickerOption.locator(".asset-option-thumb img")).toBeVisible();
+  await pickerOption.locator(".asset-option-thumb").hover();
+  const enlarged = page.locator(".asset-option-preview img");
+  await expect(enlarged).toBeVisible();
+  await expect
+    .poll(async () => (await enlarged.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(200);
+  // It opens beside the list and leaves the file names readable.
+  const row = (await pickerOption.boundingBox())!;
+  await expect
+    .poll(async () => (await enlarged.boundingBox())!.x)
+    .toBeGreaterThanOrEqual(row.x + row.width);
+  await page.screenshot({
+    path: path.resolve("../docs/reference-picker-0.6.21.png"),
+  });
+  await page.mouse.move(0, 0);
+  await expect(enlarged).toBeHidden();
+  // Closing the list with the cursor still on a thumbnail closes the preview too.
+  await pickerOption.locator(".asset-option-thumb").hover();
+  await expect(enlarged).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".asset-option")).toBeHidden();
+  await expect(enlarged).toBeHidden();
+  await page.mouse.move(0, 0);
   await page.getByRole("button", { name: "开始生成套图", exact: true }).click();
   await expect(page.getByText("等待补充", { exact: true }).first()).toBeVisible(
     { timeout: 30000 },
@@ -559,15 +650,72 @@ test("native agent requests necessary materials and automatically generates twel
   const paused = await timer.textContent();
   await page.waitForTimeout(2200);
   await expect(timer).toHaveText(paused!);
+  // An answer that does not settle it: the question comes back empty, not a failure.
+  await page.getByLabel("请补充 P004 真实客户成品机绣规则").fill("上传了");
   await page
-    .getByLabel("请补充 P004 真实客户成品机绣规则")
-    .fill(
-      "P004：真实客户机绣，小金毛头像在 MM 中间，袖口黑色脚掌，按参考图比例。",
-    );
+    .getByRole("button", { name: "补充并继续制作", exact: true })
+    .click();
+  let releasePlan = () => {};
+  planGate = new Promise((resolve) => (releasePlan = resolve));
+  const askedAgain = page.getByLabel(
+    "这个回答没有说明规则，请写出 P004 机绣规则",
+  );
+  await expect(askedAgain).toBeVisible({ timeout: 30000 });
+  await expect(askedAgain).toHaveValue("");
+  await expect(
+    page.getByText("等待补充", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText(/Agent 未保存套图方案/)).toHaveCount(0);
+  await askedAgain.fill(
+    "P004：真实客户机绣，小金毛头像在 MM 中间，袖口黑色脚掌，按参考图比例。",
+  );
   cutStreamOnce = true;
   await page
     .getByRole("button", { name: "补充并继续制作", exact: true })
     .click();
+  // While it works, the page says which step it is on, not just "处理中".
+  const steps = page.getByRole("list", { name: "制作步骤" });
+  await expect(steps.locator('[aria-current="step"]')).toContainText(
+    "分析资料和参考图",
+    { timeout: 30000 },
+  );
+  await expect(steps).toBeInViewport();
+  await expect(steps).toContainText("已查看 1 张参考图");
+  await expect(steps).toContainText(/本步已用时 \d+ 秒/);
+  await expect(page.getByText(/等待模型回复（已等 \d+ 秒）/)).toBeVisible();
+  await expect(
+    page.locator(".ant-tag").filter({ hasText: "分析资料和参考图" }),
+  ).toBeVisible();
+  await expect(page.getByText("处理中", { exact: true })).toHaveCount(0);
+  await expect(page.locator("#smart-progress-status")).toContainText(
+    "智能生图正在分析：分析资料和参考图",
+  );
+  // The activity feed shows what Claude Code and the LLM did, not the prompts.
+  // It stays folded until opened.
+  const feed = page.getByRole("log", { name: "运行详情" });
+  const feedToggle = page.locator(".run-activity > summary");
+  await expect(feedToggle).toContainText(/运行详情（\d+ 条）/);
+  await expect(feed).toBeHidden();
+  await feedToggle.click();
+  await expect(feed).toBeVisible();
+  await expect(feed).toContainText("读取制作需求");
+  await expect(feed).toContainText("查看参考图");
+  await expect(feed).toContainText(/LLM 请求 #\d+ 完成/);
+  await expect(feed).not.toContainText("P004：真实客户机绣");
+  await expect(page.locator(".run-activity-facts")).toContainText(
+    "次 LLM 请求",
+  );
+  await page.screenshot({
+    path: path.resolve("../docs/run-activity-0.6.24.png"),
+  });
+  // Coming back, the run details are still there, folded again.
+  await page.reload();
+  await page.waitForFunction(() => !!window.go?.main?.App);
+  await expect(steps).toBeVisible();
+  await expect(feedToggle).toBeVisible();
+  await expect(feed).toBeHidden();
+  releasePlan();
+  planGate = null;
   await expect(
     page.getByRole("heading", { name: "分析与规划", exact: true }),
   ).toHaveCount(0);
@@ -646,6 +794,12 @@ test("refine a finished image keeps the previous version and stays off the workb
   await first.getByRole("button", { name: "优化第 1 张图片" }).click();
   const dialog = page.getByRole("dialog", { name: "优化这张图片" });
   await expect(dialog.getByText("可能产生费用")).toBeVisible();
+  await expect(dialog.getByText(/右侧女性脱掉米白色针织衫/)).toBeVisible();
+  // Let the dialog's opening animation finish so the picture is usable.
+  await page.waitForTimeout(500);
+  await page.screenshot({
+    path: path.resolve("../docs/refine-hint-0.6.21.png"),
+  });
   await expect(
     dialog.getByRole("button", { name: "开始优化", exact: true }),
   ).toBeDisabled();
@@ -705,7 +859,7 @@ test("set images open in a large viewer with keyboard and button navigation", as
   await expect(second).toHaveCount(0);
 });
 
-test("failed result downloads show the cause and bulk retry never regenerates", async () => {
+test("failed result downloads are retried automatically, then bulk retry never regenerates", async () => {
   returnImageURL = true;
   resultLinkUnavailable = true;
   try {
@@ -718,17 +872,20 @@ test("failed result downloads show the cause and bulk retry never regenerates", 
       await dialog
         .getByRole("button", { name: "开始优化", exact: true })
         .click();
-      await expect(
-        page
-          .locator(".agent-result")
-          .nth(slot - 1)
-          .getByText("下载失败", { exact: true }),
-      ).toBeVisible({ timeout: 20000 });
+      const card = page.locator(".agent-result").nth(slot - 1);
+      // First the automatic re-download waits quietly, without a warning.
+      if (slot === 3)
+        await expect(
+          card.getByText(/秒后自动补下载（不会重新生图）/),
+        ).toBeVisible({ timeout: 20000 });
+      await expect(card.getByText("下载失败", { exact: true })).toBeVisible({
+        timeout: 30000,
+      });
     }
     const failed = page.locator(".agent-result").nth(2);
     await expect(
       failed.getByText(
-        "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。",
+        "已收到图片结果，自动补下载后仍未保存。可点“补下载”再试，不会重新生图。",
       ),
     ).toBeVisible();
     await failed.getByText("查看详细错误", { exact: true }).click();
@@ -856,6 +1013,39 @@ test("an empty relay account is reported as low balance, not as a bad key", asyn
   });
 });
 
+test("an image the content check refuses is resent, then reworded by the LLM, without a warning", async () => {
+  refuseImages = 2;
+  const before = imageRequests;
+  const fifth = page.locator(".agent-result").nth(4);
+  await fifth.getByRole("button", { name: "优化第 5 张图片" }).click();
+  const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+  await dialog.getByLabel("想怎么调整？").fill("背景换成圣诞客厅");
+  await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
+  await expect(fifth.getByText("内容审核拒绝后已改写措辞自动重发")).toBeVisible(
+    { timeout: 30000 },
+  );
+  await expect(
+    fifth.getByRole("button", { name: "优化第 5 张图片" }),
+  ).toBeVisible({ timeout: 20000 });
+  expect(refusedRequests).toBe(2);
+  expect(rewriteRequests).toBe(1);
+  expect(imageRequests).toBe(before + 1);
+  // Nothing to act on: no warning, no bulk retry.
+  await expect(fifth.locator(".ant-alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /重新生成全部失败图片/ }),
+  ).toHaveCount(0);
+  const tasks = await go<{ items: any[] }>("ListTasks", "", 0, 5);
+  const [done, refused] = tasks.items;
+  expect(done.policyStep).toBe(2);
+  expect(done.prompt).toContain("改写后：");
+  expect(refused.policyRetriedAs).toBe(done.id);
+  expect(refused.error).toContain("生图模型的内容审核拒绝了这张图");
+  await expect(page.locator(".nav-progress")).toHaveCount(0, {
+    timeout: 20000,
+  });
+});
+
 test("blocked product link waits for browser verification and continues", async () => {
   test.setTimeout(120000);
   const before = imageRequests;
@@ -886,6 +1076,9 @@ test("blocked product link waits for browser verification and continues", async 
   await expect(waiting).toBeVisible();
   await expect(page.locator("#smart-progress-status")).toContainText(
     "智能生图正在分析",
+  );
+  await expect(page.getByRole("list", { name: "制作步骤" })).toContainText(
+    "网站拦截，改用浏览器读取",
   );
   await page.getByRole("link", { name: "素材库", exact: true }).click();
   await page.getByRole("link", { name: "智能生图", exact: true }).click();

@@ -1,5 +1,21 @@
 export namespace core {
 	
+	export class ActivityEntry {
+	    at: string;
+	    kind: string;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ActivityEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = source["at"];
+	        this.kind = source["kind"];
+	        this.text = source["text"];
+	    }
+	}
 	export class AgentContinuation {
 	    runID: string;
 	    instruction: string;
@@ -244,6 +260,54 @@ export namespace core {
 		    return a;
 		}
 	}
+	export class RunProgress {
+	    step: string;
+	    stepStartedAt: string;
+	    visited: string[];
+	    productVia?: string;
+	    productBrowserMS?: number;
+	    imagesFound?: number;
+	    imagesSaved?: number;
+	    referencesSeen?: number;
+	    planWritten?: number;
+	    agentVersion?: string;
+	    llmRequests?: number;
+	    contextTokens?: number;
+	    outputTokens?: number;
+	    lineNote?: string;
+	    productDone?: boolean;
+	    replyThinking?: boolean;
+	    replyActive?: boolean;
+	    replyChars?: number;
+	    replyLastAt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.step = source["step"];
+	        this.stepStartedAt = source["stepStartedAt"];
+	        this.visited = source["visited"];
+	        this.productVia = source["productVia"];
+	        this.productBrowserMS = source["productBrowserMS"];
+	        this.imagesFound = source["imagesFound"];
+	        this.imagesSaved = source["imagesSaved"];
+	        this.referencesSeen = source["referencesSeen"];
+	        this.planWritten = source["planWritten"];
+	        this.agentVersion = source["agentVersion"];
+	        this.llmRequests = source["llmRequests"];
+	        this.contextTokens = source["contextTokens"];
+	        this.outputTokens = source["outputTokens"];
+	        this.lineNote = source["lineNote"];
+	        this.productDone = source["productDone"];
+	        this.replyThinking = source["replyThinking"];
+	        this.replyActive = source["replyActive"];
+	        this.replyChars = source["replyChars"];
+	        this.replyLastAt = source["replyLastAt"];
+	    }
+	}
 	export class LLMCapabilities {
 	    model: string;
 	    text: boolean;
@@ -341,6 +405,9 @@ export namespace core {
 	    llmReconnects?: number;
 	    llmReconnectError?: string;
 	    waitedMS?: number;
+	    progress?: RunProgress;
+	    activity?: ActivityEntry[];
+	    stopReason?: string;
 	    input: AgentInput;
 	    llmConnection: Connection;
 	    skills: SkillRecord[];
@@ -375,6 +442,9 @@ export namespace core {
 	        this.llmReconnects = source["llmReconnects"];
 	        this.llmReconnectError = source["llmReconnectError"];
 	        this.waitedMS = source["waitedMS"];
+	        this.progress = this.convertValues(source["progress"], RunProgress);
+	        this.activity = this.convertValues(source["activity"], ActivityEntry);
+	        this.stopReason = source["stopReason"];
 	        this.input = this.convertValues(source["input"], AgentInput);
 	        this.llmConnection = this.convertValues(source["llmConnection"], Connection);
 	        this.skills = this.convertValues(source["skills"], SkillRecord);
@@ -747,7 +817,6 @@ export namespace core {
 	    primaryID: string;
 	    backupIDs: string[];
 	    autoReroute: boolean;
-	    autoRegenerate524: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new GatewaySettings(source);
@@ -758,7 +827,6 @@ export namespace core {
 	        this.primaryID = source["primaryID"];
 	        this.backupIDs = source["backupIDs"];
 	        this.autoReroute = source["autoReroute"];
-	        this.autoRegenerate524 = source["autoRegenerate524"];
 	    }
 	}
 	
@@ -1173,6 +1241,12 @@ export namespace core {
 	    routeReason?: string;
 	    autoRetryOf?: string;
 	    autoRetriedAs?: string;
+	    autoDownloads?: number;
+	    downloadRetryAt?: string;
+	    policyRetryOf?: string;
+	    policyRetriedAs?: string;
+	    policyStep?: number;
+	    rewording?: boolean;
 	    trial?: boolean;
 	    sample?: boolean;
 	    sampleItem?: string;
@@ -1211,6 +1285,12 @@ export namespace core {
 	        this.routeReason = source["routeReason"];
 	        this.autoRetryOf = source["autoRetryOf"];
 	        this.autoRetriedAs = source["autoRetriedAs"];
+	        this.autoDownloads = source["autoDownloads"];
+	        this.downloadRetryAt = source["downloadRetryAt"];
+	        this.policyRetryOf = source["policyRetryOf"];
+	        this.policyRetriedAs = source["policyRetriedAs"];
+	        this.policyStep = source["policyStep"];
+	        this.rewording = source["rewording"];
 	        this.trial = source["trial"];
 	        this.sample = source["sample"];
 	        this.sampleItem = source["sampleItem"];
@@ -1364,11 +1444,13 @@ export namespace core {
 	}
 	
 	
+	
 	export class SmartProgress {
 	    runID: string;
 	    state: string;
 	    done: number;
 	    total: number;
+	    step?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SmartProgress(source);
@@ -1380,6 +1462,7 @@ export namespace core {
 	        this.state = source["state"];
 	        this.done = source["done"];
 	        this.total = source["total"];
+	        this.step = source["step"];
 	    }
 	}
 	

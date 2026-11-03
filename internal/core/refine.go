@@ -98,6 +98,8 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	} else {
 		t.SampleItem = ""
 	}
+	t.AutoRetryOf, t.AutoRetriedAs = "", ""
+	t.PolicyRetryOf, t.PolicyRetriedAs, t.PolicyStep, t.Rewording = "", "", 0, false
 	t.RefinedFrom = source.ID
 	t.RefineInstruction = in.Instruction
 	t.PreviousAssetIDs = nil

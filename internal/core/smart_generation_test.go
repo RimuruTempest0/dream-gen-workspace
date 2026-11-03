@@ -407,3 +407,75 @@ func TestOldStaleStreamErrorShowsAsNote(t *testing.T) {
 		t.Fatal("a real failure must stay an error")
 	}
 }
+
+// An answer that does not settle a question: the Agent asks the same question again.
+func TestQuestionAskedAgainWaitsForANewAnswer(t *testing.T) {
+	s := testService(t)
+	llm := saveLLM(t, s, "https://example.com/anthropic")
+	images := saveConnection(t, s, "https://example.com/v1")
+	ask := func(r AgentRun, label string, required bool) error {
+		b := &agentBridge{service: s, runID: r.ID, ctx: context.Background()}
+		args, _ := json.Marshal(map[string]any{"questions": []AgentQuestion{{ID: "fill-color", Label: label, Required: required}}})
+		_, e := b.callTool("request_information", args)
+		return e
+	}
+	var calls atomic.Int32
+	s.agentRunner = func(ctx context.Context, in agentInvocation) error {
+		r := invocationRun(t, in)
+		var e error
+		switch calls.Add(1) {
+		case 1:
+			e = ask(r, "字母填充色是什么？", true)
+		case 2:
+			if r.Questions[0].Answer != "上传了" {
+				return errors.New("first answer missing")
+			}
+			e = ask(r, "上传的不是色卡，请写出颜色名称", true)
+		default:
+			if r.Questions[0].Answer != "草绿" {
+				return errors.New("new answer missing")
+			}
+			e = saveRunnerPlan(s, r, simplePlan(12, []string{}))
+		}
+		if e != nil {
+			return e
+		}
+		emitAgentSuccess(in)
+		return nil
+	}
+	id, e := s.StartSmartGeneration(agentInput(llm, images), "ask-start")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	if _, e = s.ContinueSmartGeneration(AgentContinuation{RunID: id, Answers: map[string]string{"fill-color": "上传了"}}, "ask-1"); e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	r, _ := s.GetAgentRun(id)
+	q := r.Questions[0]
+	if r.Status != "needs_input" || r.Error != "" || q.Answer != "" || q.Label != "上传的不是色卡，请写出颜色名称" {
+		t.Fatalf("question asked again did not wait: %s %q %+v", r.Status, r.Error, q)
+	}
+	if _, e = s.ContinueSmartGeneration(AgentContinuation{RunID: id, Answers: map[string]string{"fill-color": "草绿"}}, "ask-2"); e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	if r, _ = s.GetAgentRun(id); r.Status != "submitted" || calls.Load() != 3 {
+		t.Fatal(r.Status, r.Error, calls.Load())
+	}
+}
+
+func TestOptionalQuestionAskedAgainKeepsItsAnswer(t *testing.T) {
+	s := testService(t)
+	r := AgentRun{ID: NewID(), CreatedAt: Now(), Status: "analyzing", Questions: []AgentQuestion{{ID: "sleeve", Label: "袖口名字？", Answer: "Amelia"}}}
+	s.store.Put("agent_run", r.ID, r)
+	b := &agentBridge{service: s, runID: r.ID, ctx: context.Background()}
+	args, _ := json.Marshal(map[string]any{"questions": []AgentQuestion{{ID: "sleeve", Label: "袖口名字是否沿用？"}}})
+	if _, e := b.callTool("request_information", args); e != nil {
+		t.Fatal(e)
+	}
+	if saved, _ := s.GetAgentRun(r.ID); saved.Questions[0].Answer != "Amelia" || saved.Questions[0].Label != "袖口名字是否沿用？" {
+		t.Fatalf("%+v", saved.Questions[0])
+	}
+}

@@ -163,7 +163,7 @@ func TestTwoProvidersSnapshotDedupAndEdit(t *testing.T) {
 		t.Fatal("second provider unused")
 	}
 }
-func TestUncertainNoRetryAndRecover(t *testing.T) {
+func TestUncertainRegeneratesOnceAndRecover(t *testing.T) {
 	s := testService(t)
 	var hits atomic.Int32
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -176,9 +176,14 @@ func TestUncertainNoRetryAndRecover(t *testing.T) {
 	s.Submit(request(c))
 	s.stepNext()
 	s.stepNext()
+	s.stepNext()
 	p, _ := s.ListTasks("", 0, 10)
-	if p.Items[0].Status != "unknown" || hits.Load() != 1 || strings.Contains(p.Items[0].Error, "test-key") {
+	// The unknown image is re-generated automatically once, never a second time.
+	if len(p.Items) != 2 || p.Items[0].Status != "unknown" || p.Items[1].Status != "unknown" || hits.Load() != 2 || strings.Contains(p.Items[0].Error, "test-key") {
 		t.Fatal(p, hits.Load())
+	}
+	if p.Items[1].AutoRetriedAs != p.Items[0].ID || p.Items[0].AutoRetryOf != p.Items[1].ID || !strings.Contains(p.Items[1].Error, "两次费用") || !strings.Contains(p.Items[0].Error, "不会再次自动重发") {
+		t.Fatal("automatic attempt not linked or explained", p.Items[1].Error, p.Items[0].Error)
 	}
 	if p.Items[0].Diagnostic.HTTPStatus != 503 || p.Items[0].Diagnostic.StartedAt == "" || p.Items[0].Diagnostic.BytesReceived == 0 {
 		t.Fatal("request diagnostics were not persisted")
@@ -229,11 +234,49 @@ func TestDownloadDoesNotLeakAuthOrRegenerate(t *testing.T) {
 	s.Submit(request(c))
 	s.stepNext()
 	p, _ := s.ListTasks("", 0, 10)
-	if p.Items[0].Status != "download_failed" {
-		t.Fatal(p)
+	if downloads.Load() != imageDownloadAttempts {
+		t.Fatal("temporary downloads were not retried", downloads.Load())
 	}
-	if downloads.Load() != imageDownloadAttempts || !strings.Contains(p.Items[0].Error, "HTTP 503") {
-		t.Fatal("temporary downloads were not retried", downloads.Load(), p.Items[0].Error)
+	// The failed download waits for an automatic re-download instead of asking.
+	if got := p.Items[0]; got.Status != "downloading" || got.Error != "" || got.AutoDownloads != 1 || !waitingToDownload(got, time.Now()) {
+		t.Fatalf("no automatic re-download scheduled: %+v", got)
+	}
+	if s.claimTask(true) {
+		t.Fatal("re-download started before its pause")
+	}
+	s.stepNext()
+	p, _ = s.ListTasks("", 0, 10)
+	if p.Items[0].Status != "succeeded" || calls.Load() != 1 {
+		t.Fatal("re-download generated again", p)
+	}
+}
+func TestDownloadFailsAfterAutoRetriesThenManualRetry(t *testing.T) {
+	old := autoDownloadDelays
+	autoDownloadDelays = []time.Duration{time.Millisecond}
+	t.Cleanup(func() { autoDownloadDelays = old })
+	s := testService(t)
+	var downloads atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if downloads.Add(1) <= 2*imageDownloadAttempts {
+			w.WriteHeader(503)
+			return
+		}
+		w.Write(tinyPNG())
+	}))
+	defer destination.Close()
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		json.NewEncoder(w).Encode(map[string]any{"data": []Output{{URL: destination.URL}}})
+	}))
+	defer up.Close()
+	c := saveConnection(t, s, up.URL)
+	s.Submit(request(c))
+	s.stepNext()
+	s.stepNext()
+	p, _ := s.ListTasks("", 0, 10)
+	if p.Items[0].Status != "download_failed" || !strings.Contains(p.Items[0].Error, "HTTP 503") {
+		t.Fatal("automatic re-downloads not used up", p.Items[0])
 	}
 	if e := s.RetryDownload(p.Items[0].ID); e != nil {
 		t.Fatal(e)
@@ -242,6 +285,29 @@ func TestDownloadDoesNotLeakAuthOrRegenerate(t *testing.T) {
 	p, _ = s.ListTasks("", 0, 10)
 	if p.Items[0].Status != "succeeded" || calls.Load() != 1 {
 		t.Fatal("retry generated again", p)
+	}
+}
+func TestRecentFailedDownloadResumesOnStart(t *testing.T) {
+	s := testService(t)
+	c := saveConnection(t, s, "http://localhost:8000/v1")
+	recent := Task{ID: NewID(), BatchID: "b", CreatedAt: Now(), UpdatedAt: Now(), Status: "download_failed", Error: "x", Results: []Output{{URL: "http://127.0.0.1:1/a.png"}}, AutoDownloads: 3, Connection: c, References: []string{}, AssetIDs: []string{}}
+	stale := recent
+	stale.ID = NewID()
+	stale.UpdatedAt = time.Now().Add(-2 * autoDownloadWindow).UTC().Format(time.RFC3339Nano)
+	s.store.Put("task", recent.ID, recent)
+	s.store.Put("task", stale.ID, stale)
+	root := s.Root()
+	s.store.Close()
+	reopened, e := NewService(root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reopened.Dispose()
+	var a, b Task
+	reopened.store.Get("task", recent.ID, &a)
+	reopened.store.Get("task", stale.ID, &b)
+	if a.Status != "downloading" || a.Error != "" || a.AutoDownloads != 0 || b.Status != "download_failed" {
+		t.Fatalf("restart did not resume the recent download only: %+v / %+v", a, b)
 	}
 }
 func TestBackupRestoreExcludesKeysAndZipTraversal(t *testing.T) {

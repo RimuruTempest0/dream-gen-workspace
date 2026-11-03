@@ -9,6 +9,8 @@ type SmartProgress struct {
 	State string `json:"state"`
 	Done  int    `json:"done"`
 	Total int    `json:"total"`
+	// Step is the current step while analyzing (see RunProgress).
+	Step string `json:"step,omitempty"`
 }
 
 // CurrentSmartProgress reports only the newest run, so an old abandoned request
@@ -23,7 +25,11 @@ func (s *Service) CurrentSmartProgress() (SmartProgress, error) {
 	r := runs[0]
 	switch r.Status {
 	case "analyzing", "needs_input":
-		return SmartProgress{RunID: r.ID, State: r.Status}, nil
+		p := SmartProgress{RunID: r.ID, State: r.Status}
+		if r.Progress != nil {
+			p.Step = r.Progress.Step
+		}
+		return p, nil
 	}
 	if r.BatchID == "" {
 		return SmartProgress{}, nil

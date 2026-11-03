@@ -24,7 +24,7 @@ func (s *Service) AgentRuntime() AgentRuntimeInfo {
 	defer s.mu.Unlock()
 	info, e := os.Stat(s.agentExecutable)
 	if e != nil || info.IsDir() {
-		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.6.19 便携包。普通生图仍可使用。"}
+		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.7.1 便携包。普通生图仍可使用。"}
 	}
 	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: "内置运行时已就绪"}
 }
@@ -64,7 +64,7 @@ func (s *Service) ListAgentRuns(offset, limit int) (AgentPage, error) {
 	out := []AgentRun{}
 	for _, r := range all[a:b] {
 		r = cleanAgentRun(r)
-		r.Events = nil
+		r.Events, r.Activity = nil, nil
 		out = append(out, r)
 	}
 	return AgentPage{out, len(all)}, nil
@@ -74,6 +74,7 @@ func (s *Service) GetAgentRun(id string) (AgentRun, error) {
 	defer s.mu.Unlock()
 	var r AgentRun
 	e := s.store.Get("agent_run", id, &r)
+	s.withLiveReply(&r)
 	return cleanAgentRun(r), e
 }
 func (s *Service) GetAgentDraft() (AgentInput, error) {
@@ -308,8 +309,10 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 	r.AnalysisSucceeded = false
 	r.CancelRequested = false
 	r.LLMReconnects, r.LLMReconnectError = 0, ""
+	r.Progress = progressForAttempt(r)
+	r.StopReason = ""
 	s.store.Put("agent_run", r.ID, r)
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
+	ctx, cancel := context.WithTimeout(s.ctx, agentAttemptLimit)
 	s.agentCancel = cancel
 	s.agentDone = make(chan struct{})
 	s.agentRunID = r.ID
@@ -334,7 +337,7 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 				if wasCanceled {
 					current.Status = "interrupted"
 					current.Stage = "分析已中断"
-					current.Error = "分析已取消或超时，已保存资料与方案，可明确继续"
+					current.Error = interruptedMessage(current)
 				}
 			} else if current.Error = ""; hasMissing(current.Questions) {
 				// The analysis finished: an earlier problem no longer applies.

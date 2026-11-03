@@ -86,7 +86,11 @@ func stripMessageExtensions(v any) {
 	}
 }
 func llmHTTPClient() *http.Client {
-	return &http.Client{Transport: newNetworkTransport(), Timeout: 10 * time.Minute, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}
+	transport := newNetworkTransport()
+	// The default 10 seconds is short through a local proxy: a passing slowdown failed
+	// several requests in a row while the provider itself was fine.
+	transport.TLSHandshakeTimeout = 30 * time.Second
+	return &http.Client{Transport: transport, Timeout: 10 * time.Minute, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}
 }
 func messagesRequest(ctx context.Context, client *http.Client, c Connection, key string, body any) (*http.Response, error) {
 	b, e := json.Marshal(body)

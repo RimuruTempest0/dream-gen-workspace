@@ -509,7 +509,7 @@ func TestNativeClaudeSkillsMCPAndImagePlanning(t *testing.T) {
 
 	var calls atomic.Int32
 	var sawImage atomic.Bool
-	var sawSkill atomic.Bool
+	var sawSkillText, sawSkillTool atomic.Bool
 	ref, _ := s.ImportImage("reference.png", base64.StdEncoding.EncodeToString(tinyPNG()))
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/messages" {
@@ -520,8 +520,11 @@ func TestNativeClaudeSkillsMCPAndImagePlanning(t *testing.T) {
 			t.Error("upstream key missing")
 		}
 		body, _ := io.ReadAll(r.Body)
-		if bytes.Contains(body, []byte("Launching skill: listing-suite")) {
-			sawSkill.Store(true)
+		if bytes.Contains(body, []byte("逐图需求与平台")) {
+			sawSkillText.Store(true)
+		}
+		if bytes.Contains(body, []byte(`"name":"Skill"`)) {
+			sawSkillTool.Store(true)
 		}
 		if bytes.Contains(body, []byte(`"type":"image"`)) {
 			sawImage.Store(true)
@@ -535,10 +538,8 @@ func TestNativeClaudeSkillsMCPAndImagePlanning(t *testing.T) {
 		case 0:
 			block = messageBlock{Type: "tool_use", Name: "mcp__workbench__get_run_context", Input: map[string]any{}}
 		case 1:
-			block = messageBlock{Type: "tool_use", Name: "Skill", Input: map[string]any{"skill": "listing-suite"}}
-		case 2:
 			block = messageBlock{Type: "tool_use", Name: "mcp__workbench__read_reference_image", Input: map[string]any{"assetID": ref.ID}}
-		case 3:
+		case 2:
 			raw, _ := json.Marshal(simplePlan(12, []string{ref.ID}))
 			var plan map[string]any
 			json.Unmarshal(raw, &plan)
@@ -564,8 +565,8 @@ func TestNativeClaudeSkillsMCPAndImagePlanning(t *testing.T) {
 			if r.Status != "submitted" || len(r.Plans) != 1 || len(r.Plans[0].Items) != 12 {
 				t.Fatalf("native flow failed: %+v, calls=%d", r, calls.Load())
 			}
-			if !sawSkill.Load() {
-				t.Fatal("selected Skill did not run")
+			if !sawSkillText.Load() || sawSkillTool.Load() {
+				t.Fatal("selected skill must reach the model in the prompt, without the Skill tool")
 			}
 			if !sawImage.Load() {
 				t.Fatal("image did not reach LLM")

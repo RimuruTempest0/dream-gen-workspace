@@ -39,10 +39,14 @@ type Service struct {
 	// genCancel stops the request of an in-flight generation; canceled marks the
 	// ones the user cancelled, so the result is recorded as cancelled.
 	genCancel map[string]context.CancelFunc
-	canceled  map[string]bool
+	// replies holds the LLM reply being received for each analyzing run.
+	replies  map[string]*liveReply
+	canceled map[string]bool
 	// probes holds the latest free health check (model list) of each image relay.
 	probes  map[string]probeResult
 	probing map[string]bool
+	// rewording marks held attempts whose prompt the LLM is rewriting.
+	rewording map[string]bool
 	// lic is the customer licence (empty in developer mode).
 	lic licenseState
 	// llmCallsSaved counts LLM call records written; old ones are pruned now and then.
@@ -136,6 +140,16 @@ func NewService(root string) (*Service, error) {
 				return nil, e
 			}
 		}
+		// A recent result that could not be saved is fetched again automatically
+		// (a free GET, never a new generation).
+		if updated, err := time.Parse(time.RFC3339Nano, t.UpdatedAt); t.Status == "download_failed" && len(t.Results) > 0 && err == nil && time.Since(updated) < autoDownloadWindow {
+			t.Status, t.Error, t.AutoDownloads, t.DownloadRetryAt = "downloading", "", 0, ""
+			if e = st.Put("task", t.ID, t); e != nil {
+				st.Close()
+				cancel()
+				return nil, e
+			}
+		}
 	}
 	s.inflight = map[string]bool{}
 	s.downloads = map[string]bool{}
@@ -144,6 +158,7 @@ func NewService(root string) (*Service, error) {
 	s.canceled = map[string]bool{}
 	s.probes = map[string]probeResult{}
 	s.probing = map[string]bool{}
+	s.rewording = map[string]bool{}
 	s.imageConcurrency = defaultImageConcurrency
 	var saved int
 	if st.Get("preferences", "image-concurrency", &saved) == nil && saved >= 1 {
@@ -627,6 +642,7 @@ func (s *Service) RetryDownload(id string) error {
 	}
 	t.Status = "downloading"
 	t.Error = ""
+	t.DownloadRetryAt = ""
 	if e := s.store.Put("task", id, t); e != nil {
 		return e
 	}
@@ -654,6 +670,8 @@ func (s *Service) retryAgentLocked(t Task) error {
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
 		return missing(e, "这张图片使用的生图中转站已删除，请新建需求")
 	}
+	// A manual retry starts the automatic resends after a content refusal afresh.
+	t.PolicyStep = 0
 	_, e := s.queueAttemptLocked(t, c, "")
 	return e
 }
@@ -678,6 +696,7 @@ func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (
 	t.PreviousAssetIDs = nil
 	t.RoutedFrom, t.RoutedFromName, t.RouteReason = "", "", ""
 	t.AutoRetryOf, t.AutoRetriedAs = autoRetryOf, ""
+	t.PolicyRetryOf, t.PolicyRetriedAs, t.Rewording = "", "", false
 	t.Connection = c
 	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
 		return Task{}, e
@@ -757,7 +776,7 @@ func (s *Service) Dashboard() (Summary, error) {
 		return Summary{}, e
 	}
 	as, e := List[Asset](s.store, "asset")
-	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.6.19"}
+	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.7.1"}
 	if s.agentRunID != "" {
 		r.Active++
 	}
@@ -850,6 +869,15 @@ func (s *Service) claimTask(download bool) bool {
 	for i := len(tasks) - 1; i >= 0; i-- {
 		if tasks[i].Status == status && !s.inflight[tasks[i].ID] && !s.downloads[tasks[i].ID] {
 			t := tasks[i]
+			if download && waitingToDownload(t, time.Now()) {
+				continue
+			}
+			// A refused image waits (unsent) while the LLM rewrites its prompt; one
+			// left waiting when the app last exited is rewritten now.
+			if !download && t.Rewording {
+				s.startRewordLocked(t.ID)
+				continue
+			}
 			// An image drawn from the suite's detail sample waits until the sample
 			// is done; nothing is sent (or billed) while it waits.
 			if !download && t.SamplePending {
@@ -906,7 +934,7 @@ func (s *Service) step(claimed Task) bool {
 	s.mu.Lock()
 	// Re-read under the lock: the task may have been stopped since it was claimed.
 	var t Task
-	if s.store.Get("task", claimed.ID, &t) != nil || (t.Status != "queued" && t.Status != "downloading") || s.paused {
+	if s.store.Get("task", claimed.ID, &t) != nil || (t.Status != "queued" && t.Status != "downloading") || t.Rewording || s.paused {
 		s.mu.Unlock()
 		return false
 	}
@@ -976,8 +1004,11 @@ func (s *Service) step(claimed Task) bool {
 	// A rejected key or an empty account fails every remaining image the same way.
 	// With a gateway setup, the gateway is marked down and unsent images move to a
 	// backup or pause there; without one, the rest of the batch pauses unsent.
+	// A refusal by the image model's content check concerns this image only: it
+	// is sent again automatically and never marks the gateway as failing.
 	rejected := ""
-	if e != nil && !unknown {
+	policy := e != nil && !unknown && policyRejected(t.Diagnostic.HTTPStatus, e.Error())
+	if e != nil && !unknown && !policy {
 		rejected = rejectionKind(t.Diagnostic.HTTPStatus, e.Error())
 	}
 	if e != nil {
@@ -987,6 +1018,8 @@ func (s *Service) step(claimed Task) bool {
 		}
 		t.Error = redact(e.Error(), key)
 		switch {
+		case policy:
+			t.Error = fmt.Sprintf("%s（HTTP %d），图片没有生成，一般不计费。%s原始错误：%s", policyRefusedPrefix, t.Diagnostic.HTTPStatus, s.policyRetryLocked(&t), t.Error)
 		case rejected == "balance" && t.Trial:
 			// The trial key's upstream quota is the hard trial limit.
 			t.Error = fmt.Sprintf("试用额度已用完（HTTP %d，中转站返回额度不足），此图未生成也不计费。请在“连接与设置”输入激活码后继续使用。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
@@ -1005,8 +1038,13 @@ func (s *Service) step(claimed Task) bool {
 			}
 			s.pauseBatchForRejectionLocked(t, kind)
 		}
-		if unknown && relayTimedOut(t.Diagnostic) {
-			t.Error = fmt.Sprintf("中转站等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在中转站生成并已计费，请先核对中转站记录。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), s.autoRegenerateLocked(&t), t.Error)
+		if unknown {
+			note := s.autoRegenerateLocked(&t)
+			if relayTimedOut(t.Diagnostic) {
+				t.Error = fmt.Sprintf("中转站等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在中转站生成并已计费。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), note, t.Error)
+			} else {
+				t.Error = "结果未知，这张图可能已生成并计费。" + note + "原始错误：" + t.Error
+			}
 		}
 	} else {
 		t.Status = "downloading"
@@ -1079,6 +1117,7 @@ func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
 
 func (s *Service) download(t *Task) {
 	s.mu.Lock()
+	t.DownloadRetryAt = ""
 	t.Diagnostic.DownloadStartedAt = Now()
 	t.Diagnostic.DownloadMS = 0
 	s.store.Put("task", t.ID, *t)
@@ -1134,12 +1173,36 @@ func sinceMS(stamp string) int64 {
 	return time.Since(at).Milliseconds()
 }
 
+// autoDownloadDelays are the pauses before each automatic re-download of a result
+// that could not be saved. Each one only fetches the returned image again, never
+// generates; a variable so tests can shorten it.
+var autoDownloadDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute}
+
+// autoDownloadWindow is how old a failed download may be to be retried on start;
+// result links usually expire after about a day.
+const autoDownloadWindow = 24 * time.Hour
+
+// waitingToDownload reports whether an automatic re-download is still pausing.
+func waitingToDownload(t Task, now time.Time) bool {
+	at, e := time.Parse(time.RFC3339Nano, t.DownloadRetryAt)
+	return e == nil && at.After(now)
+}
+
 func (s *Service) downloadError(t *Task, e error) {
 	s.mu.Lock()
 	t.Status = "download_failed"
 	t.Error = e.Error()
+	t.DownloadRetryAt = ""
 	t.Diagnostic.DownloadMS = sinceMS(t.Diagnostic.DownloadStartedAt)
 	t.UpdatedAt = Now()
+	if t.AutoDownloads < len(autoDownloadDelays) && len(t.Results) > 0 {
+		wait := autoDownloadDelays[t.AutoDownloads]
+		t.AutoDownloads++
+		t.Status = "downloading"
+		t.Error = ""
+		t.DownloadRetryAt = time.Now().Add(wait).UTC().Format(time.RFC3339Nano)
+		_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("图片下载未完成，%d 秒后自动补下载（第 %d 次，不会重新生图）：%s", int(wait.Seconds()), t.AutoDownloads, e.Error()))
+	}
 	s.store.Put("task", t.ID, *t)
 	s.mu.Unlock()
 	s.signal()

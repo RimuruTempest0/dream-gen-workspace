@@ -30,27 +30,29 @@ func TestGatewayMonitorCountsEachSentImageOnItsGateway(t *testing.T) {
 	s.store.Put("task", old.ID, old)
 	s.mu.Unlock()
 	s.Start(func() {})
-	waitFor(t, "set finished", func() bool { return countStatus(s, "succeeded") == 3 })
+	// Three of this set (two moved, one re-generated) plus the old call.
+	waitFor(t, "set finished", func() bool { return countStatus(s, "succeeded") == 4 })
 
 	m, e := s.GatewayMonitor(MonitorQuery{Days: 7})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Total != 3 || m.Succeeded != 2 || m.Unknown != 1 || m.Rerouted != 2 {
+	// The cut image is re-generated once automatically on the backup.
+	if m.Total != 4 || m.Succeeded != 3 || m.Unknown != 1 || m.Rerouted != 2 || m.AutoRegenerated != 1 {
 		t.Fatalf("totals: %+v", m)
 	}
 	if len(m.Gateways) != 2 || m.Gateways[0].ConnectionID != a.ID || m.Gateways[0].Role != "primary" || m.Gateways[1].Role != "backup" || m.Gateways[1].BackupOrder != 1 {
 		t.Fatalf("gateways: %+v", m.Gateways)
 	}
 	ga, gb := m.Gateways[0], m.Gateways[1]
-	if ga.Requests != 1 || ga.Unknown != 1 || ga.RoutedOut != 2 || gb.Requests != 2 || gb.Succeeded != 2 || gb.RoutedIn != 2 || gb.MedianMS <= 0 {
+	if ga.Requests != 1 || ga.Unknown != 1 || ga.RoutedOut != 2 || gb.Requests != 3 || gb.Succeeded != 3 || gb.RoutedIn != 2 || gb.AutoRegenerated != 1 || gb.MedianMS <= 0 {
 		t.Fatalf("per gateway: A=%+v B=%+v", ga, gb)
 	}
 	today := m.Days[len(m.Days)-1]
-	if len(m.Days) != 7 || today.Counts[a.ID] != 1 || today.Counts[b.ID] != 2 {
+	if len(m.Days) != 7 || today.Counts[a.ID] != 1 || today.Counts[b.ID] != 3 {
 		t.Fatalf("daily counts: %+v", today)
 	}
-	if m.CallTotal != 3 || !strings.HasPrefix(m.Calls[0].SourceLabel, "生图工作台 · 批次 ") {
+	if m.CallTotal != 4 || !strings.HasPrefix(m.Calls[0].SourceLabel, "生图工作台 · 批次 ") {
 		t.Fatalf("calls: %+v", m.Calls)
 	}
 	cut, _ := s.GatewayMonitor(MonitorQuery{Days: 7, Result: "unknown"})
@@ -58,22 +60,22 @@ func TestGatewayMonitorCountsEachSentImageOnItsGateway(t *testing.T) {
 		t.Fatalf("result filter: %+v", cut.Calls)
 	}
 	onB, _ := s.GatewayMonitor(MonitorQuery{Days: 7, ConnectionID: b.ID})
-	if onB.Total != 2 || len(onB.Gateways) != 1 || onB.Calls[0].RoutedFromName != "A" {
+	if onB.Total != 3 || len(onB.Gateways) != 1 || !onB.Calls[0].AutoRetry || onB.Calls[1].RoutedFromName != "A" {
 		t.Fatalf("gateway filter: %+v", onB)
 	}
 	all, _ := s.GatewayMonitor(MonitorQuery{})
-	if all.Total != 4 {
+	if all.Total != 5 {
 		t.Fatal("the 40-day-old call belongs to “全部”", all.Total)
 	}
 
 	path := filepath.Join(t.TempDir(), "调用记录.csv")
 	n, e := s.ExportGatewayCalls(MonitorQuery{Days: 7}, path)
-	if e != nil || n != 3 {
+	if e != nil || n != 4 {
 		t.Fatal(n, e)
 	}
 	data, _ := os.ReadFile(path)
 	text := string(data)
-	if !strings.HasPrefix(text, "\xef\xbb\xbf时间,中转站") || strings.Count(text, "\n") != 4 || !strings.Contains(text, "结果未知") || !strings.Contains(text, ",A,") {
+	if !strings.HasPrefix(text, "\xef\xbb\xbf时间,中转站") || strings.Count(text, "\n") != 5 || !strings.Contains(text, "结果未知") || !strings.Contains(text, ",A,") {
 		t.Fatalf("csv: %s", text)
 	}
 	if strings.Contains(text, "test-key") {

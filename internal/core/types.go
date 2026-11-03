@@ -55,6 +55,18 @@ type Task struct {
 	// timeout; AutoRetriedAs is set on that original image.
 	AutoRetryOf   string `json:"autoRetryOf,omitempty"`
 	AutoRetriedAs string `json:"autoRetriedAs,omitempty"`
+	// AutoDownloads counts automatic re-downloads of a returned result; while one
+	// waits, the task stays "downloading" until DownloadRetryAt.
+	AutoDownloads   int    `json:"autoDownloads,omitempty"`
+	DownloadRetryAt string `json:"downloadRetryAt,omitempty"`
+	// PolicyRetryOf links an automatic resend to the image the image model's content
+	// check refused; PolicyRetriedAs is set on that refused image. PolicyStep is 1
+	// for the unchanged resend and 2 for the reworded one. Rewording holds a queued
+	// step-2 attempt (nothing sent) while the LLM rewrites its prompt.
+	PolicyRetryOf   string `json:"policyRetryOf,omitempty"`
+	PolicyRetriedAs string `json:"policyRetriedAs,omitempty"`
+	PolicyStep      int    `json:"policyStep,omitempty"`
+	Rewording       bool   `json:"rewording,omitempty"`
 	// Trial marks an image requested before activation; it counts toward the trial.
 	Trial bool `json:"trial,omitempty"`
 	// Sample marks the suite's detail sample image. SampleItem is the plan slot of

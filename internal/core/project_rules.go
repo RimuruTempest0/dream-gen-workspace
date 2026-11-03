@@ -71,6 +71,8 @@ func shippedP004Contents() []string {
 		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.5.1.md")),
 		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.10.md")),
 		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.12.md")),
+		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.20.md")),
+		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.25.md")),
 	}
 }
 

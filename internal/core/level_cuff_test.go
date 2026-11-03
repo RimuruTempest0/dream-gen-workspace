@@ -84,9 +84,7 @@ func TestSkillsFrom0612AreUpgradedToLevelCuffs(t *testing.T) {
 	if projectRulesSuffix(AgentRun{Skills: []SkillRecord{{ID: p004SkillID, Content: old[p004SkillID]}}}, SuitePlan{}) != "\n"+p004FixedRules {
 		t.Fatal("0.6.12 p004 copy lost the fixed rules")
 	}
-	for _, want := range []string{"noProduct", "不放整件衣服的参考图", "只要整件衣服出现在画面里"} {
-		if !strings.Contains(builtinSkills[1].body, want) {
-			t.Fatal("listing-suite rule missing", want)
-		}
-	}
+	// Sample reference selection is contextual: a whole-garment image may be
+	// the only source of the exact cuff design. Prompt scoping is exercised by
+	// TestItemPromptScopesTheProductSpec, not by matching the old blanket ban.
 }

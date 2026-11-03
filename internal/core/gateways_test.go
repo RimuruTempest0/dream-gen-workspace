@@ -105,7 +105,7 @@ func submitN(t *testing.T, s *Service, c Connection, n int) {
 func TestGatewaySettingsDefaultsValidationAndDelete(t *testing.T) {
 	s := testService(t)
 	g, _ := s.GetGatewaySettings()
-	if !g.AutoReroute || g.AutoRegenerate524 || g.PrimaryID != "" || len(g.BackupIDs) != 0 {
+	if !g.AutoReroute || g.PrimaryID != "" || len(g.BackupIDs) != 0 {
 		t.Fatalf("unexpected defaults: %+v", g)
 	}
 	a := gatewayConnection(t, s, "A", "http://127.0.0.1:1/v1")
@@ -187,23 +187,27 @@ func TestUnsentImagesMoveToHealthyBackupWithoutResending(t *testing.T) {
 	}
 	submitN(t, s, a, 3)
 	s.Start(func() {})
-	waitFor(t, "two images saved on the backup", func() bool { return countStatus(s, "succeeded") == 2 })
+	waitFor(t, "all three images saved on the backup", func() bool { return countStatus(s, "succeeded") == 3 })
 	time.Sleep(200 * time.Millisecond)
-	if primary.imageHits.Load() != 1 || backup.imageHits.Load() != 2 {
-		t.Fatal("only unsent images may move; the cut image is never resent", primary.imageHits.Load(), backup.imageHits.Load())
+	// Two unsent images move; the cut one stays unknown and is re-generated once.
+	if primary.imageHits.Load() != 1 || backup.imageHits.Load() != 3 {
+		t.Fatal("the cut image must be re-generated exactly once", primary.imageHits.Load(), backup.imageHits.Load())
 	}
 	if countStatus(s, "unknown") != 1 {
 		t.Fatal("the timed-out image must stay unknown")
 	}
-	moved := tasksWhere(s, func(t Task) bool { return t.Status == "succeeded" })
+	moved := tasksWhere(s, func(t Task) bool { return t.Status == "succeeded" && t.AutoRetryOf == "" })
+	if len(moved) != 2 {
+		t.Fatal("moved images", len(moved))
+	}
 	for _, m := range moved {
 		if m.Connection.ID != b.ID || m.RoutedFrom != a.ID || m.RoutedFromName != "A" || !strings.Contains(m.RouteReason, "变慢") {
 			t.Fatalf("moved image not recorded: %+v", m)
 		}
 	}
 	cut := tasksWhere(s, func(t Task) bool { return t.Status == "unknown" })[0]
-	if cut.AutoRetriedAs != "" || !strings.Contains(cut.Error, "不会自动重发") {
-		t.Fatal("auto re-generation must be off by default", cut.Error)
+	if cut.AutoRetriedAs == "" || !strings.Contains(cut.Error, "两次费用") {
+		t.Fatal("the cut image is re-generated automatically", cut.Error)
 	}
 }
 
@@ -249,7 +253,7 @@ func TestAutoRegenerateUsesBackupOnce(t *testing.T) {
 	backup := &fakeGateway{models: []string{"test-image"}}
 	a := gatewayConnection(t, s, "A", newFakeGateway(t, primary).URL+"/v1")
 	b := gatewayConnection(t, s, "B", newFakeGateway(t, backup).URL+"/v1")
-	s.SetGatewaySettings(GatewaySettings{PrimaryID: a.ID, BackupIDs: []string{b.ID}, AutoReroute: true, AutoRegenerate524: true})
+	s.SetGatewaySettings(GatewaySettings{PrimaryID: a.ID, BackupIDs: []string{b.ID}, AutoReroute: true})
 	s.CheckGateways()
 	submitN(t, s, a, 1)
 	s.Start(func() {})
@@ -268,12 +272,12 @@ func TestAutoRegenerateUsesBackupOnce(t *testing.T) {
 	}
 }
 
-func TestAutoRegenerateCapsAndWaitsForRecovery(t *testing.T) {
+func TestAutoRegenerateOncePerImageAndWaitsForRecovery(t *testing.T) {
 	shortHealthWindows(t, 600*time.Millisecond, 400*time.Millisecond)
 	s := testService(t)
 	only := &fakeGateway{models: []string{"test-image"}, timeout: true}
 	a := gatewayConnection(t, s, "A", newFakeGateway(t, only).URL+"/v1")
-	s.SetGatewaySettings(GatewaySettings{PrimaryID: a.ID, AutoReroute: true, AutoRegenerate524: true})
+	s.SetGatewaySettings(GatewaySettings{PrimaryID: a.ID, AutoReroute: true})
 	s.SetImageConcurrency(4)
 	s.CheckGateways()
 	submitN(t, s, a, 5)
@@ -283,29 +287,31 @@ func TestAutoRegenerateCapsAndWaitsForRecovery(t *testing.T) {
 	if hits := only.imageHits.Load(); hits != 5 {
 		t.Fatal("re-generation sent while the gateway was slow", hits)
 	}
-	if n := len(tasksWhere(s, func(t Task) bool { return t.AutoRetryOf != "" })); n != maxAutoRegenPerBatch {
-		t.Fatal("per-batch cap", n)
+	if n := len(tasksWhere(s, func(t Task) bool { return t.AutoRetryOf != "" })); n != 5 {
+		t.Fatal("every unknown image re-generated once", n)
 	}
 	// ...but are sent once it has recovered, and are never re-generated again.
-	waitFor(t, "re-generations sent after recovery", func() bool { return countStatus(s, "unknown") == 8 })
+	waitFor(t, "re-generations sent after recovery", func() bool { return countStatus(s, "unknown") == 10 })
 	time.Sleep(time.Second)
-	if hits := only.imageHits.Load(); hits != 8 {
+	if hits := only.imageHits.Load(); hits != 10 {
 		t.Fatal("an automatic attempt was re-generated again", hits)
 	}
-	if n := len(tasksWhere(s, func(t Task) bool { return t.AutoRetryOf != "" })); n != maxAutoRegenPerBatch {
-		t.Fatal("cap exceeded", n)
+	if n := len(tasksWhere(s, func(t Task) bool { return t.AutoRetryOf != "" })); n != 5 {
+		t.Fatal("more than one automatic attempt per image", n)
 	}
 }
 
-func TestNoGatewaySetupKeepsOldBehaviour(t *testing.T) {
+func TestNoGatewaySetupSkipsHealthChecks(t *testing.T) {
 	s := testService(t)
 	g := &fakeGateway{models: []string{"test-image"}, timeout: true}
 	a := gatewayConnection(t, s, "A", newFakeGateway(t, g).URL+"/v1")
 	s.SetImageConcurrency(1)
 	submitN(t, s, a, 2)
 	s.Start(func() {})
-	waitFor(t, "both sent", func() bool { return countStatus(s, "unknown") == 2 })
-	if g.modelHits.Load() != 0 || g.imageHits.Load() != 2 {
+	// Without a backup each unknown image is re-generated once on its own gateway.
+	waitFor(t, "both sent and re-generated", func() bool { return countStatus(s, "unknown") == 4 })
+	time.Sleep(300 * time.Millisecond)
+	if g.modelHits.Load() != 0 || g.imageHits.Load() != 4 {
 		t.Fatal("health checks or routing ran without a gateway setup", g.modelHits.Load(), g.imageHits.Load())
 	}
 }

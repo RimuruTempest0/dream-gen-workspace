@@ -76,7 +76,7 @@ type GatewayMonitor = {
 type LLMCall = {
   id: string;
   at: string;
-  kind: "analysis" | "test";
+  kind: "analysis" | "test" | "rewrite";
   runID?: string;
   connectionName: string;
   model: string;
@@ -530,7 +530,7 @@ export function GatewayMonitorPage() {
                       g.routedOut ? `转出 ${g.routedOut} 张到备用` : "",
                       g.routedIn ? `转入 ${g.routedIn} 张` : "",
                       g.autoRegenerated
-                        ? `524 后自动重新生成 ${g.autoRegenerated} 张（可能重复计费）`
+                        ? `自动重新生成 ${g.autoRegenerated} 张（可能重复计费）`
                         : "",
                       g.checkedAt
                         ? `免费检查 ${clock(g.checkedAt)}，响应 ${g.probeMS} ms`
@@ -656,7 +656,7 @@ export function GatewayMonitorPage() {
                             <Tag color="blue">从 {c.routedFromName} 转入</Tag>
                           )}
                           {c.autoRetry && (
-                            <Tag color="warning">524 后自动重新生成</Tag>
+                            <Tag color="warning">自动重新生成</Tag>
                           )}
                         </span>
                       ),
@@ -747,6 +747,7 @@ export function LLMMonitorPage() {
           { value: "", label: "全部" },
           { value: "analysis", label: "智能生图分析" },
           { value: "test", label: "能力验证" },
+          { value: "rewrite", label: "改写被拒提示词" },
         ]}
         onExport={() => exporter.run(q)}
         exporting={exporter.busy}
@@ -1018,7 +1019,9 @@ export function LLMMonitorPage() {
                       render: (_, c) =>
                         c.kind === "test"
                           ? "能力验证"
-                          : m.runNames[c.runID || ""] || "智能生图",
+                          : c.kind === "rewrite"
+                            ? "改写被拒提示词"
+                            : m.runNames[c.runID || ""] || "智能生图",
                     },
                     {
                       title: "阶段",

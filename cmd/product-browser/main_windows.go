@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
 	"sync"
@@ -78,6 +79,46 @@ func emit(v map[string]any) {
 	out.Flush()
 	outMu.Unlock()
 }
+
+// A link the browser cannot reach is loaded again after 3 s, then 6 s.
+const (
+	maxNavAttempts = 3
+	navRetryDelay  = 3 * time.Second
+)
+
+// iidNavigationCompletedArgs2 is ICoreWebView2NavigationCompletedEventArgs2, which
+// adds the HTTP status code of the navigation.
+var iidNavigationCompletedArgs2 = windows.GUID{Data1: 0xFDF8B738, Data2: 0xEE1E, Data3: 0x4DB2, Data4: [8]byte{0xA3, 0x29, 0x8D, 0x7D, 0x7B, 0x74, 0xD7, 0x92}}
+
+// unreachable tells a site that could not be reached at all (no connection, name
+// not resolved, connection dropped) from a page the site answered, such as a 403
+// verification page: only the first ends without any HTTP status. WebView2 reports
+// such failures with WebErrorStatus UNKNOWN, so the status code decides.
+// go-webview2 declares these interfaces but does not export their getters.
+func unreachable(args *edge.ICoreWebView2NavigationCompletedEventArgs) bool {
+	this := uintptr(unsafe.Pointer(args))
+	vtbl := *(**struct {
+		QueryInterface, AddRef, Release, GetIsSuccess, GetWebErrorStatus, GetNavigationID uintptr
+	})(unsafe.Pointer(args))
+	var ok, status int32
+	syscall.SyscallN(vtbl.GetIsSuccess, this, uintptr(unsafe.Pointer(&ok)))
+	syscall.SyscallN(vtbl.GetWebErrorStatus, this, uintptr(unsafe.Pointer(&status)))
+	if ok != 0 || status == 14 { // succeeded, or replaced by another navigation
+		return false
+	}
+	var v2 unsafe.Pointer
+	if hr, _, _ := syscall.SyscallN(vtbl.QueryInterface, this, uintptr(unsafe.Pointer(&iidNavigationCompletedArgs2)), uintptr(unsafe.Pointer(&v2))); hr != 0 || v2 == nil {
+		return false
+	}
+	vtbl2 := *(**struct {
+		QueryInterface, AddRef, Release, GetIsSuccess, GetWebErrorStatus, GetNavigationID, GetHttpStatusCode uintptr
+	})(v2)
+	var code int32
+	hr, _, _ := syscall.SyscallN(vtbl2.GetHttpStatusCode, uintptr(v2), uintptr(unsafe.Pointer(&code)))
+	syscall.SyscallN(vtbl2.Release, uintptr(v2))
+	return hr == 0 && code == 0
+}
+
 func fail(code, message string) {
 	emit(map[string]any{"event": "error", "code": code, "message": message})
 	os.Exit(1)
@@ -106,6 +147,7 @@ func main() {
 		queue     []func()
 		chromium  *edge.Chromium
 		hwnd      uintptr
+		navFails  int
 	)
 	go func() {
 		time.Sleep(time.Duration(*timeout) * time.Second)
@@ -216,6 +258,29 @@ func main() {
 			emit(map[string]any{"event": "image", "id": m.ID, "status": m.Status, "mime": m.MIME, "data": m.Data, "error": m.Error})
 		}
 	}
+	// When the site cannot be reached (a dropped connection, a proxy hiccup) WebView2
+	// shows its own error page. Load the link again a few times before giving up;
+	// the error page is never reported as the product page.
+	chromium.NavigationCompletedCallback = func(_ *edge.ICoreWebView2, args *edge.ICoreWebView2NavigationCompletedEventArgs) {
+		if !unreachable(args) {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if pageDone {
+			return
+		}
+		navFails++
+		if navFails >= maxNavAttempts {
+			fail("network", fmt.Sprintf("浏览器也打不开商品页（网络连接失败，已重试 %d 次）", navFails))
+		}
+		emit(map[string]any{"event": "retry", "attempt": navFails})
+		wait := time.Duration(navFails) * navRetryDelay
+		go func() {
+			time.Sleep(wait)
+			onUI(func() { chromium.Navigate(*target) })
+		}()
+	}
 	if !chromium.Embed(hwnd) {
 		fail("webview", "无法启动浏览器组件")
 	}
@@ -285,6 +350,8 @@ function hasProduct(){
 let last = '', stable = 0, sent = false;
 setInterval(function(){
   if (sent || !document.documentElement) return;
+  // The browser's own error page is never the product; the helper loads the link again.
+  if (!/^https?:$/.test(location.protocol)) return;
   const body = document.body ? document.body.innerText : '';
   const challenge = challengeText.test(body.slice(0, 4000)) || !!document.querySelector(challengeFrame);
   post({type: 'state', challenge});

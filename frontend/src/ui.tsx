@@ -13,6 +13,8 @@ import {
   Alert,
   Empty,
   Modal,
+  Popover,
+  Select,
   Space,
   Spin,
   Tag,
@@ -32,6 +34,115 @@ export function useData<T>(
     refetchInterval: interval,
   });
 }
+// A saved image never changes, so refreshing after an action skips the images.
+export const notImages = {
+  predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey[0] !== "image",
+};
+
+// Runs at most once per wait, after a burst ends: progress events arrive in bursts
+// while images generate.
+export function coalesce(fn: () => void, wait = 400) {
+  let timer: number | undefined;
+  return () => {
+    if (timer === undefined)
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        fn();
+      }, wait);
+  };
+}
+
+// Common OpenAI-compatible sizes; a previously saved custom size stays selectable.
+export const presetSizes = [
+  { value: "auto", label: "自动（由模型决定）" },
+  { value: "1024x1024", label: "1024×1024（1:1 方图）" },
+  { value: "1536x1024", label: "1536×1024（3:2 横图）" },
+  { value: "1024x1536", label: "1024×1536（2:3 竖图）" },
+  { value: "1792x1024", label: "1792×1024（16:9 横图）" },
+  { value: "1024x1792", label: "1024×1792（9:16 竖图）" },
+];
+export const presetQualities = [
+  { value: "auto", label: "自动" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+];
+// The presets plus a saved value that is not one of them.
+export function withCurrent(
+  options: { value: string; label: string }[],
+  current?: string,
+) {
+  return !current || options.some((o) => o.value === current)
+    ? options
+    : [...options, { value: current, label: current }];
+}
+
+// What a person recognises a task by. Prompts open with fixed lines (the sample note,
+// the refine wrapper), which made every row of a set look the same.
+export function taskTitle(t: Task) {
+  if (t.refineInstruction) return "优化：" + t.refineInstruction;
+  const lines = t.prompt
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s && !s.startsWith("样板图："));
+  return (lines[0] || t.prompt).replace(/^用途[：:]\s*/, "");
+}
+
+// Generated images are saved under random file names, which say nothing.
+export function assetLabel(a: Asset) {
+  return a.kind === "reference" ? a.name : `生成图片 · ${time(a.createdAt)}`;
+}
+
+// Model picker for an image connection. The list is a GET /models of the saved
+// connection (no generation, no cost); "" means the connection's default model.
+export function ModelSelect({
+  connection,
+  value,
+  onChange,
+  id,
+  disabled,
+  load = true,
+}: {
+  connection?: { id?: string; model?: string };
+  value: string;
+  onChange: (model: string) => void;
+  id: string;
+  disabled?: boolean;
+  load?: boolean;
+}) {
+  const models = useQuery({
+    queryKey: ["connection-models", connection?.id],
+    queryFn: () => call<string[]>("ListConnectionModels", connection!.id),
+    enabled: !!connection?.id && load,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const options = [
+    { value: "", label: `使用连接默认（${connection?.model || "未设置"}）` },
+    ...[...new Set([...(models.data || []), ...(value ? [value] : [])])].map(
+      (model) => ({ value: model, label: model }),
+    ),
+  ];
+  return (
+    <>
+      <Select
+        id={id}
+        className="full-width"
+        showSearch
+        optionFilterProp="label"
+        value={value}
+        disabled={disabled || !connection}
+        loading={models.isFetching}
+        options={options}
+        onChange={onChange}
+      />
+      {models.isError && (
+        <p className="hint">暂时无法获取模型列表，可使用连接默认模型。</p>
+      )}
+    </>
+  );
+}
+
 export function useActions() {
   const { notification, modal } = AntApp.useApp();
   const qc = useQueryClient();
@@ -48,7 +159,7 @@ export function useActions() {
     setBusy(true);
     try {
       const out = await fn();
-      await qc.invalidateQueries();
+      await qc.invalidateQueries(notImages);
       notification.destroy(feedbackKey.current);
       if (success) notification.success({ message: success });
       return out;
@@ -88,7 +199,7 @@ export function useActions() {
       onOk: async () => {
         try {
           await fn();
-          await qc.invalidateQueries();
+          await qc.invalidateQueries(notImages);
           notification.destroy(feedbackKey.current);
         } catch (e) {
           notification.error({
@@ -270,9 +381,14 @@ export function Status({ state, task }: { state: string; task?: Task }) {
         )[task?.diagnostic?.stage || ""]
       : undefined;
   const waitingForSample = state === "queued" && task?.samplePending;
+  const rewording = state === "queued" && task?.rewording;
   return (
     <Tag color={color}>
-      {waitingForSample ? "等待样板图" : phase || stateNames[state] || state}
+      {rewording
+        ? "改写提示词"
+        : waitingForSample
+          ? "等待样板图"
+          : phase || stateNames[state] || state}
     </Tag>
   );
 }
@@ -290,8 +406,20 @@ export function TaskTiming({ task }: { task: Task }) {
   const end = active ? now : Date.parse(task.updatedAt || task.createdAt);
   const seconds = Math.max(0, Math.floor((end - start) / 1000));
   const route = <TaskRoute task={task} />;
+  // A result that could not be saved waits for its automatic re-download.
+  const retryAt = Date.parse(task.downloadRetryAt || "");
+  if (task.status === "downloading" && retryAt > now)
+    return (
+      <div className="task-timing">
+        <small>
+          下载未完成，{Math.ceil((retryAt - now) / 1000)}{" "}
+          秒后自动补下载（不会重新生图）
+        </small>
+        {route}
+      </div>
+    );
   if (task.status === "queued" || !Number.isFinite(seconds))
-    return task.autoRetryOf || task.routedFrom ? (
+    return task.autoRetryOf || task.routedFrom || task.policyRetryOf ? (
       <div className="task-timing">{route}</div>
     ) : null;
   const span = (s: number) =>
@@ -333,12 +461,22 @@ export function TaskTiming({ task }: { task: Task }) {
 // Which gateway produced the image when it was moved or re-generated automatically.
 function TaskRoute({ task }: { task: Task }) {
   const name = task.connection?.name || "备用中转站";
+  if (task.policyRetryOf)
+    return (
+      <small className="task-route">
+        {task.rewording
+          ? "内容审核拒绝后正在改写措辞，改写完自动重发（尚未发送、不计费）"
+          : task.policyStep === 2
+            ? "内容审核拒绝后已改写措辞自动重发"
+            : "内容审核拒绝后已自动原样重发"}
+      </small>
+    );
   if (task.autoRetryOf)
     return (
       <small className="task-route">
         {task.status === "queued"
-          ? `524 后自动重新生成：等待「${name}」或健康的备用中转站（新的计费请求）`
-          : `524 后自动重新生成 · 「${name}」（可能重复计费）`}
+          ? `结果未知后自动重新生成：等待「${name}」或健康的备用中转站（新的计费请求）`
+          : `结果未知后自动重新生成 · 「${name}」（可能重复计费）`}
       </small>
     );
   if (task.routedFrom)
@@ -362,20 +500,38 @@ export function rejectionOf(task: Task): "balance" | "auth" | "" {
     return "balance";
   return task.error.startsWith("API Key 无效") ? "auth" : "";
 }
+const policyRefused = "生图模型的内容审核拒绝了这张图";
+// An image the app already sent again by itself keeps only a short note instead
+// of a warning: an unknown result (since 0.6.27) or a content refusal (0.6.28).
+export function autoHandledNote(task: Task) {
+  if (task.status === "unknown" && task.autoRetriedAs)
+    return "结果未知，已自动重新生成（原请求可能已计费）。";
+  if (task.status === "failed" && task.policyRetriedAs)
+    return "内容审核拒绝了这张图，已自动重发（未生成，一般不计费）。";
+  return "";
+}
 export function TaskFailureAlert({ task }: { task: Task }) {
   if (!task.error) return null;
+  const note = autoHandledNote(task);
+  if (note)
+    return (
+      <p className="hint" title={task.error}>
+        {note}
+      </p>
+    );
   let message = "这张图片尚未完成，请查看详细错误。";
-  if (task.status === "download_failed") {
-    message = /deadline exceeded|timeout|超时|10 分钟/i.test(task.error)
-      ? "已收到图片结果，但下载超时。可点“补下载”，不会重新生图。"
-      : "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。";
+  if (task.status === "failed" && task.error.startsWith(policyRefused)) {
+    message =
+      "生图模型的内容审核拒绝了这张图，自动重发后仍未通过。图片没有生成，一般不计费。请修改提示词，或换掉可能被误判的参考图后重新生成。";
+  } else if (task.status === "download_failed") {
+    message =
+      (task.autoDownloads || 0) > 0
+        ? "已收到图片结果，自动补下载后仍未保存。可点“补下载”再试，不会重新生图。"
+        : "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。";
   } else if (task.status === "unknown") {
-    const status = task.diagnostic?.httpStatus;
-    message = [504, 522, 524].includes(status || 0)
-      ? task.autoRetriedAs
-        ? `中转站等待超时（HTTP ${status}），结果未知。已按设置自动重新生成一次，可能产生两次费用。`
-        : `中转站等待超时（HTTP ${status}），结果未知。请先核对中转站记录，系统不会自动重发生图。`
-      : "结果未知，请先核对供应商记录，系统不会自动重发。";
+    message = task.autoRetryOf
+      ? "自动重新生成的结果仍未知，不会再次自动重发。请先核对中转站记录。"
+      : "结果未知，未能自动重新生成，请查看详细错误并核对中转站记录。";
   } else if (task.status === "blocked") {
     message = "已暂停，尚未提交、未计费。修正后可恢复生成。";
   } else if (rejectionOf(task) === "balance") {
@@ -405,10 +561,14 @@ export function AssetImage({
   id: string;
   thumbnail?: boolean;
 }) {
-  const q = useData<string>(["image", id, thumbnail], "ReadAsset", [
-    id,
-    thumbnail,
-  ]);
+  // A saved image never changes: read it once and keep it for a while, so going back
+  // to a page shows its images at once.
+  const q = useQuery<string>({
+    queryKey: ["image", id, thumbnail],
+    queryFn: () => call<string>("ReadAsset", id, thumbnail),
+    staleTime: Infinity,
+    gcTime: 10 * 60 * 1000,
+  });
   return (
     <div className="image-frame">
       {q.isPending ? (
@@ -416,9 +576,41 @@ export function AssetImage({
       ) : q.error ? (
         <span>图片无法读取</span>
       ) : (
-        <img src={q.data} alt="本地图片预览" />
+        <img src={q.data} alt="本地图片预览" decoding="async" />
       )}
     </div>
+  );
+}
+// One asset in a picker: a small thumbnail beside its name. Hovering the thumbnail
+// shows the image larger; the original is read only then.
+export function AssetOption({ id, name }: { id: string; name: string }) {
+  const [preview, setPreview] = useState(false);
+  // Anchored to the whole row, so the preview opens beside the list, not over it.
+  return (
+    <Popover
+      open={preview}
+      trigger={[]}
+      placement="right"
+      align={{ offset: [32, 0] }}
+      zIndex={1100}
+      destroyOnHidden
+      content={
+        <div className="asset-option-preview">
+          <AssetImage id={id} thumbnail={false} />
+        </div>
+      }
+    >
+      <div className="asset-option">
+        <span
+          className="asset-option-thumb"
+          onMouseEnter={() => setPreview(true)}
+          onMouseLeave={() => setPreview(false)}
+        >
+          <AssetImage id={id} />
+        </span>
+        <span className="asset-option-name">{name}</span>
+      </div>
+    </Popover>
   );
 }
 export type ViewerItem = { assetID: string; label: string };

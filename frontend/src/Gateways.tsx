@@ -13,7 +13,6 @@ export type GatewaySettings = {
   primaryID: string;
   backupIDs: string[];
   autoReroute: boolean;
-  autoRegenerate524: boolean;
 };
 export type GatewayHealth = {
   connectionID: string;
@@ -189,9 +188,6 @@ export function GatewayRow({
   );
 }
 
-const costNotice =
-  "开启后，遇到中转站超时（HTTP 524 等）的图片会自动在另一家健康、模型完全相同的中转站重新生成；没有可用备用时，等原中转站恢复正常后再重新生成。每张最多 1 次、每批最多 3 张。原请求可能已在中转站生成并计费，因此这些图片可能产生两次费用。";
-
 export function GatewayFailover() {
   const { settings, health } = useGateways();
   const actions = useActions();
@@ -251,38 +247,10 @@ export function GatewayFailover() {
           </p>
         </div>
       </div>
-      <div className="gateway-switch">
-        <Switch
-          checked={g.autoRegenerate524}
-          disabled={actions.busy}
-          aria-labelledby="auto-regenerate-label"
-          onChange={(on) => {
-            if (!on) {
-              save({ autoRegenerate524: false }, "已关闭 524 自动重新生成");
-              return;
-            }
-            actions.confirm(
-              "开启 524 自动重新生成？",
-              <div>
-                <p>{costNotice}</p>
-                <p className="hint">可随时在这里关闭。</p>
-              </div>,
-              () =>
-                call("SetGatewaySettings", { ...g, autoRegenerate524: true }),
-              true,
-              "确认开启（可能重复计费）",
-            );
-          }}
-        />
-        <div>
-          <strong id="auto-regenerate-label">524 后自动换中转站重新生成</strong>{" "}
-          <Tag color="warning">可能产生额外费用</Tag>
-          <p className="hint">
-            默认关闭。每张最多自动重新生成 1 次、每批最多 3
-            张；原请求可能已计费，开启前会再次提示。
-          </p>
-        </div>
-      </div>
+      <p className="hint">
+        结果未知（例如 HTTP
+        524）的图片会自动重新生成一次，优先改用健康、模型完全相同的备用中转站；原请求可能已计费，这些图片可能产生两次费用。已收到但没保存成功的图片会自动补下载，不会重新生图。
+      </p>
     </section>
   );
 }

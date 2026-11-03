@@ -7,22 +7,20 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
 // Several image relays can be configured: one primary and ordered backups. The
 // app watches their health without paid calls and moves images that were never
-// sent to a healthy backup. Re-generating an image whose result is unknown (HTTP
-// 524) can be billed twice, so it only happens when the user turned it on.
+// sent to a healthy backup. An image whose result is unknown is re-generated once
+// automatically (since 0.6.27), preferring a healthy backup; it may be billed twice.
 
 type GatewaySettings struct {
 	PrimaryID string   `json:"primaryID"`
 	BackupIDs []string `json:"backupIDs"`
 	// AutoReroute moves unsent images to a healthy backup (no extra cost).
 	AutoReroute bool `json:"autoReroute"`
-	// AutoRegenerate524 re-generates an image cut by a relay timeout once, which
-	// may be billed twice. Off unless the user confirmed the cost notice.
-	AutoRegenerate524 bool `json:"autoRegenerate524"`
 }
 
 type GatewayHealth struct {
@@ -53,7 +51,6 @@ var (
 
 const (
 	maxBackupGateways      = 5
-	maxAutoRegenPerBatch   = 3
 	gatewaySettingsPrefKey = "image-gateways"
 )
 
@@ -119,13 +116,6 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 	if e := s.store.Put("preferences", gatewaySettingsPrefKey, g); e != nil {
 		s.mu.Unlock()
 		return e
-	}
-	if g.AutoRegenerate524 != old.AutoRegenerate524 {
-		text := "已关闭 524 自动重新生成"
-		if g.AutoRegenerate524 {
-			text = "已开启 524 自动重新生成（用户已确认可能重复计费）"
-		}
-		_ = s.store.appendLog("info", "image", "", text)
 	}
 	if g.AutoReroute != old.AutoReroute {
 		_ = s.store.appendLog("info", "image", "", fmt.Sprintf("自动转到备用中转站：%v", g.AutoReroute))
@@ -297,7 +287,9 @@ func taskOutcome(t Task) (outcome, bool) {
 	case "unknown":
 		o.timeout = relayTimedOut(t.Diagnostic)
 	case "failed":
-		o.rejected = rejectionKind(t.Diagnostic.HTTPStatus, t.Error)
+		if !strings.HasPrefix(t.Error, policyRefusedPrefix) {
+			o.rejected = rejectionKind(t.Diagnostic.HTTPStatus, t.Error)
+		}
 	}
 	return o, o.success || o.timeout || o.rejected != ""
 }
@@ -498,30 +490,19 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 	return false
 }
 
-// ---- auto re-generate after a relay timeout (opt-in) --------------------------
+// ---- auto re-generate an image whose result is unknown ------------------------
 
 // autoRegenerateLocked queues one more attempt for an image whose result is
-// unknown after a relay timeout. It returns the note for the original image.
+// unknown. Each image is re-generated at most once, so it costs at most twice.
+// It returns the note for the original image.
 func (s *Service) autoRegenerateLocked(t *Task) string {
 	g := s.gatewaySettingsLocked()
-	if !g.AutoRegenerate524 {
-		return "程序不会自动重发生图；可在“连接与设置 → 备用切换”开启自动换中转站重新生成。"
-	}
 	if t.AutoRetryOf != "" {
-		return "这已是自动重新生成的图片，不会再次自动重发。"
+		return "这已是自动重新生成的图片，不会再次自动重发，请核对中转站记录。"
 	}
 	tasks, e := List[Task](s.store, "task")
 	if e != nil {
-		return "程序不会自动重发生图。"
-	}
-	used := 0
-	for _, o := range tasks {
-		if o.BatchID == t.BatchID && o.AutoRetryOf != "" {
-			used++
-		}
-	}
-	if used >= maxAutoRegenPerBatch {
-		return fmt.Sprintf("本批自动重新生成已达 %d 张上限，未再自动重发。", maxAutoRegenPerBatch)
+		return "未能自动重新生成。"
 	}
 	hc := &healthCache{s: s, tasks: tasks, now: time.Now(), seen: map[string]GatewayHealth{}}
 	target, onBackup := s.backupLocked(*t, g, hc)
@@ -537,9 +518,12 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 		return "自动重新生成未能排队：" + e.Error()
 	}
 	t.AutoRetriedAs = next.ID
-	_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("524 自动重新生成：%s → %s（「%s」，可能重复计费）", t.ID, next.ID, target.Name))
+	_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("结果未知，自动重新生成：%s → %s（「%s」，可能重复计费）", t.ID, next.ID, target.Name))
 	if onBackup {
 		return fmt.Sprintf("已自动转到「%s」重新生成一次（新的计费请求）。原请求可能已在「%s」生成并计费，这张图可能产生两次费用。", target.Name, t.Connection.Name)
+	}
+	if !s.gatewaySetupLocked() {
+		return fmt.Sprintf("已在「%s」自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
 	}
 	return fmt.Sprintf("没有可用的同模型备用中转站，将在「%s」恢复正常后自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
 }

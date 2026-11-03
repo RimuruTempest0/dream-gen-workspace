@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Input, Progress, Tag } from "antd";
 import { SafetyCertificateOutlined } from "@ant-design/icons";
 import { call } from "./api";
-import { useActions, useData, time } from "./ui";
+import { notImages, useActions, useData, time } from "./ui";
 
 export type LicenseStatus = {
   mode: "developer" | "trial" | "active" | "invalid" | "mismatch";
@@ -90,7 +90,7 @@ export function LicensePanel() {
       await call("Activate", code);
       setCode("");
       // Activation adds the backup lines: refresh every list, not just the licence.
-      await qc.invalidateQueries();
+      await qc.invalidateQueries(notImages);
     } catch (e) {
       setError(String((e as Error)?.message || e));
     }
