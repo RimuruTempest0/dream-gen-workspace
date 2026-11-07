@@ -28,6 +28,8 @@ type AgentInput struct {
 	ImageConnectionID string   `json:"imageConnectionID"`
 	ImageModel        string   `json:"imageModel"`
 	SkillIDs          []string `json:"skillIDs"`
+	// AutoMode runs without asking the user: missing facts are decided by the Agent.
+	AutoMode bool `json:"autoMode,omitempty"`
 }
 
 // ProductInfo.Error means the page itself could not be read; ImageNote only says
@@ -67,6 +69,18 @@ type AgentQuestion struct {
 	Label    string `json:"label"`
 	Required bool   `json:"required"`
 	Answer   string `json:"answer"`
+	// AnsweredBy is "agent" when an automatic run answered the question itself;
+	// Basis says where the answer came from (see answerBases) and Reason why.
+	AnsweredBy string `json:"answeredBy,omitempty"`
+	Basis      string `json:"basis,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// AnswerHabit is one of the user's recent manual-mode answers, given to automatic
+// runs so the Agent learns how the user decides.
+type AnswerHabit struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
 }
 type SuiteItem struct {
 	ID         string   `json:"id"`
@@ -76,10 +90,14 @@ type SuiteItem struct {
 	References []string `json:"references"`
 	Size       string   `json:"size"`
 	Quality    string   `json:"quality"`
-	// Sample marks the one detail sample of the suite (e.g. a cuff close-up). Items
-	// with UseSample wait for it and get its image as their last reference.
-	Sample    bool `json:"sample,omitempty"`
-	UseSample bool `json:"useSample,omitempty"`
+	// Sample marks a sample of the suite: since 0.7.9 one per design area
+	// (SampleArea, e.g. 胸前 for the main design's master, 袖口 for a cuff close-up).
+	// Items wait for the samples they use and get them as their first references:
+	// UseSamples names the areas; UseSample alone (plans before 0.7.9) means all.
+	Sample     bool     `json:"sample,omitempty"`
+	SampleArea string   `json:"sampleArea,omitempty"`
+	UseSample  bool     `json:"useSample,omitempty"`
+	UseSamples []string `json:"useSamples,omitempty"`
 	// NoProduct marks an image without the product (a thread-colour card, fabric
 	// swatches); it is sent without the locked product spec.
 	NoProduct bool `json:"noProduct,omitempty"`
@@ -131,8 +149,14 @@ type AgentRun struct {
 	Error                string     `json:"error"`
 	// LLMReconnects counts LLM streams cut during this analysis; Claude Code
 	// retries them itself, so they are a note, not an error, unless it fails.
-	LLMReconnects     int    `json:"llmReconnects,omitempty"`
-	LLMReconnectError string `json:"llmReconnectError,omitempty"`
+	LLMReconnects int `json:"llmReconnects,omitempty"`
+	// AutoContinues counts how often an automatic run was continued by itself.
+	AutoContinues int `json:"autoContinues,omitempty"`
+	// AnswerHabits are the user's recent manual answers, taken when an automatic run starts.
+	AnswerHabits []AnswerHabit `json:"answerHabits,omitempty"`
+	// Crops are reference images the Agent cut from this run's references.
+	Crops             []string `json:"crops,omitempty"`
+	LLMReconnectError string   `json:"llmReconnectError,omitempty"`
 	// WaitedMS is the time the run stood waiting for the user (answers, plan
 	// review, a decision to continue); the elapsed timer leaves it out.
 	WaitedMS int64 `json:"waitedMS,omitempty"`

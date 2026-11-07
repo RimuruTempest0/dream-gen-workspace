@@ -48,6 +48,15 @@ export type Task = {
   sampleItem?: string;
   samplePending?: boolean;
   sampleAssetID?: string;
+  // Since 0.7.9 one sample per design area: a sample's area, the samples an image
+  // waits for and the sample images it was given.
+  sampleArea?: string;
+  sampleItems?: string[];
+  sampleAssetIDs?: string[];
+  // The LLM's check of the detail sample: checking, passed, redrawn, failed, skipped.
+  sampleCheck?: string;
+  sampleProblems?: string;
+  sampleRedraws?: number;
   id: string;
   batchID: string;
   createdAt: string;

@@ -24,6 +24,7 @@ Completeness comes before length: do not target 250 characters at the expense of
 ## 2. One design, drawn the same in every image
 - locked defines each fixed design unit once. Use the same short name whenever mentioning a unit; do not add a new accessory, font interpretation or partial redesign in one item.
 - Write 图案只包含 for the actual complete design and 图案里没有 for explicitly removed or forbidden features. A local edit preserves unrequested features. A full replacement follows the user's replacement scope.
+- Name a kept element by its actual shape in the reference, with a short visual spec (shape, colors, attachments and their position). Never swap in a similar common object from the user's wording: a mini Christmas-stocking headpiece is not a Santa hat.
 - Locate units on garment landmarks, not canvas coordinates. Keep scale relative to the garment; normal perspective can alter apparent screen size.
 - Generic terms such as “手写体” cannot substitute for visible letterforms. Do not label an unreviewed generated sample as an approved master.
 - New design decisions without visual evidence must be made once and fixed in locked, only within the user's authorized design freedom. Exact replication of an unreadable design needs better source material, not invented typography.
@@ -32,7 +33,7 @@ Completeness comes before length: do not target 250 characters at the expense of
 Keep the identity/design references for each visible unit in the same order with the same role wording across items that show it. Scene-only or color-only references may vary; do not force irrelevant references onto charts or unrelated crops.
 - Label each input by its actual index and role. Say whether it supplies garment shape, chest design, cuff design, color only or scene only. An existing image being modified is the edit target; supporting images are not replacement compositions.
 - An old-design reference contributes only the unchanged parts; name the removed or changed features and exclude them. Do not call the old design the exact reference for the new one.
-- Sample mechanics (sample: true, useSample: true) are in listing-suite. The backend adds the sample last with its own index and role line; do not number that future sample in your manual reference line.
+- Sample mechanics (sample, sampleArea, useSamples) are in listing-suite. The backend puts the samples first with their own index and role line and shifts your numbering; do not number them in your manual reference line.
 - If the only clear design source is a whole-garment photo, retain it and say which local design to copy and which composition to ignore.
 - Data-only sources such as size tables supply verified values written in the prompt, not a second product for the model to copy.
 
@@ -51,7 +52,7 @@ Copy the one cuff sentence from listing-suite into every cuff-visible prompt, on
 
 ## 6. Scenes and themes
 Turn requested settings into visible evidence. For a party with unspecified count, at least 3 people interacting plus a food table, drinks or decorations makes the group readable; honor a specified count instead. Only the principal subject wears the product unless the user requests otherwise.
-Name relevant holiday objects rather than just “festive”; requested plain backgrounds stay plain. Avoid generic “no extra people” text that cancels an explicitly requested party.
+When several identical products share a frame, use at most three (the lower end of a user's range) and frame them close enough for each design to read; state that every one copies the sample exactly. Name relevant holiday objects rather than just “festive”; requested plain backgrounds stay plain. Avoid generic “no extra people” text that cancels an explicitly requested party.
 For photos specify realistic fabric, stitch texture, natural skin and a feasible pose. Keep required chest and cuff details clear of hands, hair and props.
 The image model's content check refuses some harmless prompts, so prefer neutral wording: no body, skin, bare or tight-fit emphasis; children and babies fully dressed in ordinary family scenes, not beds, baths or changing; no weapon, blood, drug or alcohol words, even as color names (gun gray, blood red); no real people, celebrities, brands or known characters unless the user's design text names them. Keep exact design text verbatim.
 

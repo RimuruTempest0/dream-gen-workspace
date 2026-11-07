@@ -553,7 +553,7 @@ func TestPackageActivatesInTheApp(t *testing.T) {
 	if st.Mode != "trial" || st.SoftwareID != c.SoftwareID || st.TrialLimit != 2 {
 		t.Fatalf("%+v", st)
 	}
-	// An LLM line without a configured limit reaches the customer as 32768, not 8192.
+	// An LLM line without a configured limit reaches the customer at the current default.
 	cs, _ := s.ListConnections()
 	llmLines := 0
 	for _, x := range cs {

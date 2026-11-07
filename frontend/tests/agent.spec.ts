@@ -112,9 +112,15 @@ let cutStreamOnce = false;
 let returnImageURL = false;
 let resultLinkUnavailable = false;
 // The next image requests are refused by the image model's content check.
+// Set when an automatic-mode request offered the self-answer tool.
+let autoOfferedAnswers = false;
 let refuseImages = 0,
   refusedRequests = 0,
-  rewriteRequests = 0;
+  rewriteRequests = 0,
+  // Checks of the detail sample; the first one fails so the sample is redrawn.
+  sampleChecks = 0,
+  // Refinements whose original requirements the LLM rewrote first.
+  refineRewrites = 0;
 let shopPhotoRequests = 0;
 function shopPage(req: http.IncomingMessage, res: http.ServerResponse) {
   res.setHeader("content-type", "text/html; charset=utf-8");
@@ -255,6 +261,42 @@ test.beforeAll(async () => {
         );
         return;
       }
+      if (
+        typeof first === "string" &&
+        first.startsWith("下面是一张电商图片原来的制作要求")
+      ) {
+        refineRewrites++;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            content: [{ type: "text", text: first.split("原制作要求：\n")[1] }],
+            usage: { input_tokens: 300, output_tokens: 150 },
+          }),
+        );
+        return;
+      }
+      if (
+        Array.isArray(first) &&
+        first[0]?.type === "text" &&
+        first[0].text.startsWith("你是刺绣商品图的质检员")
+      ) {
+        sampleChecks++;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            content: [
+              {
+                type: "text",
+                text:
+                  sampleChecks === 1
+                    ? '{"pass": false, "problems": ["头饰画成了圣诞帽，应是迷你圣诞袜"]}'
+                    : '{"pass": true, "problems": []}',
+              },
+            ],
+          }),
+        );
+        return;
+      }
       if (Array.isArray(first) && first[0]?.type === "image") {
         res.setHeader("content-type", "application/json");
         res.end(
@@ -362,6 +404,88 @@ test.beforeAll(async () => {
                   ],
                 })
               : { type: "text", text: "请写出 P004 机绣规则。" };
+        reply(block, `tool_${step}`);
+        return;
+      }
+      if (ctx.input.autoMode) {
+        // Automatic mode: ask the screenshot's four questions, answer them
+        // itself the way the user would, then save the plan.
+        if (
+          body.tools?.some((t: any) =>
+            String(t.name).endsWith("answer_questions"),
+          )
+        )
+          autoOfferedAnswers = true;
+        const ask = (id: string, label: string) => ({
+          id,
+          label,
+          required: true,
+        });
+        const answer = (
+          id: string,
+          a: string,
+          basis: string,
+          reason: string,
+        ) => ({
+          id,
+          answer: a,
+          basis,
+          reason,
+        });
+        block =
+          step === 0
+            ? tool("mcp__workbench__request_information", {
+                questions: [
+                  ask("pet", "新宠物肖像的品种和毛色"),
+                  ask("name", "绣在袜口上的新英文名字"),
+                  ask("thread", "新的名字绣线颜色"),
+                  ask("hat", "保留的圣诞帽是参考图里红绿迷你圣诞袜帽这一款吗"),
+                ],
+              })
+            : step === 1
+              ? tool("mcp__workbench__answer_questions", {
+                  answers: [
+                    answer("pet", "金毛", "instruction", "指令写了小金毛"),
+                    answer(
+                      "name",
+                      "BELLA",
+                      "verify",
+                      "指令没给名字，取一个常见名字",
+                    ),
+                    answer("thread", "白色", "choice", "白色在墨绿底上最清楚"),
+                    answer(
+                      "hat",
+                      "原链接里的红绿迷你圣诞袜帽",
+                      "source",
+                      "指令说保留，照原链接",
+                    ),
+                  ],
+                })
+              : step === 2
+                ? tool("mcp__workbench__save_suite_plan", {
+                    locked: ["衣服造型和比例", "胸前名字 Bella（自动决定）"],
+                    editable: ["背景"],
+                    notes: "自动决定：名字 Bella、线色白色。12张 Etsy 1:1 套图",
+                    cuffEmbroidery: false,
+                    items: Array.from({ length: 12 }, (_, i) => ({
+                      id: `auto-${i + 1}`,
+                      purpose: `自动展示图 ${i + 1}`,
+                      scene: "家庭客厅",
+                      prompt: `小金毛刺绣卫衣，自动模式第 ${i + 1} 张，真实商品比例。`,
+                      references: [],
+                      // 11 is the cuff sample, 12 the chest master; the rest copy both.
+                      sample: i >= 10,
+                      sampleArea:
+                        i === 10 ? "袖口" : i === 11 ? "胸前" : undefined,
+                      useSamples: i < 10 ? ["胸前", "袖口"] : undefined,
+                      size: "1024x1024",
+                      quality: "auto",
+                    })),
+                  })
+                : {
+                    type: "text",
+                    text: "已保存12张方案（含自行判断的取值）。",
+                  };
         reply(block, `tool_${step}`);
         return;
       }
@@ -816,6 +940,8 @@ test("refine a finished image keeps the previous version and stays off the workb
     first.getByRole("button", { name: "优化第 1 张图片" }),
   ).toBeVisible({ timeout: 20000 });
   expect(imageRequests).toBe(before + 1);
+  // The original requirements were first brought in line with the change.
+  expect(refineRewrites).toBe(1);
   await expect(
     page.getByText("已完成 12 / 12 个任务，可下载 12 张图片", { exact: true }),
   ).toBeVisible();
@@ -1147,6 +1273,122 @@ test("blocked product link waits for browser verification and continues", async 
       instruction: "",
     });
   });
+});
+
+test("automatic mode never asks and delivers the whole set", async () => {
+  test.setTimeout(90000);
+  const before = imageRequests;
+  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("button", { name: "新建需求", exact: true }).click();
+  await page.getByLabel("商品链接", { exact: true }).fill("");
+  await page
+    .getByLabel("完整制作指令", { exact: true })
+    .fill("全自动 Etsy 套图：小金毛刺绣卫衣，12张，1:1。");
+  expect(await go<string>("SmartMode")).toBe("manual");
+  const mode = page
+    .locator(".page-header")
+    .getByRole("group", { name: "制作模式" });
+  await expect(mode).toBeVisible();
+  const manual = mode.getByRole("radio", { name: /^手动/ });
+  const auto = mode.getByRole("radio", { name: /^自动/ });
+  await expect(manual).toBeChecked();
+  // Each option says what it does without reading the subtitle.
+  await expect(mode).toContainText("缺资料时停下来问你");
+  await expect(mode).toContainText("助手代答，标出需核对");
+  // Keyboard: arrow keys move between the two modes.
+  await manual.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(auto).toBeChecked();
+  await expect.poll(() => go<string>("SmartMode")).toBe("auto");
+  await page.keyboard.press("ArrowLeft");
+  await expect(manual).toBeChecked();
+  await expect.poll(() => go<string>("SmartMode")).toBe("manual");
+  await auto.click();
+  await expect(auto).toBeChecked();
+  await expect.poll(() => go<string>("SmartMode")).toBe("auto");
+  const modeA11y = await new AxeBuilder({ page })
+    .include(".page-header")
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(modeA11y.violations).toEqual([]);
+  await page.locator(".page-header").screenshot({
+    path: path.resolve("../docs/smart-mode-switch-0.7.7.png"),
+  });
+  await expect(
+    page.getByText(/自动模式：给完指令直接得到一套图/),
+  ).toBeVisible();
+  await expect(page.getByLabel("完整制作指令", { exact: true })).toHaveValue(
+    /全自动 Etsy/,
+  );
+  await page.getByRole("button", { name: "开始生成套图", exact: true }).click();
+  await expect(page.getByText("自动模式", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("已完成 12 / 12 个任务，可下载 12 张图片", { exact: true }),
+  ).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole("heading", { name: "补充必要资料" })).toHaveCount(
+    0,
+  );
+  // It shows how it answered each question; the picked name is flagged.
+  const judgments = page.getByRole("region", { name: /制作助手的判断/ });
+  await expect(judgments.getByRole("listitem")).toHaveCount(4);
+  await expect(judgments).toContainText("其中 1 项需核对");
+  for (const label of ["指令", "需核对", "自行选择", "原链接"])
+    await expect(judgments.getByText(label, { exact: true })).toBeVisible();
+  await expect(judgments).toContainText("原链接里的红绿迷你圣诞袜帽");
+  expect(autoOfferedAnswers).toBe(true);
+  // The first sample failed its check and was redrawn once before the set.
+  expect(imageRequests).toBe(before + 13);
+  expect(sampleChecks).toBe(3);
+  // Every image names the chest master and the cuff sample it was drawn from.
+  await expect(
+    page
+      .getByText(
+        "已照第 12 张「胸前」样板图、第 11 张「袖口」样板图画对应的设计。",
+      )
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("已按核对意见重画 1 次，样板图已核对，与设计依据一致。"),
+  ).toBeVisible();
+  const runs = await go<{ items: any[] }>("ListAgentRuns", 0, 1);
+  expect(runs.items[0].input.autoMode).toBe(true);
+  expect(
+    runs.items[0].questions.map((q: any) => q.answeredBy + ":" + q.basis),
+  ).toEqual([
+    "agent:instruction",
+    "agent:verify",
+    "agent:choice",
+    "agent:source",
+  ]);
+  await page.screenshot({
+    path: path.resolve("../docs/smart-auto-mode-0.7.7.png"),
+  });
+  // Narrow windows: the switch wraps under the title without side scrolling.
+  const cdp = await browser.contexts()[0].newCDPSession(page);
+  for (const width of [900, 700]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: 740,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await expect(auto).toBeChecked();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth,
+      ),
+    ).toBe(false);
+    await page.locator(".page-header").screenshot({
+      path: path.resolve(`../docs/smart-mode-switch-${width}-0.7.7.png`),
+    });
+  }
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await cdp.detach();
+  // Back to manual, the default every other test expects.
+  await manual.click();
+  await expect(manual).toBeChecked();
+  await expect.poll(() => go<string>("SmartMode")).toBe("manual");
+  await expect(page.getByText(/手动模式：输入制作需求/)).toBeVisible();
 });
 
 test("settings clear product browser data after confirmation", async () => {

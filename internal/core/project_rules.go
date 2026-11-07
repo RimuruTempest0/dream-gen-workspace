@@ -1,6 +1,10 @@
 package core
 
-import "strings"
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
 
 // The P004 fixed rules, split so the cuff clauses can be left out for products
 // without cuff embroidery: telling the image model where cuff embroidery goes
@@ -91,9 +95,50 @@ func itemPrompt(r AgentRun, p SuitePlan, item SuiteItem) string {
 	}
 	prompt := item.Prompt + "\n统一锁定项：" + strings.Join(p.Locked, "；") + "\n允许修改：" + strings.Join(p.Editable, "；") + "\n画面比例：" + r.Input.Ratio + suffix
 	if item.Sample {
-		prompt = sampleSelfLine + prompt
+		prompt = sampleLead(item.SampleArea) + prompt
 	}
 	return prompt
+}
+
+// maxSamples is how many samples a set may have: one per design area.
+const maxSamples = 3
+
+// samplesUsed lists the plan IDs of the samples item is drawn from, in the order
+// they become its first references: the areas it names, or every sample when it
+// only sets useSample (plans before 0.7.9).
+func samplesUsed(p SuitePlan, item SuiteItem) []string {
+	if item.Sample {
+		return nil
+	}
+	byArea, all := map[string]string{}, []string{}
+	for _, x := range p.Items {
+		if x.Sample {
+			byArea[strings.TrimSpace(x.SampleArea)] = x.ID
+			all = append(all, x.ID)
+		}
+	}
+	if len(item.UseSamples) == 0 {
+		if item.UseSample {
+			return all
+		}
+		return nil
+	}
+	out := []string{}
+	for _, area := range item.UseSamples {
+		if id := byArea[strings.TrimSpace(area)]; id != "" && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// sampleLead opens a sample's own prompt. A cuff-like detail sample keeps the
+// close-up rule; the master of a main design area shows its placement and size.
+func sampleLead(area string) string {
+	if area == "" || strings.Contains(area, "袖") {
+		return sampleSelfLine
+	}
+	return fmt.Sprintf("设计母版（本套其他图片会照这张画「%[1]s」的设计，必须画准）：按提示词的取景画；画面里「%[1]s」设计的图案、朝向、位置和相对大小就是全套的标准，必须清楚、完整、端正。\n", area)
 }
 
 // sampleSelfLine leads the sample's own prompt. With a whole-garment reference and

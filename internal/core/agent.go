@@ -24,16 +24,26 @@ func (s *Service) AgentRuntime() AgentRuntimeInfo {
 	defer s.mu.Unlock()
 	info, e := os.Stat(s.agentExecutable)
 	if e != nil || info.IsDir() {
-		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.7.1 便携包。普通生图仍可使用。"}
+		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.7.9 便携包。普通生图仍可使用。"}
 	}
 	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: "内置运行时已就绪"}
 }
 func (s *Service) waitAgent() {
-	s.mu.Lock()
-	done := s.agentDone
-	s.mu.Unlock()
-	if done != nil {
+	for {
+		s.mu.Lock()
+		done := s.agentDone
+		s.mu.Unlock()
+		if done == nil {
+			return
+		}
 		<-done
+		// An automatic run may have been continued by itself: wait for that attempt too.
+		s.mu.Lock()
+		next := s.agentDone
+		s.mu.Unlock()
+		if next == done {
+			return
+		}
 	}
 }
 func (s *Service) agentBusy() error {
@@ -364,9 +374,22 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 					current.Stage = "制作未完成"
 				}
 			}
+			relaunch := ""
+			if !wasCanceled && s.ctx.Err() == nil {
+				relaunch = autoContinueLocked(&current)
+			}
 			// Do not overwrite a run saved atomically with its submitted batch.
 			if current.BatchID == "" {
 				s.store.Put("agent_run", r.ID, current)
+			}
+			if relaunch != "" {
+				s.agentRunID = ""
+				s.agentCancel = nil
+				s.launchAgent(current, relaunch)
+				close(done)
+				s.mu.Unlock()
+				s.signal()
+				return
 			}
 		}
 		s.agentRunID = ""
@@ -450,17 +473,26 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 		return errors.New("套图方案应包含 1–200 张图")
 	}
 	allowed := map[string]bool{}
-	for _, id := range append(append([]string{}, r.Input.References...), r.Product.ReferenceIDs...) {
+	for _, id := range runReferenceIDs(*r) {
 		allowed[id] = true
 	}
 	samples := 0
+	areas := map[string]bool{}
 	for _, item := range p.Items {
 		if item.Sample {
 			samples++
+			area := strings.TrimSpace(item.SampleArea)
+			if areas[area] {
+				return fmt.Errorf("每个设计区只能有一张样板图（sampleArea「%s」重复）", area)
+			}
+			areas[area] = true
 		}
 	}
-	if samples > 1 {
-		return errors.New("整套最多一张细节样板图（sample）")
+	if samples > maxSamples {
+		return fmt.Errorf("整套最多 %d 张样板图（每个设计区一张）", maxSamples)
+	}
+	if samples > 1 && areas[""] {
+		return errors.New("有多张样板图时，每张都要写 sampleArea（例如 胸前、袖口）")
 	}
 	ids := map[string]bool{}
 	for i := range p.Items {
@@ -468,17 +500,23 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 		if item.ID == "" {
 			item.ID = NewID()
 		}
-		if item.Sample && item.UseSample {
-			return errors.New("样板图本身不能再照样板图画（sample 与 useSample 不能同时为 true）")
+		uses := item.UseSample || len(item.UseSamples) > 0
+		if item.Sample && uses {
+			return errors.New("样板图本身不能再照样板图画（sample 与 useSample/useSamples 不能同时使用）")
 		}
-		if item.NoProduct && (item.Sample || item.UseSample) {
+		if item.NoProduct && (item.Sample || uses) {
 			return errors.New("没有商品的图片（noProduct）不能做样板图，也不需要照样板图画")
 		}
-		if item.UseSample && samples == 0 {
-			return errors.New("方案有图片标了 useSample，但没有标 sample 的样板图")
+		if uses && samples == 0 {
+			return errors.New("方案有图片标了 useSample/useSamples，但没有标 sample 的样板图")
 		}
-		if item.UseSample && len(item.References) > 3 {
-			return errors.New("照样板图画的图片最多选 3 张参考图，第 4 张留给样板图")
+		for _, area := range item.UseSamples {
+			if !areas[strings.TrimSpace(area)] {
+				return fmt.Errorf("useSamples 里的「%s」没有对应的样板图（sampleArea）", area)
+			}
+		}
+		if n := len(samplesUsed(*p, *item)); n > 0 && len(item.References)+n > 4 {
+			return fmt.Errorf("照样板图画的图片：自选参考图加上 %d 张样板图最多 4 张", n)
 		}
 		if ids[item.ID] {
 			return errors.New("方案图 ID 重复")
@@ -572,17 +610,17 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	}
 	batch := NewID()
 	tasks := []Task{}
-	sampleItem := ""
-	for _, item := range p.Items {
-		if item.Sample {
-			sampleItem = item.ID
-		}
-	}
+
 	for _, item := range p.Items {
 		prompt := itemPrompt(r, p, item)
 		t := Task{ID: NewID(), BatchID: batch, AgentRunID: id, PlanItemID: item.ID, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: item.Size, Quality: item.Quality, References: append([]string{}, item.References...), ProjectID: r.Input.ProjectID, Connection: c, AssetIDs: []string{}, Sample: item.Sample}
-		if item.UseSample && sampleItem != "" {
-			t.SampleItem, t.SamplePending = sampleItem, true
+		if item.Sample {
+			// The rest of the set copies the sample's details: it gets the best quality.
+			t.Quality = sampleQuality
+			t.SampleArea = strings.TrimSpace(item.SampleArea)
+		}
+		if used := samplesUsed(p, item); len(used) > 0 {
+			t.SampleItems, t.SampleItem, t.SamplePending = used, used[0], true
 		}
 		tasks = append(tasks, t)
 	}

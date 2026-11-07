@@ -22,6 +22,8 @@ export type AgentInput = {
   imageConnectionID: string;
   imageModel: string;
   skillIDs: string[];
+  // Automatic mode never asks: the Agent decides missing facts itself.
+  autoMode?: boolean;
 };
 export type ProductInfo = {
   sourceURL: string;
@@ -38,6 +40,10 @@ export type AgentQuestion = {
   label: string;
   required: boolean;
   answer: string;
+  // Set when an automatic run answered the question itself.
+  answeredBy?: "agent";
+  basis?: "instruction" | "source" | "choice" | "habit" | "verify";
+  reason?: string;
 };
 export type SuiteItem = {
   id: string;

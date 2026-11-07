@@ -680,7 +680,7 @@ export function KeyPool() {
                     />
                   </Form.Item>
                   <Form.Item name="maxOutputTokens" label="输出上限">
-                    <InputNumber min={256} max={65536} placeholder="32768" />
+                    <InputNumber min={256} max={65536} placeholder="65536" />
                   </Form.Item>
                 </Space>
               )

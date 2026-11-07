@@ -114,7 +114,11 @@ func toolActivity(name string, input json.RawMessage) string {
 		Name      string            `json:"name"`
 		Items     []json.RawMessage `json:"items"`
 		Questions []json.RawMessage `json:"questions"`
-		Append    bool              `json:"append"`
+		Answers   []struct {
+			Basis string `json:"basis"`
+		} `json:"answers"`
+		Append bool   `json:"append"`
+		Label  string `json:"label"`
 	}
 	json.Unmarshal(input, &v)
 	switch strings.TrimPrefix(name, "mcp__workbench__") {
@@ -131,6 +135,22 @@ func toolActivity(name string, input json.RawMessage) string {
 		return "读取技能附件"
 	case "request_information":
 		return fmt.Sprintf("提出 %d 个补充问题", len(v.Questions))
+	case "crop_reference":
+		if v.Label != "" {
+			return "截取参考图局部：" + v.Label
+		}
+		return "截取参考图局部"
+	case "answer_questions":
+		verify := 0
+		for _, a := range v.Answers {
+			if a.Basis == "verify" {
+				verify++
+			}
+		}
+		if verify > 0 {
+			return fmt.Sprintf("自行回答 %d 个问题（其中 %d 项需核对）", len(v.Answers), verify)
+		}
+		return fmt.Sprintf("自行回答 %d 个问题", len(v.Answers))
 	case "save_suite_plan":
 		if v.Append {
 			return fmt.Sprintf("暂存套图方案：本批 %d 张", len(v.Items))

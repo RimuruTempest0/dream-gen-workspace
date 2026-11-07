@@ -64,6 +64,7 @@ export namespace core {
 	    imageConnectionID: string;
 	    imageModel: string;
 	    skillIDs: string[];
+	    autoMode?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AgentInput(source);
@@ -84,6 +85,7 @@ export namespace core {
 	        this.imageConnectionID = source["imageConnectionID"];
 	        this.imageModel = source["imageModel"];
 	        this.skillIDs = source["skillIDs"];
+	        this.autoMode = source["autoMode"];
 	    }
 	}
 	export class SuiteItem {
@@ -95,7 +97,9 @@ export namespace core {
 	    size: string;
 	    quality: string;
 	    sample?: boolean;
+	    sampleArea?: string;
 	    useSample?: boolean;
+	    useSamples?: string[];
 	    noProduct?: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -112,7 +116,9 @@ export namespace core {
 	        this.size = source["size"];
 	        this.quality = source["quality"];
 	        this.sample = source["sample"];
+	        this.sampleArea = source["sampleArea"];
 	        this.useSample = source["useSample"];
+	        this.useSamples = source["useSamples"];
 	        this.noProduct = source["noProduct"];
 	    }
 	}
@@ -163,6 +169,9 @@ export namespace core {
 	    label: string;
 	    required: boolean;
 	    answer: string;
+	    answeredBy?: string;
+	    basis?: string;
+	    reason?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AgentQuestion(source);
@@ -174,6 +183,9 @@ export namespace core {
 	        this.label = source["label"];
 	        this.required = source["required"];
 	        this.answer = source["answer"];
+	        this.answeredBy = source["answeredBy"];
+	        this.basis = source["basis"];
+	        this.reason = source["reason"];
 	    }
 	}
 	export class ProductInfo {
@@ -308,6 +320,20 @@ export namespace core {
 	        this.replyLastAt = source["replyLastAt"];
 	    }
 	}
+	export class AnswerHabit {
+	    question: string;
+	    answer: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AnswerHabit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.question = source["question"];
+	        this.answer = source["answer"];
+	    }
+	}
 	export class LLMCapabilities {
 	    model: string;
 	    text: boolean;
@@ -403,6 +429,9 @@ export namespace core {
 	    stage: string;
 	    error: string;
 	    llmReconnects?: number;
+	    autoContinues?: number;
+	    answerHabits?: AnswerHabit[];
+	    crops?: string[];
 	    llmReconnectError?: string;
 	    waitedMS?: number;
 	    progress?: RunProgress;
@@ -440,6 +469,9 @@ export namespace core {
 	        this.stage = source["stage"];
 	        this.error = source["error"];
 	        this.llmReconnects = source["llmReconnects"];
+	        this.autoContinues = source["autoContinues"];
+	        this.answerHabits = this.convertValues(source["answerHabits"], AnswerHabit);
+	        this.crops = source["crops"];
 	        this.llmReconnectError = source["llmReconnectError"];
 	        this.waitedMS = source["waitedMS"];
 	        this.progress = this.convertValues(source["progress"], RunProgress);
@@ -524,6 +556,7 @@ export namespace core {
 	        this.message = source["message"];
 	    }
 	}
+	
 	export class Asset {
 	    id: string;
 	    name: string;
@@ -1247,11 +1280,18 @@ export namespace core {
 	    policyRetriedAs?: string;
 	    policyStep?: number;
 	    rewording?: boolean;
+	    rewordFor?: string;
 	    trial?: boolean;
 	    sample?: boolean;
 	    sampleItem?: string;
 	    samplePending?: boolean;
 	    sampleAssetID?: string;
+	    sampleArea?: string;
+	    sampleItems?: string[];
+	    sampleAssetIDs?: string[];
+	    sampleCheck?: string;
+	    sampleProblems?: string;
+	    sampleRedraws?: number;
 	    previousAssetIDs?: string[];
 	    id: string;
 	    batchID: string;
@@ -1291,11 +1331,18 @@ export namespace core {
 	        this.policyRetriedAs = source["policyRetriedAs"];
 	        this.policyStep = source["policyStep"];
 	        this.rewording = source["rewording"];
+	        this.rewordFor = source["rewordFor"];
 	        this.trial = source["trial"];
 	        this.sample = source["sample"];
 	        this.sampleItem = source["sampleItem"];
 	        this.samplePending = source["samplePending"];
 	        this.sampleAssetID = source["sampleAssetID"];
+	        this.sampleArea = source["sampleArea"];
+	        this.sampleItems = source["sampleItems"];
+	        this.sampleAssetIDs = source["sampleAssetIDs"];
+	        this.sampleCheck = source["sampleCheck"];
+	        this.sampleProblems = source["sampleProblems"];
+	        this.sampleRedraws = source["sampleRedraws"];
 	        this.previousAssetIDs = source["previousAssetIDs"];
 	        this.id = source["id"];
 	        this.batchID = source["batchID"];

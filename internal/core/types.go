@@ -67,6 +67,9 @@ type Task struct {
 	PolicyRetriedAs string `json:"policyRetriedAs,omitempty"`
 	PolicyStep      int    `json:"policyStep,omitempty"`
 	Rewording       bool   `json:"rewording,omitempty"`
+	// RewordFor is what the held rewrite is for: "" a refused prompt, "refine" a
+	// refinement whose original requirements must first agree with the change.
+	RewordFor string `json:"rewordFor,omitempty"`
 	// Trial marks an image requested before activation; it counts toward the trial.
 	Trial bool `json:"trial,omitempty"`
 	// Sample marks the suite's detail sample image. SampleItem is the plan slot of
@@ -77,6 +80,20 @@ type Task struct {
 	SampleItem    string `json:"sampleItem,omitempty"`
 	SamplePending bool   `json:"samplePending,omitempty"`
 	SampleAssetID string `json:"sampleAssetID,omitempty"`
+	// Since 0.7.9 a set has one sample per design area: SampleArea names a sample's
+	// area; SampleItems are all the samples an image waits for (SampleItem is the
+	// first) and SampleAssetIDs the sample images it was given, in that order.
+	SampleArea     string   `json:"sampleArea,omitempty"`
+	SampleItems    []string `json:"sampleItems,omitempty"`
+	SampleAssetIDs []string `json:"sampleAssetIDs,omitempty"`
+	// SampleCheck is the LLM's check of a finished sample against its design
+	// references: checking, passed, redrawn (a new attempt was queued), failed
+	// (still wrong after the redraws; images go ahead) or skipped. SampleProblems
+	// lists what was wrong; on a redraw attempt, what it had to correct.
+	// SampleRedraws counts automatic redraws of the sample.
+	SampleCheck    string `json:"sampleCheck,omitempty"`
+	SampleProblems string `json:"sampleProblems,omitempty"`
+	SampleRedraws  int    `json:"sampleRedraws,omitempty"`
 	// PreviousAssetIDs lists images of earlier attempts in the same slot (response only, newest first).
 	PreviousAssetIDs []string             `json:"previousAssetIDs,omitempty"`
 	ID               string               `json:"id"`

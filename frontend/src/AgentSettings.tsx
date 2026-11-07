@@ -112,7 +112,7 @@ export function ConnectionFields({
         <UIForm.Item
           name="maxOutputTokens"
           label="单次输出上限（tokens）"
-          extra="默认 32768；模型支持的上限更低时再调低。"
+          extra="默认 65536（包括模型思考）；模型支持的上限更低时再调低。"
         >
           <InputNumber min={256} max={65536} className="full-width" />
         </UIForm.Item>
@@ -179,7 +179,7 @@ export function LLMConnections() {
             key: "",
             mode: "claude",
             authMode: "api-key",
-            maxOutputTokens: 32768,
+            maxOutputTokens: 65536,
           },
     );
   }

@@ -26,7 +26,9 @@ func (a *App) GetAgentTasks(id string) ([]core.Task, error) { return a.service.G
 func (a *App) RetryFailedAgentImages(runID string) (int, error) {
 	return a.service.RetryFailedAgentImages(runID)
 }
-func (a *App) ImageConcurrency() int { return a.service.ImageConcurrency() }
+func (a *App) SmartMode() string           { return a.service.SmartMode() }
+func (a *App) SetSmartMode(v string) error { return a.service.SetSmartMode(v) }
+func (a *App) ImageConcurrency() int       { return a.service.ImageConcurrency() }
 func (a *App) SetImageConcurrency(n int) error {
 	return a.service.SetImageConcurrency(n)
 }

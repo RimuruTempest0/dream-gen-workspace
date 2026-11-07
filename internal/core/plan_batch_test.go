@@ -57,6 +57,37 @@ func TestSuitePlanCanBeSavedInBatches(t *testing.T) {
 	}
 }
 
+// 11/06: 6 + 6 staged, then the last call sent all 12 again. The last call is the
+// whole plan, in automatic mode (exactly the authorized count) and otherwise.
+func TestLastBatchRepeatingTheWholePlanIsNotCountedTwice(t *testing.T) {
+	for _, auto := range []bool{true, false} {
+		s := testService(t)
+		r := AgentRun{ID: NewID(), CreatedAt: Now(), Status: "analyzing", AutoGeneration: auto, AuthorizedCount: 12, Input: AgentInput{TargetCount: 12, Size: "1024x1024", Quality: "auto", References: []string{}}}
+		s.store.Put("agent_run", r.ID, r)
+		b := &agentBridge{service: s, runID: r.ID, ctx: context.Background()}
+		full := simplePlan(12, []string{})
+		for _, part := range [][]SuiteItem{full.Items[:6], full.Items[6:]} {
+			if _, e := b.callTool("save_suite_plan", planArgs(t, SuitePlan{Locked: full.Locked, Editable: full.Editable, Items: part}, true)); e != nil {
+				t.Fatal(e)
+			}
+		}
+		if _, e := b.callTool("save_suite_plan", planArgs(t, SuitePlan{Items: full.Items}, false)); e != nil {
+			t.Fatal(auto, e)
+		}
+		saved, _ := s.GetAgentRun(r.ID)
+		if len(saved.Plans) != 1 || len(saved.Plans[0].Items) != 12 || saved.Plans[0].Locked[0] != "比例" {
+			t.Fatalf("auto=%v: %+v", auto, saved.Plans)
+		}
+		found := false
+		for _, a := range saved.Activity {
+			found = found || strings.Contains(a.Text, "之前暂存的 12 张不重复计入")
+		}
+		if !found {
+			t.Fatal("not explained in the run details")
+		}
+	}
+}
+
 func TestOutputLimitIsReportedInsteadOfFollowUpError(t *testing.T) {
 	s := testService(t)
 	llm := saveLLM(t, s, "https://example.com/anthropic")
@@ -71,7 +102,7 @@ func TestOutputLimitIsReportedInsteadOfFollowUpError(t *testing.T) {
 	}
 	s.waitAgent()
 	r, _ := s.GetAgentRun(id)
-	if !strings.Contains(r.Error, "单次输出超过上限（32768 tokens）") || strings.Contains(r.Error, "unrecognized_model") {
+	if !strings.Contains(r.Error, "单次输出超过上限（65536 tokens）") || strings.Contains(r.Error, "unrecognized_model") {
 		t.Fatal("real cause hidden", r.Error)
 	}
 
@@ -88,7 +119,7 @@ func TestOutputLimitIsReportedInsteadOfFollowUpError(t *testing.T) {
 	}
 	s.waitAgent()
 	r, _ = s.GetAgentRun(id)
-	if !strings.Contains(r.Error, "单次输出超过上限（32768 tokens）") || !strings.Contains(r.Error, "请联系软件提供方") || strings.Contains(r.Error, "连接与设置") {
+	if !strings.Contains(r.Error, "单次输出超过上限（65536 tokens）") || !strings.Contains(r.Error, "请联系软件提供方") || strings.Contains(r.Error, "连接与设置") {
 		t.Fatal("customer told to edit a locked line", r.Error)
 	}
 }
@@ -163,11 +194,44 @@ func TestOldDefaultOutputLimitIsRaised(t *testing.T) {
 			t.Fatal("settings still show the old default", c.MaxOutputTokens)
 		}
 	}
-	// Saving an empty or old-default value stores 32768; a deliberate other value is kept.
-	for in, want := range map[int]int{0: 32768, 8192: 32768, 16000: 16000, 65536: 65536} {
+	// Saving an empty or old-default value stores 65536; a deliberate other value is kept.
+	for in, want := range map[int]int{0: 65536, 8192: 65536, 32768: 65536, 16000: 16000, 40000: 40000} {
 		saved, e := s.SaveConnection(ConnectionInput{ID: llm.ID, Kind: "llm", Name: "LLM", BaseURL: "https://example.com/anthropic", Model: "m", MaxOutputTokens: in})
 		if e != nil || saved.MaxOutputTokens != want {
 			t.Fatal(in, saved.MaxOutputTokens, e)
 		}
+	}
+}
+
+// A line saved with the 0.6.10–0.7.1 default runs at 65536 and keeps its
+// capability check when it is saved again unchanged; Claude Code gets the new limit.
+func TestOutputLimit32768IsRaisedWithoutNewCheck(t *testing.T) {
+	s := testService(t)
+	llm := saveLLM(t, s, "https://example.com/anthropic")
+	s.mu.Lock()
+	var stored Connection
+	s.store.Get("connection", llm.ID, &stored)
+	stored.MaxOutputTokens = 32768
+	s.store.Put("connection", llm.ID, stored)
+	s.mu.Unlock()
+	if got := normalizeConnection(stored).MaxOutputTokens; got != 65536 {
+		t.Fatal("32768 kept", got)
+	}
+	var env []string
+	s.agentRunner = func(ctx context.Context, in agentInvocation) error {
+		env = in.Env
+		emitAgentSuccess(in)
+		return nil
+	}
+	if _, e := s.StartAgentAnalysis(agentInput(llm, saveConnection(t, s, "https://example.com/v1"))); e != nil {
+		t.Fatal(e)
+	}
+	s.waitAgent()
+	if !strings.Contains(strings.Join(env, "\n")+"\n", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=65536\n") {
+		t.Fatal("Claude Code not given the new limit", env)
+	}
+	saved, e := s.SaveConnection(ConnectionInput{ID: llm.ID, Kind: "llm", Name: llm.Name, BaseURL: llm.BaseURL, Model: llm.Model, Mode: "compatible", AuthMode: "api-key", MaxOutputTokens: 65536})
+	if e != nil || saved.MaxOutputTokens != 65536 || !saved.Capabilities.Tools {
+		t.Fatalf("raise needed a new check: %+v %v", saved, e)
 	}
 }

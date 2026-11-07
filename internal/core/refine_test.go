@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -201,8 +202,102 @@ func TestRefineStripsWrappersSavedBefore0611(t *testing.T) {
 	if baseTaskPrompt(old) != "原始提示词" {
 		t.Fatal("old refine wrapper not stripped", baseTaskPrompt(old))
 	}
-	p := refinePrompt("原始提示词", "把狗掌移到名字左边", false)
+	p := refinePrompt("原始提示词", "把狗掌移到名字左边", 0)
 	if strings.Index(p, "把狗掌移到名字左边") > strings.Index(p, "原始提示词") || baseTaskPrompt(Task{RefinedFrom: "x", Prompt: p}) != "原始提示词" {
 		t.Fatal("change must come before the original prompt and strip cleanly", p)
+	}
+}
+
+// A refinement whose original requirements contradict the change has them
+// rewritten first, so the edit request no longer says the opposite.
+func TestRefineRewritesConflictingRequirements(t *testing.T) {
+	for _, scenario := range []string{"rewritten", "text lost"} {
+		t.Run(scenario, func(t *testing.T) {
+			s, first, _, calls, mu := refineFixture(t)
+			first.Prompt = "主体：三只圣诞袜，只有中间一只带刺绣\n画面文字（逐字）：“LUNA”\n约束：左右两只袜子没有任何名字或图案"
+			s.store.Put("task", first.ID, first)
+			var asked atomic.Value
+			llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					Messages []struct {
+						Content string `json:"content"`
+					} `json:"messages"`
+				}
+				json.NewDecoder(r.Body).Decode(&body)
+				asked.Store(body.Messages[0].Content)
+				reply := "主体：三只圣诞袜都带刺绣\n画面文字（逐字）：“LUNA”\n约束：三只袜子的袜口都带金毛头像和名字"
+				if scenario == "text lost" {
+					reply = "主体：三只圣诞袜都带刺绣，袜口都有金毛头像\n约束：三只袜子的袜口都带金毛头像和名字"
+				}
+				json.NewEncoder(w).Encode(map[string]any{"content": []map[string]string{{"type": "text", "text": reply}}})
+			}))
+			t.Cleanup(llm.Close)
+			if _, e := s.SaveConnection(ConnectionInput{Kind: "llm", Name: "LLM", BaseURL: llm.URL, Model: "m", Key: "k"}); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := s.RefineAgentImage(RefineInput{RequestID: "r-" + scenario, TaskID: first.ID, AssetID: first.AssetIDs[0], Instruction: "三只袜子上都要有金毛+字母"}); e != nil {
+				t.Fatal(e)
+			}
+			s.Start(func() {})
+			done := waitTask(t, s, first.AgentRunID, "slot-1", func(task Task) bool {
+				return task.RefinedFrom == first.ID && (task.Status == "succeeded" || task.Status == "failed")
+			})
+			if q, _ := asked.Load().(string); !strings.Contains(q, "用户的修改：三只袜子上都要有金毛+字母") || !strings.Contains(q, "只有中间一只带刺绣") {
+				t.Fatalf("LLM not given the change and the original requirements: %q", q)
+			}
+			mu.Lock()
+			sent := append([]editCall{}, (*calls)...)
+			mu.Unlock()
+			if scenario == "text lost" {
+				if done.Status != "failed" || !strings.Contains(done.Error, "没有发送、不计费") || !strings.Contains(done.Error, "LUNA") || len(sent) != 0 {
+					t.Fatalf("lost text was sent: %s %q %d", done.Status, done.Error, len(sent))
+				}
+				return
+			}
+			if done.Status != "succeeded" || len(sent) != 1 {
+				t.Fatal(done.Status, done.Error, len(sent))
+			}
+			if p := sent[0].prompt; !strings.Contains(p, "三只圣诞袜都带刺绣") || strings.Contains(p, "只有中间一只") || strings.Contains(p, "左右两只袜子没有") || !strings.Contains(p, "本次修改（必须做到，改完后要能明显看出变化）：三只袜子上都要有金毛+字母") {
+				t.Fatalf("edit still contradicts the change: %q", p)
+			}
+			callsLLM, _ := List[LLMCall](s.store, "llm_call")
+			if len(callsLLM) != 1 || callsLLM[0].Stage != "优化前改写原制作要求" {
+				t.Fatalf("%+v", callsLLM)
+			}
+		})
+	}
+}
+
+func TestRefineRequirementsKeepInImageText(t *testing.T) {
+	base := "主体：一只袜子\n画面文字（逐字）：“LUNA”\n约束：只有这一只带刺绣，其余没有图案"
+	for _, c := range []struct {
+		instruction, text, want string
+	}{
+		{"三只都要刺绣", "主体：三只袜子\n画面文字（逐字）：“LUNA”\n约束：三只都带刺绣，名字相同", ""},
+		{"三只都要刺绣", "主体：三只袜子\n画面文字（逐字）：“LUNA”“MERRY”\n约束：三只都带刺绣，名字相同", "加入了"},
+		{"三只都要刺绣", "主体：三只袜子都带刺绣\n约束：三只都带刺绣，名字相同，头像相同", "没有保留"},
+		{"名字改成 MAX", "主体：一只袜子\n画面文字（逐字）：“MAX”\n约束：只有这一只带刺绣，其余没有图案", ""},
+		{"去掉名字", "主体：一只袜子\n约束：只有这一只带头像刺绣，其余没有图案，没有文字", ""},
+		{"三只都要刺绣", "三只", "短太多"},
+	} {
+		e := checkRefineRequirements(base, c.instruction, c.text)
+		if (c.want == "") != (e == nil) || (e != nil && !strings.Contains(e.Error(), c.want)) {
+			t.Errorf("%q → %v, want %q", c.text, e, c.want)
+		}
+	}
+}
+
+// A refinement later refused by the content check is reworded for the refusal,
+// not merged with its requirements again.
+func TestRefusedRefinementIsRewordedForTheRefusal(t *testing.T) {
+	s := testService(t)
+	c := saveConnection(t, s, "http://127.0.0.1:1/v1")
+	s.store.Get("connection", c.ID, &c) // with its stored key reference
+	refined := Task{ID: NewID(), BatchID: "b", CreatedAt: Now(), UpdatedAt: Now(), Status: "failed", Prompt: "p", Model: "m", Connection: c, References: []string{}, AssetIDs: []string{}, RefinedFrom: "x", RewordFor: rewordRefine, PolicyStep: 1}
+	s.mu.Lock()
+	next, e := s.queueAttemptLocked(refined, c, "")
+	s.mu.Unlock()
+	if e != nil || next.RewordFor != "" || next.Rewording {
+		t.Fatalf("new attempt kept the refine rewrite: %+v %v", next, e)
 	}
 }

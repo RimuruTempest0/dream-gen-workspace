@@ -47,6 +47,8 @@ type Service struct {
 	probing map[string]bool
 	// rewording marks held attempts whose prompt the LLM is rewriting.
 	rewording map[string]bool
+	// sampleChecks marks samples the LLM is checking.
+	sampleChecks map[string]bool
 	// lic is the customer licence (empty in developer mode).
 	lic licenseState
 	// llmCallsSaved counts LLM call records written; old ones are pruned now and then.
@@ -159,6 +161,7 @@ func NewService(root string) (*Service, error) {
 	s.probes = map[string]probeResult{}
 	s.probing = map[string]bool{}
 	s.rewording = map[string]bool{}
+	s.sampleChecks = map[string]bool{}
 	s.imageConcurrency = defaultImageConcurrency
 	var saved int
 	if st.Get("preferences", "image-concurrency", &saved) == nil && saved >= 1 {
@@ -258,7 +261,8 @@ func (s *Service) saveConnectionLocked(in ConnectionInput) (Connection, error) {
 		if maximum < 256 || maximum > 65536 {
 			return c, errors.New("LLM 输出上限应为 256–65536 tokens")
 		}
-		if c.MaxOutputTokens != maximum {
+		// Raising an old default (or keeping it) is not a change that needs a new check.
+		if LLMOutputLimit(c.MaxOutputTokens) != maximum {
 			c.Capabilities = LLMCapabilities{}
 		}
 		c.MaxOutputTokens = maximum
@@ -696,7 +700,8 @@ func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (
 	t.PreviousAssetIDs = nil
 	t.RoutedFrom, t.RoutedFromName, t.RouteReason = "", "", ""
 	t.AutoRetryOf, t.AutoRetriedAs = autoRetryOf, ""
-	t.PolicyRetryOf, t.PolicyRetriedAs, t.Rewording = "", "", false
+	t.PolicyRetryOf, t.PolicyRetriedAs, t.Rewording, t.RewordFor = "", "", false, ""
+	t.SampleCheck, t.SampleProblems = "", ""
 	t.Connection = c
 	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
 		return Task{}, e
@@ -776,7 +781,7 @@ func (s *Service) Dashboard() (Summary, error) {
 		return Summary{}, e
 	}
 	as, e := List[Asset](s.store, "asset")
-	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.7.1"}
+	r := Summary{Tasks: len(ts), DataDir: s.store.Root, Version: "0.7.9"}
 	if s.agentRunID != "" {
 		r.Active++
 	}
@@ -860,6 +865,14 @@ func (s *Service) claimTask(download bool) bool {
 	}
 	var chosen *Task
 	var hc *healthCache
+	// A sample check left unfinished when the app last exited is resumed.
+	if !download {
+		for _, x := range tasks {
+			if x.Sample && x.Status == "succeeded" && x.SampleCheck == "checking" {
+				s.startSampleCheckLocked(x.ID)
+			}
+		}
+	}
 	var g GatewaySettings
 	if !download {
 		s.maybeProbeLocked(tasks)
@@ -1159,7 +1172,12 @@ func (s *Service) download(t *Task) {
 	t.Results = nil
 	t.Diagnostic.DownloadMS = sinceMS(t.Diagnostic.DownloadStartedAt)
 	t.UpdatedAt = Now()
+	// A detail sample is checked before the images drawn from it start.
+	check := s.markSampleForCheckLocked(t)
 	s.store.Put("task", t.ID, *t)
+	if check {
+		s.startSampleCheckLocked(t.ID)
+	}
 	s.mu.Unlock()
 	s.signal()
 }

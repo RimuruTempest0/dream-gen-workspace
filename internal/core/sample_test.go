@@ -153,6 +153,10 @@ func TestSubmittedSuiteLinksImagesToTheSample(t *testing.T) {
 	if len(tasks) != 12 || !tasks[8].Sample || tasks[2].SampleItem != tasks[8].PlanItemID || !tasks[3].SamplePending || tasks[4].SamplePending || tasks[8].SamplePending {
 		t.Fatalf("sample links wrong: %+v", tasks)
 	}
+	// The rest of the set copies the sample: only it gets the best quality.
+	if tasks[8].Quality != sampleQuality || tasks[2].Quality != "auto" {
+		t.Fatal("sample quality", tasks[8].Quality, tasks[2].Quality)
+	}
 }
 
 func TestSkillsFrom0611LearnTheDetailSample(t *testing.T) {
@@ -176,7 +180,7 @@ func TestSkillsFrom0611LearnTheDetailSample(t *testing.T) {
 		}
 		var rec SkillRecord
 		s.store.Get("skill", b.id, &rec)
-		if rec.Version != 6 || rec.Content != b.content() || !strings.Contains(b.body, "useSample") || !strings.Contains(b.body, "sample: true") {
+		if rec.Version != 6 || rec.Content != b.content() || !strings.Contains(b.body, "useSamples") || !strings.Contains(b.body, "sampleArea") {
 			t.Fatal("0.6.11 copy not upgraded to the sample rules", b.id, rec.Version)
 		}
 	}

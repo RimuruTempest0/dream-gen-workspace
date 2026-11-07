@@ -146,6 +146,10 @@ export function SetImageConcurrency(arg1:number):Promise<void>;
 
 export function SetSkillEnabled(arg1:string,arg2:boolean):Promise<void>;
 
+export function SetSmartMode(arg1:string):Promise<void>;
+
+export function SmartMode():Promise<string>;
+
 export function StartAgentAnalysis(arg1:core.AgentInput):Promise<string>;
 
 export function StartSmartGeneration(arg1:core.AgentInput,arg2:string):Promise<string>;

@@ -21,7 +21,7 @@ func TestCuffTextIsLevelNotTilted(t *testing.T) {
 	}
 	// Refining an image planned before 0.6.13 drops the tilt from its old prompt.
 	old := "统一锁定项：袖口文字基线与该袖口接缝线平行并随袖口角度倾斜，整组居中\n项目固定规则（P004）：袖口刺绣只在最终画面右侧那只袖子的袖口，文字基线与该袖口接缝线平行并随袖口角度倾斜，整组位于袖筒宽度中心"
-	p := refinePrompt(old, "把袖口文字摆正", false)
+	p := refinePrompt(old, "把袖口文字摆正", 0)
 	if strings.Contains(p, p004TiltWording) || strings.Count(p, p004LevelWording) != 2 {
 		t.Fatal("refine kept the tilt wording", p)
 	}

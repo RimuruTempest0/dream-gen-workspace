@@ -256,7 +256,7 @@ export default function App() {
           <div className="local-status">
             <CheckCircleOutlined aria-hidden="true" /> 本地数据工作区
           </div>
-          <small>Portable · {summary.data?.version || "0.7.1"}</small>
+          <small>Portable · {summary.data?.version || "0.7.9"}</small>
         </div>
       </aside>
       <main className="main">

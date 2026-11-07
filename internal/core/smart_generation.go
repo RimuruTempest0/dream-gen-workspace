@@ -157,6 +157,9 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 	if e = s.freezeGeneration(&r); e != nil {
 		return "", e
 	}
+	if in.AutoMode {
+		r.AnswerHabits = s.recentManualAnswersLocked()
+	}
 	if e = s.store.saveAgentRequest(r, requestID, "start"); e != nil {
 		return "", e
 	}
@@ -274,6 +277,8 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 	}
 	r.CancelRequested = false
 	r.Error = ""
+	// The user continued it: an automatic run may again continue by itself.
+	r.AutoContinues = 0
 	resumeTimer(&r)
 	r.UpdatedAt = Now()
 	reuse := !changed && !hasMissing(r.Questions) && (r.AnalysisSucceeded || legacyReady) && len(r.Plans) > 0
@@ -340,7 +345,8 @@ func (s *Service) autoSubmitLocked(r *AgentRun) error {
 	if e := s.requireConfiguredSnapshot(r.ImageConnection); e != nil {
 		return e
 	}
-	if r.Input.ProductURL != "" && (r.Product.Error != "" || r.Product.SourceURL == "") && len(r.Input.References)+len(r.Product.ReferenceIDs) == 0 && strings.TrimSpace(r.Input.ProductText) == "" {
+	// An automatic run plans from the instruction alone when nothing else is available.
+	if !r.Input.AutoMode && r.Input.ProductURL != "" && (r.Product.Error != "" || r.Product.SourceURL == "") && len(r.Input.References)+len(r.Product.ReferenceIDs) == 0 && strings.TrimSpace(r.Input.ProductText) == "" {
 		r.Questions = append(r.Questions, AgentQuestion{ID: "product-material", Label: "请上传商品参考图，或在商品描述中补充商品资料", Required: true})
 		r.Status = "needs_input"
 		r.Stage = "等待补充"

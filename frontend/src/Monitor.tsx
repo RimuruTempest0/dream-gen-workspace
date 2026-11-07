@@ -76,7 +76,7 @@ type GatewayMonitor = {
 type LLMCall = {
   id: string;
   at: string;
-  kind: "analysis" | "test" | "rewrite";
+  kind: "analysis" | "test" | "rewrite" | "check";
   runID?: string;
   connectionName: string;
   model: string;
@@ -747,7 +747,8 @@ export function LLMMonitorPage() {
           { value: "", label: "全部" },
           { value: "analysis", label: "智能生图分析" },
           { value: "test", label: "能力验证" },
-          { value: "rewrite", label: "改写被拒提示词" },
+          { value: "rewrite", label: "改写提示词" },
+          { value: "check", label: "核对样板" },
         ]}
         onExport={() => exporter.run(q)}
         exporting={exporter.busy}
@@ -1020,8 +1021,10 @@ export function LLMMonitorPage() {
                         c.kind === "test"
                           ? "能力验证"
                           : c.kind === "rewrite"
-                            ? "改写被拒提示词"
-                            : m.runNames[c.runID || ""] || "智能生图",
+                            ? "改写提示词"
+                            : c.kind === "check"
+                              ? "核对样板"
+                              : m.runNames[c.runID || ""] || "智能生图",
                     },
                     {
                       title: "阶段",

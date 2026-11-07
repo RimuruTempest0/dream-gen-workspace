@@ -290,6 +290,14 @@ export function SetSkillEnabled(arg1, arg2) {
   return window['go']['main']['App']['SetSkillEnabled'](arg1, arg2);
 }
 
+export function SetSmartMode(arg1) {
+  return window['go']['main']['App']['SetSmartMode'](arg1);
+}
+
+export function SmartMode() {
+  return window['go']['main']['App']['SmartMode']();
+}
+
 export function StartAgentAnalysis(arg1) {
   return window['go']['main']['App']['StartAgentAnalysis'](arg1);
 }

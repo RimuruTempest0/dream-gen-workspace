@@ -13,21 +13,23 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
 
 // DefaultMaxOutputTokens is the LLM single-reply output limit when none is set.
-// Versions before 0.6.10 used 8192, which cut long set plans short; a stored 8192
-// is that old default (customer packages never set a value) and is raised too.
-const (
-	DefaultMaxOutputTokens       = 32768
-	legacyDefaultMaxOutputTokens = 8192
-)
+// The limit covers the model's thinking too. Earlier defaults are raised when
+// stored: 8192 (before 0.6.10) cut long set plans short, and 32768 (0.6.10–0.7.1)
+// was spent on thinking alone in some runs. At about 90 tokens a second, 65536
+// still fits within one run's 20-minute limit.
+const DefaultMaxOutputTokens = 65536
 
-// LLMOutputLimit returns the limit to use for a stored value (0 or the old default means the default).
+var legacyDefaultMaxOutputTokens = []int{8192, 32768}
+
+// LLMOutputLimit returns the limit to use for a stored value (0 or an old default means the default).
 func LLMOutputLimit(n int) int {
-	if n == 0 || n == legacyDefaultMaxOutputTokens {
+	if n == 0 || slices.Contains(legacyDefaultMaxOutputTokens, n) {
 		return DefaultMaxOutputTokens
 	}
 	return n

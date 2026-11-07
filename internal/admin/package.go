@@ -89,7 +89,7 @@ func (a *Admin) profileLocked(customerID string) ([]byte, int, error) {
 		if u.PerKeyQuota {
 			usage = u.UsageURL
 		}
-		// LLM lines carry their output limit explicitly (default 32768), so a customer
+		// LLM lines carry their output limit explicitly (default 65536), so a customer
 		// package never falls back to an older client default.
 		maxOutput := u.MaxOutputTokens
 		if u.Kind == "llm" {

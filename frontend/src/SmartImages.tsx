@@ -181,20 +181,112 @@ const isBalanceRejected = (task: Task) => rejectionOf(task) === "balance";
 
 // An image drawn from the suite's detail sample says which image it waits for or
 // copied, so a pause before it starts is not mistaken for a stuck queue.
+const basisNames: Record<string, { label: string; color?: string }> = {
+  instruction: { label: "指令", color: "blue" },
+  source: { label: "原链接", color: "cyan" },
+  choice: { label: "自行选择", color: "purple" },
+  habit: { label: "按你的习惯", color: "geekblue" },
+  verify: { label: "需核对", color: "orange" },
+};
+
+// An automatic run answers its own questions; this shows how it decided each one,
+// so the values it had to pick (需核对) can be checked against the images.
+function AgentJudgments({ run }: { run: AgentRun }) {
+  const answered = run.questions.filter((q) => q.answeredBy === "agent");
+  if (!run.input.autoMode || !answered.length) return null;
+  const verify = answered.filter((q) => q.basis === "verify").length;
+  return (
+    <section
+      className="agent-judgments"
+      aria-labelledby="agent-judgments-title"
+    >
+      <h3 id="agent-judgments-title">
+        制作助手的判断
+        {verify > 0 && (
+          <small className="agent-judgments-verify">
+            其中 {verify} 项需核对
+          </small>
+        )}
+      </h3>
+      <ul>
+        {answered.map((q) => {
+          const basis = basisNames[q.basis || ""] || { label: "自行判断" };
+          return (
+            <li key={q.id}>
+              <span className="agent-judgment-question">{q.label}</span>
+              <span className="agent-judgment-answer">
+                <Tag color={basis.color}>{basis.label}</Tag>
+                {q.answer}
+              </span>
+              {q.reason && <small className="hint">{q.reason}</small>}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function SampleNote({ task, tasks }: { task: Task; tasks: Task[] }) {
-  if (!task.sampleItem) return null;
-  const n = tasks.findIndex((t) => t.planItemID === task.sampleItem) + 1;
-  const which = n > 0 ? `第 ${n} 张样板图` : "样板图";
+  const items = task.sampleItems?.length
+    ? task.sampleItems
+    : task.sampleItem
+      ? [task.sampleItem]
+      : [];
+  if (!items.length) return null;
+  const which = items
+    .map((id) => {
+      const n = tasks.findIndex((t) => t.planItemID === id) + 1;
+      const area = n > 0 ? tasks[n - 1].sampleArea : "";
+      return `${n > 0 ? `第 ${n} 张` : ""}${area ? `「${area}」` : ""}样板图`;
+    })
+    .join("、");
   if (task.samplePending)
     return (
       <p className="hint">
-        等{which}完成后开始，照它画袖口等细节；等待期间未提交、不计费。
+        等{which}完成并核对后开始，照它画对应的设计；等待期间未提交、不计费。
       </p>
     );
-  if (task.sampleAssetID)
-    return <p className="hint">已照{which}画袖口等细节。</p>;
+  if (task.sampleAssetIDs?.length || task.sampleAssetID)
+    return <p className="hint">已照{which}画对应的设计。</p>;
   if (task.status !== "queued")
     return <p className="hint">{which}没有成功，这张按文字说明生成。</p>;
+  return null;
+}
+
+// The sample is checked against its design references before the set copies it.
+function SampleCheckNote({ task }: { task: Task }) {
+  const redraw = task.sampleRedraws || 0;
+  switch (task.sampleCheck) {
+    case "checking":
+      return (
+        <p className="hint">正在对照设计依据核对样板图，其他图片核对完再画。</p>
+      );
+    case "passed":
+      return (
+        <p className="hint">
+          {redraw > 0 ? `已按核对意见重画 ${redraw} 次，` : ""}
+          样板图已核对，与设计依据一致。
+        </p>
+      );
+    case "failed":
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          message={`样板图重画 ${redraw} 次后仍没通过核对，其他图片照它继续生成，请留意`}
+          description={task.sampleProblems}
+        />
+      );
+    case "skipped":
+      return <p className="hint">{task.sampleProblems}</p>;
+  }
+  if (redraw > 0 && task.status !== "succeeded")
+    return (
+      <p className="hint" title={task.sampleProblems}>
+        上一版样板没通过核对，正在重画（第 {redraw} 次）：{task.sampleProblems}
+      </p>
+    );
   return null;
 }
 
@@ -272,6 +364,46 @@ function RefineDialog({
   );
 }
 
+type SmartMode = "manual" | "auto";
+const modeOptions: { value: SmartMode; label: string; hint: string }[] = [
+  { value: "manual", label: "手动", hint: "缺资料时停下来问你" },
+  { value: "auto", label: "自动", hint: "助手代答，标出需核对" },
+];
+
+function ModeSwitch({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: SmartMode;
+  disabled: boolean;
+  onChange: (v: SmartMode) => void;
+}) {
+  return (
+    <fieldset className="mode-switch" disabled={disabled}>
+      <legend>制作模式</legend>
+      <div className="mode-switch-options">
+        {modeOptions.map((o) => (
+          <label key={o.value} className="mode-option">
+            <input
+              type="radio"
+              name="smart-mode"
+              value={o.value}
+              checked={value === o.value}
+              onChange={() => onChange(o.value)}
+            />
+            <span className="mode-option-dot" aria-hidden="true" />
+            <span className="mode-option-text">
+              <span className="mode-option-label">{o.label}</span>
+              <span className="mode-option-hint">{o.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 export function SmartImages() {
   const actions = useActions(),
     downloads = useImageDownloads(),
@@ -291,6 +423,9 @@ export function SmartImages() {
     4000,
   );
   const draft = useData<AgentInput>(["agent-draft"], "GetAgentDraft");
+  // Manual mode asks for missing facts and waits; automatic mode never asks.
+  const mode = useData<string>(["smart-mode"], "SmartMode");
+  const autoMode = mode.data === "auto";
   const [input, setInput] = useState<AgentInput>(blankAgentDraft);
   const [ready, setReady] = useState(false),
     [error, setError] = useState(""),
@@ -542,7 +677,7 @@ export function SmartImages() {
     const id = startRequest.current || crypto.randomUUID();
     startRequest.current = id;
     const out = await actions.run(() =>
-      call<string>("StartSmartGeneration", input, id),
+      call<string>("StartSmartGeneration", { ...input, autoMode }, id),
     );
     if (out) {
       setRunID(out);
@@ -630,15 +765,27 @@ export function SmartImages() {
       <LicenseNotice />
       <Header
         title="智能生图"
-        sub="输入制作需求，自动完成套图。需要补充资料时会集中提示。"
+        sub={
+          autoMode
+            ? "自动模式：给完指令直接得到一套图。缺少的资料由制作助手像你一样逐题判断，列出依据供你核对。"
+            : "手动模式：输入制作需求，自动完成套图。需要补充资料时会集中提示，填写后继续。"
+        }
         action={
-          <Button
-            icon={<PlusOutlined aria-hidden="true" />}
-            disabled={actions.busy}
-            onClick={newRun}
-          >
-            新建需求
-          </Button>
+          <div className="smart-header-actions">
+            <ModeSwitch
+              value={autoMode ? "auto" : "manual"}
+              disabled={!mode.data}
+              onChange={(v) => actions.run(() => call("SetSmartMode", v))}
+            />
+            <span className="smart-header-divider" aria-hidden="true" />
+            <Button
+              icon={<PlusOutlined aria-hidden="true" />}
+              disabled={actions.busy}
+              onClick={newRun}
+            >
+              新建需求
+            </Button>
+          </div>
         }
       />
       {runtime.data && !runtime.data.available && (
@@ -928,6 +1075,9 @@ export function SmartImages() {
                 >
                   {stage}
                 </Tag>
+                {run && (
+                  <Tag>{run.input.autoMode ? "自动模式" : "手动模式"}</Tag>
+                )}
                 {run && <AgentTiming run={run} tasks={tasks} />}
               </Space>
             </div>
@@ -952,6 +1102,7 @@ export function SmartImages() {
                 </p>
                 {analyzing && run.progress && <RunSteps run={run} />}
                 <RunActivity run={run} />
+                <AgentJudgments run={run} />
                 {analyzing && run.stage === browserVerifyStage && (
                   <VerificationWait run={run} />
                 )}
@@ -1172,9 +1323,12 @@ export function SmartImages() {
                     <SampleNote task={task} tasks={tasks} />
                     {task.sample && (
                       <p className="hint">
-                        细节样板：先生成这张，其他看得见袖口等细节的图片照它画
+                        {task.sampleArea
+                          ? `「${task.sampleArea}」样板：先生成这张，其他看得见${task.sampleArea}的图片照它画`
+                          : "细节样板：先生成这张，其他看得见袖口等细节的图片照它画"}
                       </p>
                     )}
+                    {task.sample && <SampleCheckNote task={task} />}
                     {task.assetIDs.map((id) => (
                       <div key={id}>
                         <button

@@ -127,7 +127,11 @@ func (s *Service) reword(id string) {
 	prompt, e := "", errors.New("没有可用的 LLM")
 	if ok {
 		ctx, cancel := context.WithTimeout(s.ctx, rewordTimeout)
-		prompt, e = s.rewordPrompt(ctx, c, key, t.Prompt)
+		if t.RewordFor == rewordRefine {
+			prompt, e = s.refineRequirements(ctx, c, key, t)
+		} else {
+			prompt, e = s.rewordPrompt(ctx, c, key, t.Prompt)
+		}
 		cancel()
 	}
 	if s.ctx.Err() != nil {
@@ -139,6 +143,18 @@ func (s *Service) reword(id string) {
 		return
 	}
 	t.Rewording, t.UpdatedAt = false, Now()
+	if t.RewordFor == rewordRefine {
+		if e != nil {
+			t.Status = "failed"
+			t.Error = fmt.Sprintf("优化前按你的修改改写原制作要求没有成功（%s）。这次没有发送、不计费，请再点一次“优化”。", redact(e.Error(), key))
+			_ = s.store.appendLog("warn", "agent", t.AgentRunID, "优化前改写原制作要求失败："+redact(e.Error(), key))
+		} else {
+			t.Prompt = prompt
+			_ = s.store.appendLog("info", "agent", t.AgentRunID, "优化前已按修改改写原制作要求，开始生成："+t.ID)
+		}
+		_ = s.store.Put("task", t.ID, t)
+		return
+	}
 	if e != nil {
 		t.Status = "failed"
 		t.Error = fmt.Sprintf("%s，原样重发后仍被拒绝；自动改写措辞没有成功（%s）。这次没有发送、不计费。请修改提示词后重新生成。", policyRefusedPrefix, redact(e.Error(), key))
@@ -170,16 +186,39 @@ func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, prompt st
 			head, body = line+"\n", rest
 		}
 	}
+	text, e := s.llmRewrite(ctx, c, key, rewordInstruction+body, "内容审核拒绝后改写提示词", func(text string) error {
+		for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
+			if want := q[1] + q[2]; !strings.Contains(text, want) {
+				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)
+			}
+		}
+		return nil
+	})
+	if e != nil {
+		return "", e
+	}
+	return head + text, nil
+}
+
+// llmRewrite sends one rewriting request to the LLM and returns its text after
+// check accepts it. The call is recorded in the LLM monitor under stage.
+func (s *Service) llmRewrite(ctx context.Context, c Connection, key, request, stage string, check func(string) error) (string, error) {
+	return s.llmAsk(ctx, c, key, "rewrite", stage, request, check)
+}
+
+// llmAsk sends one non-streaming request (text, or content blocks with images) and
+// returns the reply text after check accepts it; the call is recorded as kind.
+func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage string, content any, check func(string) error) (string, error) {
 	req := map[string]any{
 		"model":      c.Model,
 		"max_tokens": 8192,
-		"messages":   []any{map[string]any{"role": "user", "content": rewordInstruction + body}},
+		"messages":   []any{map[string]any{"role": "user", "content": content}},
 	}
 	if c.Mode == "compatible" {
 		basicMessages(req)
 	}
-	call := s.startLLMCall("rewrite", "", c, nil)
-	call.Stage = "内容审核拒绝后改写提示词"
+	call := s.startLLMCall(kind, "", c, nil)
+	call.Stage = stage
 	started := time.Now()
 	finish := func(e error) error {
 		if e != nil {
@@ -215,13 +254,11 @@ func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, prompt st
 		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text[strings.Index(text+"\n", "\n"):]), "```"))
 	}
 	if text == "" {
-		return "", finish(errors.New("LLM 没有返回改写后的提示词"))
+		return "", finish(errors.New("LLM 没有返回改写结果"))
 	}
-	for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
-		if want := q[1] + q[2]; !strings.Contains(text, want) {
-			return "", finish(fmt.Errorf("改写结果没有保留画面文字“%s”", want))
-		}
+	if e := check(text); e != nil {
+		return "", finish(e)
 	}
 	call.FirstByteMS = time.Since(started).Milliseconds()
-	return head + text, finish(nil)
+	return text, finish(nil)
 }
