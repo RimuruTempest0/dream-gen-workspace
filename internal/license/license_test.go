@@ -74,7 +74,7 @@ func TestSignedFileRejectsTamperingAndPlainKeys(t *testing.T) {
 		t.Fatal("keys in clear text", e)
 	}
 	p, e := Verify(data, trusted)
-	if e != nil || p.SoftwareID != id || p.TrialImages != 20 || p.Format != Format {
+	if e != nil || p.SoftwareID != id || p.TrialImages != 20 || p.Format != 2 {
 		t.Fatal(p, e)
 	}
 	if k, _ := RevealKey(p.Connections[0].KeyObf, id); k != "sk-image-secret" {
@@ -104,5 +104,62 @@ func TestCheckLines(t *testing.T) {
 	c[0].Key = ""
 	if CheckLines(c, nil) == nil {
 		t.Fatal("missing key accepted")
+	}
+}
+
+func TestExpiryNeedsFormat3AndOldFilesStillOpen(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	trusted := []string{base64.StdEncoding.EncodeToString(pub)}
+	id := "IW-AAAA-BBBB-CCCC"
+	conns := lines()
+	for i := range conns {
+		conns[i].KeyObf, _ = ObfuscateKey(conns[i].Key, id)
+		conns[i].Key = ""
+	}
+	// No expiry: still written as format 2, so older apps open it.
+	plain, _ := Sign(Profile{SoftwareID: id, Connections: conns}, priv)
+	if !strings.Contains(string(plain), `"format": 2`) {
+		t.Fatal("file without new fields not in format 2")
+	}
+	if p, e := Verify(plain, trusted); e != nil || p.ExpiresAt != "" {
+		t.Fatal(p, e)
+	}
+	data, e := Sign(Profile{SoftwareID: id, Connections: conns, ExpiresAt: "2027-01-31T16:00:00+08:00"}, priv)
+	if e != nil || !strings.Contains(string(data), `"format": 3`) {
+		t.Fatal("expiry not in format 3", e)
+	}
+	p, e := Verify(data, trusted)
+	if e != nil || p.Format != 3 || p.ExpiresAt != "2027-01-31T08:00:00Z" {
+		t.Fatal(p, e)
+	}
+	if _, e = Sign(Profile{SoftwareID: id, Connections: conns, ExpiresAt: "next month"}, priv); e == nil {
+		t.Fatal("bad expiry signed")
+	}
+	// The outer format must match the signed one: a format 3 payload relabelled as 2 is refused.
+	relabelled := strings.Replace(string(data), `"format": 3`, `"format": 2`, 1)
+	if _, e = Verify([]byte(relabelled), trusted); e != ErrSignature {
+		t.Fatal("relabelled file accepted")
+	}
+	future := strings.Replace(string(data), `"format": 3`, `"format": 4`, 1)
+	if _, e = Verify([]byte(future), trusted); e != ErrSignature {
+		t.Fatal("unknown format accepted")
+	}
+}
+
+func TestAsyncProtocolNeedsFormat3(t *testing.T) {
+	_, priv, _ := ed25519.GenerateKey(nil)
+	id := "IW-AAAA-BBBB-CCCC"
+	conns := lines()
+	for i := range conns {
+		conns[i].KeyObf, _ = ObfuscateKey(conns[i].Key, id)
+		conns[i].Key = ""
+	}
+	conns[0].Protocol = "openai-images"
+	if data, _ := Sign(Profile{SoftwareID: id, Connections: conns}, priv); !strings.Contains(string(data), `"format": 2`) {
+		t.Fatal("default protocol raised the format")
+	}
+	conns[0].Protocol = "async-jobs"
+	if data, _ := Sign(Profile{SoftwareID: id, Connections: conns}, priv); !strings.Contains(string(data), `"format": 3`) {
+		t.Fatal("async line not in format 3")
 	}
 }

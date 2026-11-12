@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Input, Progress, Tag } from "antd";
+import { App as AntApp, Alert, Button, Input, Progress, Tag } from "antd";
 import { SafetyCertificateOutlined } from "@ant-design/icons";
 import { call } from "./api";
-import { notImages, useActions, useData, time } from "./ui";
+import { dateTime, notImages, useActions, useData, time } from "./ui";
 
 export type LicenseStatus = {
-  mode: "developer" | "trial" | "active" | "invalid" | "mismatch";
+  mode: "developer" | "trial" | "active" | "expired" | "invalid" | "mismatch";
   softwareID?: string;
   customer?: string;
   trialLimit: number;
@@ -17,6 +17,10 @@ export type LicenseStatus = {
   upstreamRemaining?: string;
   activatedAt?: string;
   message?: string;
+  /** When the licence ends (none: never); daysLeft only in its last 7 days. */
+  expiresAt?: string;
+  daysLeft?: number;
+  activated?: boolean;
 };
 
 export function useLicense() {
@@ -31,8 +35,12 @@ export function LicenseBadge() {
     l.mode === "trial"
       ? `试用剩余 ${l.trialRemaining} / ${l.trialLimit} 张`
       : l.mode === "active"
-        ? "已激活"
-        : "授权异常";
+        ? l.daysLeft
+          ? `${l.daysLeft} 天后到期`
+          : "已激活"
+        : l.mode === "expired"
+          ? "授权已到期"
+          : "授权异常";
   return (
     <Link
       to="/settings#license"
@@ -48,14 +56,30 @@ export function LicenseBadge() {
 export function LicenseNotice() {
   const l = useLicense().data;
   if (!l) return null;
-  if (l.mode === "invalid" || l.mode === "mismatch")
+  if (l.mode === "invalid" || l.mode === "mismatch" || l.mode === "expired")
     return (
       <Alert
         type="error"
         showIcon
         className="license-notice"
-        message="暂时不能生图"
+        message={l.mode === "expired" ? "软件授权已到期" : "暂时不能生图"}
         description={l.message}
+      />
+    );
+  if (l.daysLeft)
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        className="license-notice"
+        message={`软件授权 ${l.daysLeft} 天后到期`}
+        description={
+          <>
+            到期时间 {dateTime(l.expiresAt || "")}
+            。到期后不能生成新图片，已有图片不受影响。请联系软件提供方续费，收到新的授权文件后在
+            <Link to="/settings#license">连接与设置 → 授权</Link>导入。
+          </>
+        }
       />
     );
   if (l.mode === "trial" && l.trialRemaining <= 0)
@@ -82,8 +106,17 @@ export function LicensePanel() {
   const qc = useQueryClient();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const { notification } = AntApp.useApp();
   const l = license.data;
   if (!l || l.mode === "developer") return null;
+  async function importFile() {
+    const path = await call<string>("ChooseCustomerFile");
+    if (!path) return;
+    await call("ImportCustomerFile", path);
+    // New lines or a new expiry: refresh every list, not just the licence.
+    await qc.invalidateQueries(notImages);
+    notification.success({ message: "已导入新的授权文件" });
+  }
   async function activate() {
     setError("");
     try {
@@ -118,7 +151,9 @@ export function LicensePanel() {
             ? "已激活"
             : l.mode === "trial"
               ? "试用中"
-              : "授权异常"}
+              : l.mode === "expired"
+                ? "已到期"
+                : "授权异常"}
         </Tag>
       </div>
       <dl className="license-facts">
@@ -130,19 +165,48 @@ export function LicensePanel() {
         )}
         <dt>软件标识</dt>
         <dd className="mono">{l.softwareID || "—"}</dd>
-        {l.mode === "active" && l.activatedAt && (
+        {(l.mode === "active" || l.activated) && l.activatedAt && (
           <>
             <dt>激活时间</dt>
             <dd>{time(l.activatedAt)}</dd>
           </>
         )}
+        {l.expiresAt && (
+          <>
+            <dt>有效期至</dt>
+            <dd>{dateTime(l.expiresAt)}</dd>
+          </>
+        )}
       </dl>
-      {(l.mode === "invalid" || l.mode === "mismatch") && (
+      {(l.mode === "invalid" ||
+        l.mode === "mismatch" ||
+        l.mode === "expired") && (
         <Alert type="error" showIcon message={l.message} />
       )}
+      {!!l.daysLeft && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`${l.daysLeft} 天后到期，到期后不能生成新图片。请联系软件提供方续费。`}
+        />
+      )}
+      <div className="license-import">
+        <Button onClick={() => actions.run(importFile)} disabled={actions.busy}>
+          导入授权文件
+        </Button>
+        <small className="hint">
+          续费或更换线路后，软件提供方会发给你新的
+          customer.dat。导入后立即生效，图片、任务和激活状态都保留。
+        </small>
+      </div>
       {l.mode === "active" && (
         <p className="hint">
           已启用全部线路（含备用线路）。额度和有效期以软件提供方的设置为准，升级软件后无需重新激活。
+        </p>
+      )}
+      {l.mode === "active" && l.upstreamRemaining && (
+        <p className="hint">
+          图片线路 1 剩余额度：{l.upstreamRemaining}（以中转站为准）
         </p>
       )}
       {l.mode === "trial" && (

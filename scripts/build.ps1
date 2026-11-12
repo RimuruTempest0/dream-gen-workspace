@@ -1,8 +1,10 @@
-﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.7.9', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath)
+﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.7.17', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath, [string]$UpdateURL, [string]$SignThumbprint)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 . (Join-Path $PSScriptRoot 'local-profile.ps1')
+. (Join-Path $PSScriptRoot 'signing.ps1')
+$thumbprint = Get-SignThumbprint $SignThumbprint
 if (-not $ReleaseDirectory) { $ReleaseDirectory = "release\ImageWorkbench-$Version" }
 $releaseRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot $ReleaseDirectory))
 $releaseBoundary = [IO.Path]::GetFullPath((Join-Path $projectRoot 'release')) + [IO.Path]::DirectorySeparatorChar
@@ -28,14 +30,30 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
     Pop-Location
     if ($frontendExit -ne 0) { throw 'Frontend build failed' }
 } else { throw 'Frontend build needs pnpm, or node with installed frontend\node_modules' }
-# Customer packages (built by the admin tool) trust its signing key for customer.dat.
-$buildArgs = @('build', '-s', '-o', "ImageWorkbench-$Version.exe")
-if ($LicensePublicKey) { $buildArgs += @('-ldflags', "-X imageworkbench/internal/core.licensePublicKey=$LicensePublicKey") }
-& $wailsCommand @buildArgs
-if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }
 # Product page reader used when a shop blocks direct requests (cmd/product-browser).
+# Built first: the app embeds its hash and refuses to start a different file.
 go build -trimpath -ldflags '-H windowsgui -s -w' -o 'build\bin\product-browser.exe' ./cmd/product-browser
 if ($LASTEXITCODE -ne 0) { throw 'Product browser build failed' }
+# Signed before hashing: the app checks the file it will actually find.
+if ($thumbprint) { Sign-BuildFile 'build\bin\product-browser.exe' $thumbprint } else { Write-UnsignedWarning 'product-browser.exe' }
+$claudeManifest = Get-Content -LiteralPath (Join-Path $ClaudeSource 'version.json') -Raw | ConvertFrom-Json
+$claudeExe = Join-Path $ClaudeSource 'claude.exe'
+if ($claudeManifest.version -ne '2.1.296' -or (Get-FileHash -LiteralPath $claudeExe -Algorithm SHA256).Hash -ne $claudeManifest.executableSHA256) { throw 'Claude runtime version/hash validation failed' }
+$browserHash = (Get-FileHash -LiteralPath 'build\bin\product-browser.exe' -Algorithm SHA256).Hash
+$ldflags = "-X imageworkbench/internal/core.expectedClaudeSHA256=$($claudeManifest.executableSHA256) -X imageworkbench/internal/core.expectedProductBrowserSHA256=$browserHash"
+# Customer packages (built by the admin tool) trust its signing key for customer.dat.
+if ($LicensePublicKey) { $ldflags += " -X imageworkbench/internal/core.licensePublicKey=$LicensePublicKey" }
+# A signed build checks its own signature before trusting customer.dat.
+if ($thumbprint) { $ldflags += " -X imageworkbench/internal/core.expectSigned=1" }
+# Where the app reads the signed update.json (customer builds with a signing key only).
+if ($UpdateURL) {
+    if ($UpdateURL -notmatch '^https?://[^\s]+$') { throw 'UpdateURL must be an http(s) address' }
+    $ldflags += " -X imageworkbench/internal/core.updateManifestURL=$UpdateURL"
+}
+$buildArgs = @('build', '-s', '-o', "ImageWorkbench-$Version.exe", '-ldflags', $ldflags)
+& $wailsCommand @buildArgs
+if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }
+if ($thumbprint) { Sign-BuildFile (Join-Path $projectRoot "build\bin\ImageWorkbench-$Version.exe") $thumbprint } else { Write-UnsignedWarning 'ImageWorkbench.exe' }
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 if (-not $RuntimeSource) {
     $candidate = Get-ChildItem '.tools\webview-expanded' -Filter 'msedgewebview2.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -43,6 +61,11 @@ if (-not $RuntimeSource) {
 }
 if (-not $RuntimeSource) { throw 'Pass -RuntimeSource with extracted Microsoft Fixed Version x64 runtime' }
 $runtimeExe = Join-Path $RuntimeSource 'msedgewebview2.exe'
+# The fixed WebView2 runtime is not updated by Windows; ship a recent one.
+$runtimeAge = (Get-Date) - (Get-Item -LiteralPath $runtimeExe).LastWriteTime
+if ($runtimeAge.TotalDays -gt 90) {
+    Write-Warning ("WebView2 Fixed Version runtime {0} is {1:N0} days old. Download the current x64 Fixed Version from https://developer.microsoft.com/microsoft-edge/webview2/ (see README, 'WebView2 运行时更新'), extract it and pass -RuntimeSource." -f (Get-Item $runtimeExe).VersionInfo.FileVersion, $runtimeAge.TotalDays)
+}
 $signature = Get-AuthenticodeSignature -LiteralPath $runtimeExe
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike '*Microsoft Corporation*') { throw 'Microsoft runtime signature validation failed' }
 $runtimeTarget = Join-Path $releaseRoot 'runtime'
@@ -60,9 +83,6 @@ if($refreshRuntime){
 Copy-Item -LiteralPath (Join-Path $projectRoot "build\bin\ImageWorkbench-$Version.exe") -Destination (Join-Path $releaseRoot 'ImageWorkbench.exe') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build\bin\product-browser.exe') -Destination (Join-Path $releaseRoot 'product-browser.exe') -Force
 Copy-Item -LiteralPath 'docs\使用说明.txt' -Destination (Join-Path $releaseRoot '使用说明.txt') -Force
-$claudeManifest = Get-Content -LiteralPath (Join-Path $ClaudeSource 'version.json') -Raw | ConvertFrom-Json
-$claudeExe = Join-Path $ClaudeSource 'claude.exe'
-if ($claudeManifest.version -ne '2.1.296' -or (Get-FileHash -LiteralPath $claudeExe -Algorithm SHA256).Hash -ne $claudeManifest.executableSHA256) { throw 'Claude runtime version/hash validation failed' }
 $agentTarget = Join-Path $releaseRoot 'agent\claude-code'
 New-Item -ItemType Directory -Force -Path $agentTarget | Out-Null
 foreach ($file in @('claude.exe','version.json','LICENSE.md')) { Copy-Item -LiteralPath (Join-Path $ClaudeSource $file) -Destination (Join-Path $agentTarget $file) -Force }
@@ -82,6 +102,25 @@ $checkArgs = @('-zip', $zipPath)
 if ($localDataRoot) { $checkArgs += @('-data', $localDataRoot) }
 & (Join-Path $projectRoot 'build\bin\packcheck.exe') @checkArgs
 if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $zipPath -Force; throw 'Shipping ZIP contained local data or connection details and was deleted' }
+# Program update package: the program and its notes, plus runtime/agent only when they
+# changed since the previous build next to this one (the app refuses an update that
+# lacks a component it needs, so an older install then uses the full package).
+$previous = Get-ChildItem -LiteralPath (Split-Path -Parent $releaseRoot) -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $releaseRoot -and (Test-Path (Join-Path $_.FullName 'version.json')) } |
+    ForEach-Object { try { $v = Get-Content -LiteralPath (Join-Path $_.FullName 'version.json') -Raw | ConvertFrom-Json; [pscustomobject]@{ Info = $v; Order = [version]$v.version } } catch { } } |
+    Where-Object { $_.Order -lt [version]$Version } | Sort-Object Order | Select-Object -Last 1
+$updateItems = @((Join-Path $releaseRoot 'ImageWorkbench.exe'),(Join-Path $releaseRoot 'product-browser.exe'),(Join-Path $releaseRoot '使用说明.txt'),(Join-Path $releaseRoot 'version.json'))
+if (-not $previous -or $previous.Info.runtimeSHA256 -ne $manifest.runtimeSHA256) { $updateItems += $runtimeTarget }
+if (-not $previous -or $previous.Info.claudeSHA256 -ne $manifest.claudeSHA256) { $updateItems += (Join-Path $releaseRoot 'agent') }
+# Next to the shipping ZIP: ImageWorkbench-portable-x64-<version>-update.zip (admin builds: build-check-update.zip, renamed by the admin tool).
+$updateZip = $zipPath -replace '\.zip$', '-update.zip'
+Compress-Archive -LiteralPath $updateItems -DestinationPath $updateZip -Force
+$checkArgs = @('-zip', $updateZip)
+if ($localDataRoot) { $checkArgs += @('-data', $localDataRoot) }
+& (Join-Path $projectRoot 'build\bin\packcheck.exe') @checkArgs
+if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $updateZip -Force; throw 'Update package contained local data or connection details and was deleted' }
+$from = if ($previous) { "since $($previous.Info.version)" } else { 'no previous build found' }
+Write-Output ("Update package ({0}): {1} item(s), {2}" -f $from, $updateItems.Count, $updateZip)
 if ($localDataRoot) {
     Set-LocalReleaseProfile $projectRoot $releaseRoot $localDataRoot
     Write-Output 'Local release reuses your saved connections and encrypted keys. The shipping ZIP contains no personal data or data-location.txt.'

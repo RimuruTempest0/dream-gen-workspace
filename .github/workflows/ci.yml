@@ -1,0 +1,44 @@
+# Checks only: Go tests and vet, frontend typecheck and formatting. No release
+# package is built here and no secrets are used (all tests use local mocks).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      # The app embeds frontend/dist and the admin tool cmd/admin/dist, so build
+      # both before the Go checks.
+      - name: Build frontend
+        run: |
+          pnpm --dir frontend run build
+          pnpm --dir frontend exec vite build --config vite.admin.config.ts
+      - name: Frontend typecheck
+        run: pnpm --dir frontend run typecheck
+      - name: Frontend formatting
+        run: pnpm --dir frontend exec prettier --check src
+      - name: Go vet
+        run: go vet ./...
+      - name: Go tests
+        run: go test ./...

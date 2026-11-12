@@ -65,6 +65,7 @@ export namespace core {
 	    imageModel: string;
 	    skillIDs: string[];
 	    autoMode?: boolean;
+	    category?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AgentInput(source);
@@ -86,6 +87,7 @@ export namespace core {
 	        this.imageModel = source["imageModel"];
 	        this.skillIDs = source["skillIDs"];
 	        this.autoMode = source["autoMode"];
+	        this.category = source["category"];
 	    }
 	}
 	export class SuiteItem {
@@ -214,6 +216,48 @@ export namespace core {
 	        this.referenceIDs = source["referenceIDs"];
 	    }
 	}
+	export class ShopRule {
+	    id: string;
+	    name: string;
+	    text: string;
+	    enabled: boolean;
+	    version: number;
+	    updatedAt: string;
+	    attachments: SkillAttachment[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.text = source["text"];
+	        this.enabled = source["enabled"];
+	        this.version = source["version"];
+	        this.updatedAt = source["updatedAt"];
+	        this.attachments = this.convertValues(source["attachments"], SkillAttachment);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SkillAttachment {
 	    name: string;
 	    path: string;
@@ -237,6 +281,8 @@ export namespace core {
 	    enabled: boolean;
 	    source: string;
 	    attachments: SkillAttachment[];
+	    sealed?: boolean;
+	    category?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SkillRecord(source);
@@ -252,6 +298,8 @@ export namespace core {
 	        this.enabled = source["enabled"];
 	        this.source = source["source"];
 	        this.attachments = this.convertValues(source["attachments"], SkillAttachment);
+	        this.sealed = source["sealed"];
+	        this.category = source["category"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -440,6 +488,7 @@ export namespace core {
 	    input: AgentInput;
 	    llmConnection: Connection;
 	    skills: SkillRecord[];
+	    shopRules?: ShopRule[];
 	    product: ProductInfo;
 	    questions: AgentQuestion[];
 	    plans: SuitePlan[];
@@ -480,6 +529,7 @@ export namespace core {
 	        this.input = this.convertValues(source["input"], AgentInput);
 	        this.llmConnection = this.convertValues(source["llmConnection"], Connection);
 	        this.skills = this.convertValues(source["skills"], SkillRecord);
+	        this.shopRules = this.convertValues(source["shopRules"], ShopRule);
 	        this.product = this.convertValues(source["product"], ProductInfo);
 	        this.questions = this.convertValues(source["questions"], AgentQuestion);
 	        this.plans = this.convertValues(source["plans"], SuitePlan);
@@ -633,6 +683,7 @@ export namespace core {
 	    model: string;
 	    key: string;
 	    clearKey: boolean;
+	    protocol?: string;
 	    testRequestID?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -651,6 +702,7 @@ export namespace core {
 	        this.model = source["model"];
 	        this.key = source["key"];
 	        this.clearKey = source["clearKey"];
+	        this.protocol = source["protocol"];
 	        this.testRequestID = source["testRequestID"];
 	    }
 	}
@@ -902,6 +954,7 @@ export namespace core {
 	    httpProtocol: string;
 	    networkRoute: string;
 	    upstreamRequestID: string;
+	    upstreamJobID?: string;
 	    elapsedMS: number;
 	    bytesReceived: number;
 	    networkError: string;
@@ -924,6 +977,7 @@ export namespace core {
 	        this.httpProtocol = source["httpProtocol"];
 	        this.networkRoute = source["networkRoute"];
 	        this.upstreamRequestID = source["upstreamRequestID"];
+	        this.upstreamJobID = source["upstreamJobID"];
 	        this.elapsedMS = source["elapsedMS"];
 	        this.bytesReceived = source["bytesReceived"];
 	        this.networkError = source["networkError"];
@@ -1155,6 +1209,9 @@ export namespace core {
 	    upstreamRemaining?: string;
 	    activatedAt?: string;
 	    message?: string;
+	    expiresAt?: string;
+	    daysLeft?: number;
+	    activated?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new LicenseStatus(source);
@@ -1172,6 +1229,9 @@ export namespace core {
 	        this.upstreamRemaining = source["upstreamRemaining"];
 	        this.activatedAt = source["activatedAt"];
 	        this.message = source["message"];
+	        this.expiresAt = source["expiresAt"];
+	        this.daysLeft = source["daysLeft"];
+	        this.activated = source["activated"];
 	    }
 	}
 	export class LogEntry {
@@ -1492,6 +1552,7 @@ export namespace core {
 	
 	
 	
+	
 	export class SmartProgress {
 	    runID: string;
 	    state: string;
@@ -1510,6 +1571,34 @@ export namespace core {
 	        this.done = source["done"];
 	        this.total = source["total"];
 	        this.step = source["step"];
+	    }
+	}
+	export class SuiteEstimate {
+	    images: number;
+	    medianMS?: number;
+	    durationSamples?: number;
+	    llmTokens?: number;
+	    llmRuns?: number;
+	    costPerImage?: number;
+	    cost?: number;
+	    costUnit?: string;
+	    costSamples?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SuiteEstimate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.images = source["images"];
+	        this.medianMS = source["medianMS"];
+	        this.durationSamples = source["durationSamples"];
+	        this.llmTokens = source["llmTokens"];
+	        this.llmRuns = source["llmRuns"];
+	        this.costPerImage = source["costPerImage"];
+	        this.cost = source["cost"];
+	        this.costUnit = source["costUnit"];
+	        this.costSamples = source["costSamples"];
 	    }
 	}
 	
@@ -1571,6 +1660,40 @@ export namespace core {
 	        this.models = source["models"];
 	        this.generation = source["generation"];
 	        this.ids = source["ids"];
+	    }
+	}
+	export class UpdateStatus {
+	    supported: boolean;
+	    autoCheck: boolean;
+	    current: string;
+	    checkedAt?: string;
+	    checking?: boolean;
+	    available: boolean;
+	    version?: string;
+	    notes?: string;
+	    size?: number;
+	    stage?: string;
+	    downloaded?: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supported = source["supported"];
+	        this.autoCheck = source["autoCheck"];
+	        this.current = source["current"];
+	        this.checkedAt = source["checkedAt"];
+	        this.checking = source["checking"];
+	        this.available = source["available"];
+	        this.version = source["version"];
+	        this.notes = source["notes"];
+	        this.size = source["size"];
+	        this.stage = source["stage"];
+	        this.downloaded = source["downloaded"];
+	        this.error = source["error"];
 	    }
 	}
 

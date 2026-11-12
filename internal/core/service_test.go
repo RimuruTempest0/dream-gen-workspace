@@ -31,7 +31,7 @@ func tinyPNG() []byte {
 	png.Encode(&b, img)
 	return b.Bytes()
 }
-func testService(t *testing.T) *Service {
+func testService(t testing.TB) *Service {
 	t.Helper()
 	s, e := NewService(filepath.Join(t.TempDir(), "中文 数据"))
 	if e != nil {

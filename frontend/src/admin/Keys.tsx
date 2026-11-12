@@ -105,6 +105,7 @@ export function KeyPool() {
                 mode: "compatible",
                 authMode: "api-key",
                 perKeyQuota: false,
+                protocol: "",
               });
               setEditing({});
             }}
@@ -146,7 +147,7 @@ export function KeyPool() {
                     <Button
                       size="small"
                       onClick={() => {
-                        upForm.setFieldsValue(u);
+                        upForm.setFieldsValue({ protocol: "", ...u });
                         setEditing(u);
                       }}
                     >
@@ -656,6 +657,25 @@ export function KeyPool() {
           </Form.Item>
           <Form.Item name="consoleURL" label="后台地址（可选，用于手动设额度）">
             <Input placeholder="https://example.com/keys" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate>
+            {() =>
+              upForm.getFieldValue("kind") === "image" && (
+                <Form.Item
+                  name="protocol"
+                  label="接口协议"
+                  extra="异步任务需要客户软件 0.7.14 起；交付包会写成新格式，旧软件打不开。"
+                >
+                  <Select
+                    style={{ width: 260 }}
+                    options={[
+                      { value: "", label: "OpenAI Images（同步，默认）" },
+                      { value: "async-jobs", label: "异步任务（提交后轮询）" },
+                    ]}
+                  />
+                </Form.Item>
+              )
+            }
           </Form.Item>
           <Form.Item noStyle shouldUpdate>
             {() =>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Button, Checkbox, Input, Space } from "antd";
+import { Alert, App as AntApp, Button, Checkbox, Input, Space } from "antd";
 import { FolderOutlined } from "@ant-design/icons";
 import { call } from "../api";
 import { Header, useActions } from "../ui";
@@ -12,6 +12,14 @@ export function AdminSettings() {
   const [confirm, setConfirm] = useState("");
   const [restore, setRestore] = useState("");
   const [replace, setReplace] = useState(false);
+  const [updateURL, setUpdateURL] = useState<string | undefined>();
+  const [release, setRelease] = useState({
+    zip: "",
+    url: "",
+    minVersion: "",
+    notes: "",
+  });
+  const { notification } = AntApp.useApp();
   const s = state.data;
   const mismatch = confirm !== "" && password !== confirm;
   return (
@@ -126,6 +134,103 @@ export function AdminSettings() {
           管理工具数据（台账与加密的 Key、激活码、签名密钥），与客户软件分开保存
         </p>
         <code className="data-path">{s?.dataDir}</code>
+      </section>
+      <section className="panel" aria-labelledby="update-title">
+        <div className="panel-heading">
+          <h2 id="update-title">程序更新</h2>
+        </div>
+        <p className="hint">
+          客户软件从这个地址读取签名的
+          update.json。设置后生成的交付包才会检查更新；留空则客户只能用完整包升级。
+        </p>
+        <div className="admin-form-grid">
+          <label htmlFor="update-url" className="field-label">
+            更新清单地址
+          </label>
+          <Input
+            id="update-url"
+            value={updateURL ?? s?.updateURL ?? ""}
+            placeholder="https://example.com/imageworkbench/update.json"
+            onChange={(e) => setUpdateURL(e.target.value)}
+          />
+          <Button
+            onClick={() =>
+              actions.run(async () => {
+                await call("SetUpdateURL", updateURL ?? s?.updateURL ?? "");
+                setUpdateURL(undefined);
+              }, "已保存")
+            }
+          >
+            保存地址
+          </Button>
+        </div>
+        <h3 className="admin-subhead">发布程序更新</h3>
+        <p className="hint">
+          选择交付包旁边的
+          ImageWorkbench-update-版本号.zip，填写客户下载它的地址，生成签名的
+          update.json；再把两个文件上传到对应地址。
+        </p>
+        <div className="admin-form-grid">
+          <span className="field-label">更新包</span>
+          <Space wrap>
+            <code className="data-path">{release.zip || "未选择"}</code>
+            <Button
+              onClick={() =>
+                actions.run(async () => {
+                  const zip = await call<string>("ChooseUpdatePackage");
+                  if (zip) setRelease((r) => ({ ...r, zip }));
+                })
+              }
+            >
+              选择更新包
+            </Button>
+          </Space>
+          <label htmlFor="update-download" className="field-label">
+            更新包下载地址
+          </label>
+          <Input
+            id="update-download"
+            value={release.url}
+            placeholder="https://example.com/imageworkbench/ImageWorkbench-update-0.7.13.zip"
+            onChange={(e) => setRelease({ ...release, url: e.target.value })}
+          />
+          <label htmlFor="update-min" className="field-label">
+            最低可直接升级的版本（可空）
+          </label>
+          <Input
+            id="update-min"
+            value={release.minVersion}
+            placeholder="例如 0.7.13"
+            onChange={(e) =>
+              setRelease({ ...release, minVersion: e.target.value })
+            }
+          />
+          <label htmlFor="update-notes" className="field-label">
+            更新说明（客户可见）
+          </label>
+          <Input.TextArea
+            id="update-notes"
+            value={release.notes}
+            autoSize={{ minRows: 3, maxRows: 8 }}
+            onChange={(e) => setRelease({ ...release, notes: e.target.value })}
+          />
+          <Button
+            type="primary"
+            disabled={!release.zip || !release.url}
+            onClick={() =>
+              actions.run(async () => {
+                if (await call<boolean>("PublishUpdate", release))
+                  notification.success({
+                    message: "update.json 已生成",
+                    description:
+                      "把 update.json 上传到更新清单地址，把更新包上传到下载地址。",
+                  });
+              })
+            }
+          >
+            生成 update.json
+          </Button>
+        </div>
       </section>
     </>
   );

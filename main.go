@@ -28,6 +28,14 @@ func main() {
 		}
 		return
 	}
+	// The downloaded new version applies itself: it waits for the old program to
+	// exit, replaces the program files and starts it again.
+	if core.IsUpdateCommand(os.Args) {
+		if e := core.RunUpdateCommand(os.Args, core.WaitForExit); e != nil {
+			fatal("更新失败，已恢复原来的程序文件：" + e.Error())
+		}
+		return
+	}
 	exe, e := os.Executable()
 	release, primary, lockErr := claimInstance()
 	if lockErr != nil {
@@ -43,6 +51,7 @@ func main() {
 		return
 	}
 	root := filepath.Dir(exe)
+	core.CleanupUpdates(root)
 	data := filepath.Join(root, "data")
 	if path := savedDataPath(root); path != "" {
 		data = path

@@ -13,6 +13,7 @@ import {
   Switch,
   Tag,
   Tooltip,
+  AutoComplete,
 } from "antd";
 import {
   ApiOutlined,
@@ -108,6 +109,20 @@ export function ConnectionFields({
       >
         <Input placeholder="从查询结果选择，或手动填写" />
       </UIForm.Item>
+      {!llm && (
+        <UIForm.Item
+          name="protocol"
+          label="接口协议"
+          extra="大多数中转站是 OpenAI Images（一次请求直接返回图片）。异步任务：提交后返回任务 ID，再轮询结果；应用重启后继续查询同一个任务，不会重复提交。"
+        >
+          <UISelect
+            options={[
+              { value: "openai-images", label: "OpenAI Images（同步，默认）" },
+              { value: "async-jobs", label: "异步任务（提交后轮询）" },
+            ]}
+          />
+        </UIForm.Item>
+      )}
       {llm && (
         <UIForm.Item
           name="maxOutputTokens"
@@ -504,6 +519,9 @@ export function AgentSettings() {
   const [content, setContent] = useState("");
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [categoryFor, setCategoryFor] = useState<SkillRecord | null>(null);
+  const [category, setCategory] = useState("");
+  const categories = useData<string[]>(["skill-categories"], "SkillCategories");
   function open(v: SkillRecord | null) {
     setEditing(v);
     setName(v?.name || "");
@@ -617,6 +635,20 @@ export function AgentSettings() {
                 {!!v.attachments?.length && (
                   <small>{v.attachments.length} 个附件</small>
                 )}
+                <small>
+                  品类：{v.category || "通用（每个品类都用）"}{" "}
+                  <Button
+                    type="link"
+                    size="small"
+                    aria-label={`设置技能 ${v.name} 的品类`}
+                    onClick={() => {
+                      setCategoryFor(v);
+                      setCategory(v.category || "");
+                    }}
+                  >
+                    设置品类
+                  </Button>
+                </small>
               </div>
               <Space>
                 <Switch
@@ -646,6 +678,35 @@ export function AgentSettings() {
           ))}
         </div>
       </DataState>
+      <Modal
+        title={`设置品类：${categoryFor?.name || ""}`}
+        open={!!categoryFor}
+        onCancel={() => setCategoryFor(null)}
+        onOk={() =>
+          actions.run(async () => {
+            await call("SetSkillCategory", categoryFor!.id, category);
+            setCategoryFor(null);
+          })
+        }
+        okText="保存"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <p className="hint">
+          留空表示通用：每次制作都用。填了品类的技能只在智能生图选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。
+        </p>
+        <label className="field-label" htmlFor="skill-category">
+          品类
+        </label>
+        <AutoComplete
+          id="skill-category"
+          className="full-width"
+          value={category}
+          options={(categories.data || []).map((value) => ({ value }))}
+          onChange={setCategory}
+          placeholder="通用"
+        />
+      </Modal>
       <Modal
         title={editing ? "编辑 Skill" : "新建 Skill"}
         open={editing !== undefined}

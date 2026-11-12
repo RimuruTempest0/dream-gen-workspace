@@ -140,9 +140,13 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 	}
 	in.SkillIDs = []string{}
 	for _, skill := range allSkills {
-		if skill.Enabled {
+		if skillForRun(skill, in.Category) {
 			in.SkillIDs = append(in.SkillIDs, skill.ID)
 		}
+	}
+	shopRules, e := s.enabledShopRulesLocked()
+	if e != nil {
+		return "", e
 	}
 	llm, skills, e := s.validateAgentInput(in)
 	if e != nil {
@@ -153,7 +157,7 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 			return "", errors.New("内置 Claude Code 缺失，请完整解压便携包")
 		}
 	}
-	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: "准备素材", Input: in, LLMConnection: llm, Skills: skills, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
+	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: "准备素材", Input: in, LLMConnection: llm, Skills: skills, ShopRules: shopRules, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
 	if e = s.freezeGeneration(&r); e != nil {
 		return "", e
 	}

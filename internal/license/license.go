@@ -21,11 +21,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
-	FileName      = "customer.dat"
-	Format        = 2
+	FileName = "customer.dat"
+	// Format is the newest customer.dat format: 3 adds an expiry date. Sign writes
+	// the oldest format that holds the profile, so a file without the new fields
+	// still opens in apps that only know format 2.
+	Format        = 3
+	MinFormat     = 2
 	codeIters     = 200_000
 	codeGroups    = 5
 	codeGroupSize = 5
@@ -51,6 +56,8 @@ type Connection struct {
 	// Verified marks an LLM line the admin checked for text, image input, tools
 	// and streaming, so the customer never has to run that check.
 	Verified bool   `json:"verified,omitempty"`
+	// Protocol (format 3) of an image line: "" or "openai-images", or "async-jobs".
+	Protocol string `json:"protocol,omitempty"`
 	Key      string `json:"key,omitempty"`    // never in a signed file
 	KeyObf   string `json:"keyObf,omitempty"` // obfuscated: the quota is the guard
 }
@@ -73,6 +80,25 @@ type Profile struct {
 	ImageBackups  []string     `json:"imageBackups"` // image slots after image-1, in order
 	LinesRevision int          `json:"linesRevision"`
 	CodeCheck     CodeCheck    `json:"codeCheck"`
+	// ExpiresAt (format 3) ends generation at that moment (RFC 3339, UTC); empty
+	// means the licence does not expire.
+	ExpiresAt string `json:"expiresAt,omitempty"`
+	// Skills (format 3) lists the built-in skills the package comes with; nil means
+	// all of them. The others start switched off (the customer may turn them on).
+	Skills []string `json:"skills,omitempty"`
+}
+
+// formatFor is the oldest format that can carry p.
+func formatFor(p Profile) int {
+	if p.ExpiresAt != "" || p.Skills != nil {
+		return 3
+	}
+	for _, c := range p.Connections {
+		if c.Protocol != "" && c.Protocol != "openai-images" {
+			return 3
+		}
+	}
+	return 2
 }
 
 type file struct {
@@ -226,7 +252,14 @@ func RevealKey(obf, softwareID string) (string, error) {
 
 // Sign produces the customer.dat bytes. Keys must already be obfuscated.
 func Sign(p Profile, priv ed25519.PrivateKey) ([]byte, error) {
-	p.Format = Format
+	if p.ExpiresAt != "" {
+		at, e := time.Parse(time.RFC3339, p.ExpiresAt)
+		if e != nil {
+			return nil, errors.New("有效期格式无效")
+		}
+		p.ExpiresAt = at.UTC().Format(time.RFC3339)
+	}
+	p.Format = formatFor(p)
 	for _, c := range p.Connections {
 		if c.Key != "" {
 			return nil, errors.New("customer.dat 不能包含 Key 明文")
@@ -236,14 +269,14 @@ func Sign(p Profile, priv ed25519.PrivateKey) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	return json.MarshalIndent(file{Format: Format, Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))}, "", "  ")
+	return json.MarshalIndent(file{Format: p.Format, Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))}, "", "  ")
 }
 
 // Verify checks the signature against any trusted public key (base64) and returns
 // the profile.
 func Verify(data []byte, publicKeys []string) (Profile, error) {
 	var f file
-	if json.Unmarshal(data, &f) != nil || f.Format != Format {
+	if json.Unmarshal(data, &f) != nil || f.Format < MinFormat || f.Format > Format {
 		return Profile{}, ErrSignature
 	}
 	payload, e1 := base64.StdEncoding.DecodeString(f.Payload)
@@ -263,8 +296,13 @@ func Verify(data []byte, publicKeys []string) (Profile, error) {
 		return Profile{}, ErrSignature
 	}
 	var p Profile
-	if e := json.Unmarshal(payload, &p); e != nil || p.Format != Format || p.SoftwareID == "" {
+	if e := json.Unmarshal(payload, &p); e != nil || p.Format != f.Format || p.SoftwareID == "" {
 		return Profile{}, ErrSignature
+	}
+	if p.ExpiresAt != "" {
+		if _, e := time.Parse(time.RFC3339, p.ExpiresAt); e != nil {
+			return Profile{}, ErrSignature
+		}
 	}
 	if p.TrialImages <= 0 {
 		p.TrialImages = 20

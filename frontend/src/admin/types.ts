@@ -7,6 +7,8 @@ export type Upstream = {
   mode?: string;
   authMode?: string;
   maxOutputTokens?: number;
+  /** Image upstreams: "" (OpenAI Images) or "async-jobs" (needs app 0.7.14+). */
+  protocol?: string;
   perKeyQuota: boolean;
   consoleURL?: string;
   usageURL?: string;
@@ -44,6 +46,10 @@ export type Customer = {
   trialImages: number;
   planNote?: string;
   quotaNote?: string;
+  /** When the licence ends (RFC 3339, UTC); none = never. */
+  expiresAt?: string;
+  /** Built-in skills the package comes with; none = all. */
+  skills?: string[];
   slots: Record<string, string>;
   imageBackups: string[];
   vaultRevision: number;
@@ -56,6 +62,8 @@ export type Customer = {
 export type AdminState = {
   signingPublicKey: string;
   repoRoot: string;
+  updateURL?: string;
+  builtinSkills: { id: string; name: string; description: string }[];
   dataDir: string;
   upstreams: Upstream[];
   keys: PoolKey[];

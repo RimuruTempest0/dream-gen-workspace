@@ -28,6 +28,8 @@ type ConnectionInput struct {
 	Model           string `json:"model"`
 	Key             string `json:"key"`
 	ClearKey        bool   `json:"clearKey"`
+	// Protocol of an image connection: openai-images (default) or async-jobs.
+	Protocol string `json:"protocol,omitempty"`
 	TestRequestID   string `json:"testRequestID,omitempty"`
 }
 type GenerateInput struct {
@@ -124,6 +126,9 @@ type GenerationDiagnostic struct {
 	HTTPProtocol      string `json:"httpProtocol"`
 	NetworkRoute      string `json:"networkRoute"`
 	UpstreamRequestID string `json:"upstreamRequestID"`
+	// UpstreamJobID is the job of an async-jobs connection; with it a restarted
+	// app polls the same job instead of submitting again.
+	UpstreamJobID string `json:"upstreamJobID,omitempty"`
 	ElapsedMS         int64  `json:"elapsedMS"`
 	BytesReceived     int    `json:"bytesReceived"`
 	NetworkError      string `json:"networkError"`

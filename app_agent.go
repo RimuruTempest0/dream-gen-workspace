@@ -22,6 +22,11 @@ func (a *App) ListAgentRuns(offset, limit int) (core.AgentPage, error) {
 	return a.service.ListAgentRuns(offset, limit)
 }
 func (a *App) GetAgentRun(id string) (core.AgentRun, error) { return a.service.GetAgentRun(id) }
+
+// EstimateSuite estimates a smart suite from this data folder's own records.
+func (a *App) EstimateSuite(connectionID, model, size string, count int) (core.SuiteEstimate, error) {
+	return a.service.EstimateSuite(connectionID, model, size, count)
+}
 func (a *App) GetAgentTasks(id string) ([]core.Task, error) { return a.service.GetAgentTasks(id) }
 func (a *App) RetryFailedAgentImages(runID string) (int, error) {
 	return a.service.RetryFailedAgentImages(runID)
@@ -127,4 +132,32 @@ func (a *App) ContinueSmartGeneration(v core.AgentContinuation, requestID string
 
 func (a *App) CurrentSmartProgress() (core.SmartProgress, error) {
 	return a.service.CurrentSmartProgress()
+}
+
+func (a *App) ListShopRules() ([]core.ShopRule, error)             { return a.service.ListShopRules() }
+func (a *App) SaveShopRule(v core.ShopRule) (core.ShopRule, error) { return a.service.SaveShopRule(v) }
+func (a *App) SetShopRuleEnabled(id string, on bool) error {
+	return a.service.SetShopRuleEnabled(id, on)
+}
+func (a *App) DeleteShopRule(id string) error { return a.service.DeleteShopRule(id) }
+func (a *App) RemoveShopRuleFile(id, name string) (core.ShopRule, error) {
+	return a.service.RemoveShopRuleFile(id, name)
+}
+
+// AddShopRuleFiles picks image or text files and attaches them to a shop rule.
+func (a *App) AddShopRuleFiles(id string) (core.ShopRule, error) {
+	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择店铺规则附件", Filters: []runtime.FileFilter{{DisplayName: "图片或文本", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.md;*.txt;*.json"}}})
+	if e != nil || len(paths) == 0 {
+		return core.ShopRule{}, e
+	}
+	return a.service.AddShopRuleFiles(id, paths)
+}
+
+// AddShopRuleFilesFromPaths attaches given files (drag and drop, tests).
+func (a *App) AddShopRuleFilesFromPaths(id string, paths []string) (core.ShopRule, error) {
+	return a.service.AddShopRuleFiles(id, paths)
+}
+func (a *App) SkillCategories() ([]string, error) { return a.service.SkillCategories() }
+func (a *App) SetSkillCategory(id, category string) error {
+	return a.service.SetSkillCategory(id, category)
 }

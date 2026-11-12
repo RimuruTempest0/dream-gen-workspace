@@ -25,6 +25,7 @@ export type ConnectionInput = {
   model: string;
   key: string;
   clearKey?: boolean;
+  protocol?: "openai-images" | "async-jobs";
 };
 export type GenerateInput = {
   requestID: string;

@@ -33,6 +33,7 @@ type BuildRequest struct {
 	ReleaseDir string // relative to RepoRoot, under release/
 	ZipPath    string // relative to RepoRoot; the build's own (temporary) ZIP
 	PublicKey  string
+	UpdateURL  string // update.json address built into the app; "" = none
 }
 
 // Shipping entries of a package, as in scripts/build.ps1, plus customer.dat.
@@ -95,7 +96,7 @@ func (a *Admin) profileLocked(customerID string) ([]byte, int, error) {
 		if u.Kind == "llm" {
 			maxOutput = core.LLMOutputLimit(maxOutput)
 		}
-		conns = append(conns, license.Connection{Slot: slot, Kind: u.Kind, Name: SlotName(slot), BaseURL: u.BaseURL, Model: u.Model, Mode: u.Mode, AuthMode: u.AuthMode, MaxOutputTokens: maxOutput, UsageURL: usage, Verified: k.Verified, KeyObf: obf})
+		conns = append(conns, license.Connection{Slot: slot, Kind: u.Kind, Name: SlotName(slot), BaseURL: u.BaseURL, Model: u.Model, Mode: u.Mode, AuthMode: u.AuthMode, MaxOutputTokens: maxOutput, UsageURL: usage, Verified: k.Verified, KeyObf: obf, Protocol: u.Protocol})
 	}
 	// Only assigned backup lines are switched to; the saved order keeps the rest.
 	backups, order := []string{}, c.ImageBackups
@@ -121,8 +122,115 @@ func (a *Admin) profileLocked(customerID string) ([]byte, int, error) {
 	if c.Changed || revision == 0 {
 		revision++
 	}
-	data, e := license.Sign(license.Profile{SoftwareID: c.SoftwareID, Customer: c.Name, IssuedAt: now(), TrialImages: c.TrialImages, Connections: conns, ImageBackups: backups, LinesRevision: revision, CodeCheck: check}, priv)
+	data, e := license.Sign(license.Profile{SoftwareID: c.SoftwareID, Customer: c.Name, IssuedAt: now(), TrialImages: c.TrialImages, Connections: conns, ImageBackups: backups, LinesRevision: revision, CodeCheck: check, ExpiresAt: c.ExpiresAt, Skills: c.Skills}, priv)
 	return data, revision, e
+}
+
+// SetCustomerSkills chooses the built-in skills a customer's package comes with;
+// choosing all of them is stored as "all". It takes effect with the next package
+// or renewal file; the others start switched off in the app.
+func (a *Admin) SetCustomerSkills(customerID string, ids []string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	c, e := a.customerLocked(customerID)
+	if e != nil {
+		return e
+	}
+	all := core.BuiltinSkills()
+	known := map[string]bool{}
+	chosen := []string{}
+	for _, b := range all {
+		known[b.ID] = true
+		if slices.Contains(ids, b.ID) {
+			chosen = append(chosen, b.ID)
+		}
+	}
+	for _, id := range ids {
+		if !known[id] {
+			return fmt.Errorf("没有这个内置技能：%s", id)
+		}
+	}
+	if len(chosen) == len(all) {
+		chosen = nil
+	}
+	if slices.Equal(chosen, c.Skills) && (chosen == nil) == (c.Skills == nil) {
+		return nil
+	}
+	c.Skills = chosen
+	if chosen == nil {
+		c.log("note", "内置技能改为全部")
+	} else {
+		c.log("note", fmt.Sprintf("内置技能改为 %d 个：%s", len(chosen), strings.Join(chosen, "、")))
+	}
+	return a.saveLocked()
+}
+
+// SetCustomerExpiry sets when the customer's licence ends (RFC 3339; "" = never).
+// It takes effect with the next package or renewal file.
+func (a *Admin) SetCustomerExpiry(customerID, expiresAt string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	c, e := a.customerLocked(customerID)
+	if e != nil {
+		return e
+	}
+	expiresAt = strings.TrimSpace(expiresAt)
+	if expiresAt != "" {
+		at, e := time.Parse(time.RFC3339, expiresAt)
+		if e != nil {
+			return errors.New("有效期格式无效")
+		}
+		expiresAt = at.UTC().Format(time.RFC3339)
+	}
+	if expiresAt == c.ExpiresAt {
+		return nil
+	}
+	c.ExpiresAt = expiresAt
+	if expiresAt == "" {
+		c.log("note", "有效期改为不限")
+	} else {
+		c.log("note", "有效期改为 "+expiresAt)
+	}
+	return a.saveLocked()
+}
+
+// WriteCustomerFile signs a new customer.dat for a customer who already has the
+// program (renewal, new expiry or changed keys) and writes it to dest. Only this
+// small file needs to reach the customer, who imports it in the app (0.7.12+).
+func (a *Admin) WriteCustomerFile(customerID, dest string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	c, e := a.customerLocked(customerID)
+	if e != nil {
+		return e
+	}
+	if len(c.Deliveries) == 0 {
+		return errors.New("这位客户还没有交付包，请先生成交付包")
+	}
+	data, revision, e := a.profileLocked(customerID)
+	if e != nil {
+		return e
+	}
+	for _, s := range a.customerSecretsLocked(c) {
+		if s.Value != "" && strings.Contains(string(data), s.Value) {
+			return fmt.Errorf("授权文件里出现了%s明文，已停止", s.Kind)
+		}
+	}
+	if e = os.WriteFile(dest, data, 0o644); e != nil {
+		return e
+	}
+	c.VaultRevision, c.Changed = revision, false
+	for _, id := range c.Slots {
+		if k, e := a.keyLocked(id); e == nil {
+			k.Delivered = true
+		}
+	}
+	text := fmt.Sprintf("生成续费授权文件 %s（线路版本 %d", filepath.Base(dest), revision)
+	if c.ExpiresAt != "" {
+		text += "，有效期至 " + c.ExpiresAt
+	}
+	c.log("renewed", text+"）")
+	return a.saveLocked()
 }
 
 // customerSecretsLocked lists every key of the customer and its code; none may
@@ -163,6 +271,7 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 	}
 	repo := a.d.RepoRoot
 	pub := a.d.SigningPublicKey
+	updateURL := a.d.UpdateURL
 	softwareID, name := c.SoftwareID, c.Name
 	profile, revision, e := a.profileLocked(customerID)
 	secrets := a.customerSecretsLocked(c)
@@ -177,10 +286,27 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 	releaseDir := filepath.Join(repo, rel)
 	baseZip := filepath.Join(rel, "build-check.zip")
 	log("开始构建程序文件（约 3–5 分钟）…")
-	if e = builder.Build(ctx, BuildRequest{RepoRoot: repo, Version: version, ReleaseDir: rel, ZipPath: baseZip, PublicKey: pub}, log); e != nil {
+	if e = builder.Build(ctx, BuildRequest{RepoRoot: repo, Version: version, ReleaseDir: rel, ZipPath: baseZip, PublicKey: pub, UpdateURL: updateURL}, log); e != nil {
 		return Delivery{}, fmt.Errorf("构建失败：%w", e)
 	}
 	os.Remove(filepath.Join(repo, baseZip))
+	// The program update package (no customer.dat; the same for every customer of
+	// this signing key) is kept next to the delivery for "发布程序更新".
+	updateZip := ""
+	if built := filepath.Join(repo, strings.TrimSuffix(baseZip, ".zip")+"-update.zip"); fileExists(built) {
+		updateZip = filepath.Join(repo, "release", "customers", softwareID, fmt.Sprintf("ImageWorkbench-update-%s.zip", version))
+		if e = os.Rename(built, updateZip); e != nil {
+			return Delivery{}, e
+		}
+		findings, e := packcheck.Check(updateZip, packcheck.Options{DataDir: localDataDir, Secrets: secrets})
+		if e == nil && len(findings) > 0 {
+			e = errors.New(strings.Join(findings, "；"))
+		}
+		if e != nil {
+			os.Remove(updateZip)
+			return Delivery{}, fmt.Errorf("程序更新包检查未通过，已删除：%w", e)
+		}
+	}
 	if e = os.WriteFile(filepath.Join(releaseDir, license.FileName), profile, 0o644); e != nil {
 		return Delivery{}, e
 	}
@@ -202,7 +328,7 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 	if e != nil {
 		return Delivery{}, e
 	}
-	d := Delivery{Version: version, At: now(), Zip: zipPath, SHA256: sum, VaultRevision: revision}
+	d := Delivery{Version: version, At: now(), Zip: zipPath, SHA256: sum, VaultRevision: revision, UpdateZip: updateZip}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	c, e = a.customerLocked(customerID)
@@ -287,6 +413,9 @@ type ScriptBuilder struct{}
 
 func (ScriptBuilder) Build(ctx context.Context, b BuildRequest, log func(string)) error {
 	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(b.RepoRoot, "scripts", "build.ps1"), "-Version", b.Version, "-NoLocalProfile", "-ReleaseDirectory", b.ReleaseDir, "-LicensePublicKey", b.PublicKey, "-ZipPath", b.ZipPath}
+	if b.UpdateURL != "" {
+		args = append(args, "-UpdateURL", b.UpdateURL)
+	}
 	cmd := exec.CommandContext(ctx, "powershell.exe", args...)
 	cmd.Dir = b.RepoRoot
 	cmd.Env = append(os.Environ(), "PATH="+buildPath(b.RepoRoot))

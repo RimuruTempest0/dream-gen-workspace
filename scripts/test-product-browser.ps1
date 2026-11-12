@@ -1,6 +1,14 @@
 # Builds the product-browser helper and runs the Go tests that drive it against
 # local mock pages (no real site, isolated temporary data). A verification
 # window appears for a few seconds during one test.
+# Covered: script-rendered pages, redirects, human checks (auto and shown window),
+# blank-page timeout, dropped connections, unreachable sites, and the read-only
+# guards: new windows and popups blocked, downloads cancelled, navigation to
+# anything but http/https cancelled (Chromium itself refuses file:// from a page),
+# while the product is still read. Password autosave, form autofill and every
+# permission request are switched off in cmd/product-browser/guards_windows.go;
+# the profile folder is separate (data\product-browser) and the helper exits once
+# the page and its images are read.
 param([string]$RuntimeSource = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot

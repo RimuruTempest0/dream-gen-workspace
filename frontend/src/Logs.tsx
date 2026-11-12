@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  App as AntApp,
   Button,
   Input,
   Modal,
@@ -9,8 +10,9 @@ import {
   Table,
   Tag,
 } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
-import { DataState, Header, time, useData } from "./ui";
+import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
+import { call } from "./api";
+import { DataState, Header, time, useActions, useData } from "./ui";
 
 type LogEntry = {
   id: number;
@@ -40,6 +42,21 @@ export function Logs() {
   const [page, setPage] = useState(1);
   const [auto, setAuto] = useState(true);
   const [detail, setDetail] = useState<LogEntry | null>(null);
+  const actions = useActions();
+  const { notification } = AntApp.useApp();
+  async function exportDiagnostics() {
+    const path = await actions.run(async () => {
+      const path = await call<string>("ChooseDiagnosticsPath");
+      if (path) await call("ExportDiagnosticsToPath", path);
+      return path;
+    });
+    if (path)
+      notification.success({
+        message: "诊断包已导出",
+        description:
+          "可以发给软件提供方。包内没有 API Key、激活码、提示词、图片和技能正文。",
+      });
+  }
   const q = useData<LogPage>(
     ["logs", level, source, keyword, page],
     "ListLogs",
@@ -52,13 +69,22 @@ export function Logs() {
         title="日志"
         sub="查看连接、智能分析和生图任务的运行记录。日志保存在当前数据目录，保留最近 5000 条。"
         action={
-          <Button
-            icon={<ReloadOutlined aria-hidden="true" />}
-            loading={q.isFetching}
-            onClick={() => void q.refetch()}
-          >
-            刷新日志
-          </Button>
+          <Space wrap>
+            <Button
+              icon={<DownloadOutlined aria-hidden="true" />}
+              loading={actions.busy}
+              onClick={() => void exportDiagnostics()}
+            >
+              导出诊断包
+            </Button>
+            <Button
+              icon={<ReloadOutlined aria-hidden="true" />}
+              loading={q.isFetching}
+              onClick={() => void q.refetch()}
+            >
+              刷新日志
+            </Button>
+          </Space>
         }
       />
       <section className="panel" aria-label="日志记录">

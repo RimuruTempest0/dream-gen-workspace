@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 type App struct {
@@ -173,6 +174,26 @@ func (a *App) Backup() (bool, error) {
 		return false, e
 	}
 	return true, a.service.CreateBackup(path)
+}
+// ChooseCustomerFile asks for a renewed customer.dat from the provider.
+func (a *App) ChooseCustomerFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择软件提供方发来的授权文件", Filters: []runtime.FileFilter{{DisplayName: "授权文件 customer.dat", Pattern: "*.dat"}}})
+}
+
+// ImportCustomerFile replaces customer.dat with a renewed one for this software.
+func (a *App) ImportCustomerFile(path string) (core.LicenseStatus, error) {
+	return a.service.ImportCustomerFile(path)
+}
+
+// ChooseDiagnosticsPath asks where to save the diagnostic package.
+func (a *App) ChooseDiagnosticsPath() (string, error) {
+	name := "ImageWorkbench-诊断包-" + time.Now().Format("20060102-1504") + ".zip"
+	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "保存诊断包", DefaultFilename: name, Filters: []runtime.FileFilter{{DisplayName: "ZIP 诊断包", Pattern: "*.zip"}}})
+}
+
+// ExportDiagnosticsToPath writes the diagnostic package (no keys, prompts or images).
+func (a *App) ExportDiagnosticsToPath(path string) error {
+	return a.service.ExportDiagnostics(path, a.configRoot)
 }
 func (a *App) Restore() (bool, error) {
 	path, e := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择备份", Filters: []runtime.FileFilter{{DisplayName: "ZIP 备份", Pattern: "*.zip"}}})

@@ -53,6 +53,59 @@ test.afterAll(async () => {
   await new Promise<void>((r) => server.close(() => r()));
 });
 
+test("客户版：授权到期后停止生成，导入续费文件后恢复，临期提示", async () => {
+  const past = new Date(Date.now() - 3600_000).toISOString();
+  await go("StartTestCustomerExpiring", base, base, 5, past);
+  await page.goto("http://wails.localhost/#/settings");
+  await page.reload();
+  await page.waitForFunction(() => !!window.go?.main?.App);
+  const badge = page.locator(".license-badge");
+  await expect(badge).toHaveText(/授权已到期/);
+  const panel = page.locator("#license");
+  await expect(panel.getByText("已到期", { exact: true })).toBeVisible();
+  await expect(panel.getByText("有效期至")).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "导入授权文件" }),
+  ).toBeVisible();
+  const lines = await go<{ id: string; managed?: string }[]>("ListConnections");
+  const image = lines.find((c) => c.managed === "image-1")!;
+  const submit = () =>
+    go("Submit", {
+      requestID: crypto.randomUUID(),
+      connectionID: image.id,
+      model: "mock-image",
+      prompts: ["到期后"],
+      count: 1,
+      references: [],
+      size: "auto",
+      quality: "auto",
+      projectID: "",
+    });
+  await expect(submit()).rejects.toThrow(/到期/);
+  await page.getByRole("link", { name: "生图工作台" }).click();
+  await expect(page.getByText("软件授权已到期")).toBeVisible();
+
+  // Renewed for three more days: generation works again and the warning shows.
+  const soon = new Date(Date.now() + 3 * 86400_000 - 3600_000).toISOString();
+  const renewal = await go<string>("WriteTestRenewal", soon);
+  const status = await go<{ mode: string; daysLeft?: number }>(
+    "ImportCustomerFile",
+    renewal,
+  );
+  expect(status.mode).toBe("trial");
+  expect(status.daysLeft).toBe(3);
+  await expect(page.getByText("软件授权 3 天后到期")).toBeVisible({
+    timeout: 10000,
+  });
+  await submit();
+  await expect.poll(() => keysUsed.length, { timeout: 20000 }).toBe(1);
+  keysUsed.length = 0;
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+});
+
 test("客户版：试用 2 张、用完拦截、激活后切换到专属线路", async () => {
   const customer = await go<{ softwareID: string; code: string }>(
     "StartTestCustomer",
@@ -146,6 +199,17 @@ test("客户版：试用 2 张、用完拦截、激活后切换到专属线路",
   expect(status.mode).toBe("active");
 
   await page.getByRole("link", { name: "连接与设置" }).click();
+  // Built-in skills are open: customers see their text, edit them and turn
+  // them off (P004 included; turned off, its fixed rules are not added).
+  const skills = await go<{ source: string; content: string }[]>("ListSkills");
+  expect(
+    skills.filter((s) => s.source === "内置").every((s) => s.content !== ""),
+  ).toBe(true);
+  for (const name of ["生图提示词写法", "P004 生图规则"]) {
+    const row = page.locator(".connection-row").filter({ hasText: name });
+    await expect(row.getByRole("button", { name: "编辑 Skill" })).toBeVisible();
+    await expect(row.getByRole("switch")).toBeVisible();
+  }
   const a11y = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();

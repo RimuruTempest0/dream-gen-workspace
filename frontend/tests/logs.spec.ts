@@ -7,6 +7,8 @@ import {
 } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 
 let browser: Browser, page: Page, server: http.Server, baseURL: string;
 async function go<T>(name: string, ...args: unknown[]): Promise<T> {
@@ -120,4 +122,26 @@ test("logs paginate and filtering returns to the first page", async () => {
   await page.getByRole("button", { name: "搜索", exact: true }).click();
   await expect(page.locator("tbody .ant-table-row")).toHaveCount(1);
   await expect(page.getByRole("status")).toHaveText("共 1 条符合条件的日志");
+});
+
+test("diagnostic package exports from the logs page", async () => {
+  await page.getByRole("link", { name: "日志", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "导出诊断包", exact: true }),
+  ).toBeVisible();
+  const dir = fs.mkdtempSync(
+    path.resolve(import.meta.dirname, "../../.tools/qa-diagnostics-"),
+  );
+  const target = path.join(dir, "diagnostics.zip");
+  await go("ExportDiagnosticsToPath", target);
+  const zip = fs.readFileSync(target);
+  // A ZIP with the four expected entries (names are stored uncompressed).
+  expect(zip.subarray(0, 2).toString()).toBe("PK");
+  for (const name of [
+    "README.txt",
+    "summary.json",
+    "logs.txt",
+    "failures.json",
+  ])
+    expect(zip.includes(Buffer.from(name))).toBe(true);
 });

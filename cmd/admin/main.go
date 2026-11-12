@@ -176,6 +176,42 @@ func (x *App) BuildPackage(customerID, version string) error {
 	return nil
 }
 
+func (x *App) SetCustomerSkills(id string, ids []string) error {
+	return x.a.SetCustomerSkills(id, ids)
+}
+
+func (x *App) SetCustomerExpiry(id, expiresAt string) error {
+	return x.a.SetCustomerExpiry(id, expiresAt)
+}
+
+// SaveCustomerFile writes a renewal customer.dat (new expiry or keys) where the
+// provider chooses; only this file needs to reach the customer.
+func (x *App) SaveCustomerFile(customerID string) (bool, error) {
+	path, e := runtime.SaveFileDialog(x.ctx, runtime.SaveDialogOptions{Title: "保存续费授权文件", DefaultFilename: "customer.dat", Filters: []runtime.FileFilter{{DisplayName: "授权文件", Pattern: "*.dat"}}})
+	if e != nil || path == "" {
+		return false, e
+	}
+	return true, x.a.WriteCustomerFile(customerID, path)
+}
+
+func (x *App) SetUpdateURL(url string) error { return x.a.SetUpdateURL(url) }
+
+// ChooseUpdatePackage picks a program update package (ImageWorkbench-update-….zip).
+func (x *App) ChooseUpdatePackage() (string, error) {
+	return runtime.OpenFileDialog(x.ctx, runtime.OpenDialogOptions{Title: "选择程序更新包", Filters: []runtime.FileFilter{{DisplayName: "程序更新包", Pattern: "*.zip"}}})
+}
+
+// PublishUpdate signs update.json for the package and saves it where the
+// provider chooses; both files are then uploaded by the provider.
+func (x *App) PublishUpdate(r admin.UpdateRelease) (bool, error) {
+	path, e := runtime.SaveFileDialog(x.ctx, runtime.SaveDialogOptions{Title: "保存更新清单", DefaultFilename: "update.json", Filters: []runtime.FileFilter{{DisplayName: "更新清单", Pattern: "*.json"}}})
+	if e != nil || path == "" {
+		return false, e
+	}
+	_, e = x.a.PublishUpdate(r, path)
+	return e == nil, e
+}
+
 func (x *App) ExportSigningBackup(password string) (bool, error) {
 	path, e := runtime.SaveFileDialog(x.ctx, runtime.SaveDialogOptions{Title: "保存签名密钥备份", DefaultFilename: "ImageWorkbench-签名密钥备份.json", Filters: []runtime.FileFilter{{DisplayName: "密钥备份", Pattern: "*.json"}}})
 	if e != nil || path == "" {

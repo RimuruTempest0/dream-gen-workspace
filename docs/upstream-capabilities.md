@@ -218,3 +218,11 @@
 3. 有没有查询单个 API Key 用量或剩余额度的 API？目前 `/user/balance` 只返回账户总余额，按 Key 的用量只能在网页"用量信息"里看或导出。
 4. 有没有管理 API（或企业版、子账户功能）可以用程序创建、禁用 API Key 并查询其用量？
 5. 如果为每位客户注册独立的 DeepSeek 账户，各自充值、互不影响，是否符合使用条款？企业实名下能否开多个子账户？
+
+## 异步任务协议（0.7.14 起，`async-jobs`）
+
+通用的提交/轮询形态，不是任何厂商的专有接口：
+- 提交：与同步相同的 `POST {Base URL}/images/generations`（或 multipart `/images/edits`），另加 `"async": true`（multipart 为字段 `async=true`）、请求头 `Idempotency-Key: 任务 ID` 和 `Prefer: respond-async`。返回 `{"id"|"job_id"|"task_id": "...", "status": "..."}`；直接返回 `data` 视为已完成。
+- 轮询：`GET {Base URL}/images/jobs/{id}`，每 3 秒一次，最多 15 分钟。`status` 为 succeeded/completed/done 时读 `data`（与同步相同的 `url`/`b64_json`）；failed/error/cancelled 时读 `error.message`；其他视为进行中。单次查询的网络错误、5xx、429 会重试。
+- 任务 ID 记在任务上：应用重启后继续查询同一个任务，不重新提交；超时记为结果未知，不自动重新生成（避免重复计费）。
+- 具体厂商的专有协议需要对照其公开文档单独写适配器。

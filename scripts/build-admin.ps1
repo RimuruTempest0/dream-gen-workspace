@@ -1,3 +1,4 @@
+﻿param([string]$SignThumbprint)
 $ErrorActionPreference = 'Stop'
 # Builds the admin tool (never shipped to customers) into release\admin.
 # It uses the system WebView2 runtime that Windows 10/11 include.
@@ -14,4 +15,7 @@ if ($uiExit -ne 0) { throw 'Admin UI build failed' }
 New-Item -ItemType Directory -Force -Path 'release\admin' | Out-Null
 go build -tags production -trimpath -ldflags '-H windowsgui -s -w' -o 'release\admin\ImageWorkbenchAdmin.exe' ./cmd/admin
 if ($LASTEXITCODE -ne 0) { throw 'Admin build failed' }
+. (Join-Path $PSScriptRoot 'signing.ps1')
+$thumbprint = Get-SignThumbprint $SignThumbprint
+if ($thumbprint) { Sign-BuildFile 'release\admin\ImageWorkbenchAdmin.exe' $thumbprint } else { Write-UnsignedWarning 'ImageWorkbenchAdmin.exe' }
 Get-Item 'release\admin\ImageWorkbenchAdmin.exe' | Select-Object FullName, Length

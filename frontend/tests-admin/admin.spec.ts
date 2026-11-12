@@ -280,10 +280,59 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
     "图片线路 3",
   );
 
+  // Built-in skills: all ticked by default; unticking one is saved per customer.
+  const skillsPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "内置技能" }) });
+  await expect(skillsPanel.getByRole("switch")).toHaveCount(5);
+  for (const box of await skillsPanel.getByRole("switch").all())
+    await expect(box).toBeChecked();
+  const p004 = skillsPanel.getByRole("switch", {
+    name: "交付包带上 P004 生图规则",
+  });
+  await p004.click();
+  await expect(p004).not.toBeChecked();
+  await expect
+    .poll(async () => {
+      const st = await page.evaluate(() => (window as any).go.main.App.State());
+      return st.customers.find((x: { name: string }) => x.name === "QA 客户")
+        .skills;
+    })
+    .toHaveLength(4);
+  await p004.click();
+  await expect(p004).toBeChecked();
+  await expect
+    .poll(async () => {
+      const st = await page.evaluate(() => (window as any).go.main.App.State());
+      return st.customers.find((x: { name: string }) => x.name === "QA 客户")
+        .skills;
+    })
+    .toBeUndefined();
+
+  // Expiry: a real field, signed into the package; renewal needs a package first.
+  await expect(
+    page.getByRole("button", { name: "生成续费授权文件" }),
+  ).toBeDisabled();
+  await page.getByLabel(/有效期至/).fill("2030-06-30");
+  await page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "套餐与额度" }) })
+    .getByRole("button", { name: "保存" })
+    .click();
+  await expect(page.getByText("当前有效期至 2030")).toBeVisible();
+  const saved = await page.evaluate(() => (window as any).go.main.App.State());
+  expect(
+    saved.customers.find((x: { name: string }) => x.name === "QA 客户")
+      .expiresAt,
+  ).toMatch(/^2030-06-30T|^2030-06-29T/);
+
   await page.getByRole("button", { name: "生成交付包" }).click();
   await expect(page.getByText("交付包已生成。")).toBeVisible({
     timeout: 60000,
   });
+  await expect(
+    page.getByRole("button", { name: "生成续费授权文件" }),
+  ).toBeEnabled();
   const softwareID = (await page.locator(".page-header p").innerText()).match(
     /IW-[0-9A-Z-]+/,
   )![0];

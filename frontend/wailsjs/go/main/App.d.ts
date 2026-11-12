@@ -4,6 +4,10 @@ import {core} from '../models';
 
 export function Activate(arg1:string):Promise<core.LicenseStatus>;
 
+export function AddShopRuleFiles(arg1:string):Promise<core.ShopRule>;
+
+export function AddShopRuleFilesFromPaths(arg1:string,arg2:Array<string>):Promise<core.ShopRule>;
+
 export function AgentRuntime():Promise<core.AgentRuntimeInfo>;
 
 export function Backup():Promise<boolean>;
@@ -16,9 +20,15 @@ export function CancelTask(arg1:string):Promise<void>;
 
 export function ChangeDataDirectory(arg1:string):Promise<core.Summary>;
 
+export function CheckForUpdate():Promise<core.UpdateStatus>;
+
 export function CheckGateways():Promise<Array<core.GatewayHealth>>;
 
+export function ChooseCustomerFile():Promise<string>;
+
 export function ChooseDataDirectory():Promise<string>;
+
+export function ChooseDiagnosticsPath():Promise<string>;
 
 export function ChooseExportPath(arg1:string):Promise<string>;
 
@@ -38,9 +48,15 @@ export function DeleteConnection(arg1:string):Promise<void>;
 
 export function DeleteProject(arg1:string):Promise<void>;
 
+export function DeleteShopRule(arg1:string):Promise<void>;
+
 export function DeleteSkill(arg1:string):Promise<void>;
 
 export function DeleteTemplate(arg1:string):Promise<void>;
+
+export function DownloadUpdate():Promise<core.UpdateStatus>;
+
+export function EstimateSuite(arg1:string,arg2:string,arg3:string,arg4:number):Promise<core.SuiteEstimate>;
 
 export function ExportAsset(arg1:string,arg2:string):Promise<boolean>;
 
@@ -49,6 +65,8 @@ export function ExportAssetToPath(arg1:string,arg2:string):Promise<void>;
 export function ExportAssetsToPath(arg1:Array<string>,arg2:string):Promise<number>;
 
 export function ExportBatchToPath(arg1:string,arg2:string):Promise<number>;
+
+export function ExportDiagnosticsToPath(arg1:string):Promise<void>;
 
 export function ExportGatewayCallsToPath(arg1:core.MonitorQuery,arg2:string):Promise<number>;
 
@@ -78,11 +96,15 @@ export function ImageConcurrency():Promise<number>;
 
 export function ImportAgentFiles():Promise<Array<core.Asset>>;
 
+export function ImportCustomerFile(arg1:string):Promise<core.LicenseStatus>;
+
 export function ImportFiles():Promise<Array<core.Asset>>;
 
 export function ImportImage(arg1:string,arg2:string):Promise<core.Asset>;
 
 export function ImportSkill(arg1:string,arg2:boolean):Promise<core.SkillRecord>;
+
+export function InstallUpdate():Promise<void>;
 
 export function LLMMonitor(arg1:core.MonitorQuery):Promise<core.LLMMonitorResult>;
 
@@ -102,6 +124,8 @@ export function ListProjects():Promise<Array<core.Project>>;
 
 export function ListRecentBatches(arg1:number):Promise<Array<core.RecentBatch>>;
 
+export function ListShopRules():Promise<Array<core.ShopRule>>;
+
 export function ListSkills():Promise<Array<core.SkillRecord>>;
 
 export function ListTasks(arg1:string,arg2:number,arg3:number):Promise<core.Page>;
@@ -115,6 +139,8 @@ export function QuitNow():Promise<void>;
 export function ReadAsset(arg1:string,arg2:boolean):Promise<string>;
 
 export function RefineAgentImage(arg1:core.RefineInput):Promise<string>;
+
+export function RemoveShopRuleFile(arg1:string,arg2:string):Promise<core.ShopRule>;
 
 export function Restore():Promise<boolean>;
 
@@ -130,6 +156,8 @@ export function SaveConnection(arg1:core.ConnectionInput):Promise<core.Connectio
 
 export function SaveProject(arg1:core.Project):Promise<core.Project>;
 
+export function SaveShopRule(arg1:core.ShopRule):Promise<core.ShopRule>;
+
 export function SaveSkill(arg1:core.SkillRecord):Promise<core.SkillRecord>;
 
 export function SaveSuitePlan(arg1:string,arg2:core.SuitePlan):Promise<core.SuitePlan>;
@@ -144,9 +172,17 @@ export function SetGatewaySettings(arg1:core.GatewaySettings):Promise<void>;
 
 export function SetImageConcurrency(arg1:number):Promise<void>;
 
+export function SetShopRuleEnabled(arg1:string,arg2:boolean):Promise<void>;
+
+export function SetSkillCategory(arg1:string,arg2:string):Promise<void>;
+
 export function SetSkillEnabled(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetSmartMode(arg1:string):Promise<void>;
+
+export function SetUpdateAutoCheck(arg1:boolean):Promise<void>;
+
+export function SkillCategories():Promise<Array<string>>;
 
 export function SmartMode():Promise<string>;
 
@@ -165,5 +201,7 @@ export function TestConnection(arg1:core.ConnectionInput):Promise<core.TestResul
 export function UpdateAsset(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function UpdateAssets(arg1:Array<string>,arg2:string,arg3:boolean):Promise<number>;
+
+export function UpdateStatus():Promise<core.UpdateStatus>;
 
 export function ValidateLLMCapabilities(arg1:string,arg2:string):Promise<core.LLMCapabilities>;

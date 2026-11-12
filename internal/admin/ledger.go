@@ -31,6 +31,9 @@ type Upstream struct {
 	Mode            string `json:"mode,omitempty"`     // llm: claude or compatible
 	AuthMode        string `json:"authMode,omitempty"` // llm: api-key or bearer
 	MaxOutputTokens int    `json:"maxOutputTokens,omitempty"`
+	// Protocol of an image upstream: "" / openai-images, or async-jobs (admin 1.3.0;
+	// needs app 0.7.14 or later, carried in customer.dat format 3).
+	Protocol string `json:"protocol,omitempty"`
 	// PerKeyQuota: the upstream can cap a single key (e.g. Sub2API: 幻灵, 1 Route).
 	// Without it a key cannot be limited on its own (e.g. DeepSeek official): every
 	// key ships in the package before payment, so only its quota guards it.
@@ -72,6 +75,8 @@ type Delivery struct {
 	Zip           string `json:"zip"`
 	SHA256        string `json:"sha256"`
 	VaultRevision int    `json:"vaultRevision"`
+	// UpdateZip is the program update package built with it (admin 1.2.0).
+	UpdateZip string `json:"updateZip,omitempty"`
 }
 
 type Event struct {
@@ -81,13 +86,18 @@ type Event struct {
 }
 
 type Customer struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	SoftwareID    string            `json:"softwareID"`
-	CodeRef       string            `json:"codeRef"`
-	CreatedAt     string            `json:"createdAt"`
-	TrialImages   int               `json:"trialImages"`
-	PlanNote      string            `json:"planNote,omitempty"`  // 套餐与有效期
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SoftwareID  string `json:"softwareID"`
+	CodeRef     string `json:"codeRef"`
+	CreatedAt   string `json:"createdAt"`
+	TrialImages int    `json:"trialImages"`
+	PlanNote    string `json:"planNote,omitempty"` // 套餐与有效期
+	// ExpiresAt ends the customer's generation at that moment (RFC 3339, UTC);
+	// empty = no expiry. Signed into customer.dat (format 3) from admin 1.1.0.
+	ExpiresAt string `json:"expiresAt,omitempty"`
+	// Skills lists the built-in skills the package comes with; nil = all (admin 1.5.0).
+	Skills        []string          `json:"skills,omitempty"`
 	QuotaNote     string            `json:"quotaNote,omitempty"` // 额度备注
 	Slots         map[string]string `json:"slots"`               // slot → key ID
 	ImageBackups  []string          `json:"imageBackups"`        // image slots after image-1, in order
@@ -102,13 +112,16 @@ type Customer struct {
 }
 
 type ledgerData struct {
-	Version          int        `json:"version"`
-	SigningPublicKey string     `json:"signingPublicKey,omitempty"`
-	SigningKeyRef    string     `json:"signingKeyRef,omitempty"`
-	RepoRoot         string     `json:"repoRoot,omitempty"`
-	Upstreams        []Upstream `json:"upstreams"`
-	Keys             []PoolKey  `json:"keys"`
-	Customers        []Customer `json:"customers"`
+	Version          int    `json:"version"`
+	SigningPublicKey string `json:"signingPublicKey,omitempty"`
+	SigningKeyRef    string `json:"signingKeyRef,omitempty"`
+	RepoRoot         string `json:"repoRoot,omitempty"`
+	// UpdateURL is where customer apps read the signed update.json (admin 1.2.0);
+	// built into packages from then on, empty = no in-app updates.
+	UpdateURL string     `json:"updateURL,omitempty"`
+	Upstreams []Upstream `json:"upstreams"`
+	Keys      []PoolKey  `json:"keys"`
+	Customers []Customer `json:"customers"`
 }
 
 // Slots of one customer package: what the customer app calls each line.

@@ -24,6 +24,8 @@ export type AgentInput = {
   skillIDs: string[];
   // Automatic mode never asks: the Agent decides missing facts itself.
   autoMode?: boolean;
+  /** Uses the skills filed under this category, plus the uncategorised ones. */
+  category?: string;
 };
 export type ProductInfo = {
   sourceURL: string;
@@ -71,6 +73,9 @@ export type SkillRecord = {
   enabled: boolean;
   source: string;
   attachments: { name: string; path: string }[];
+  sealed?: boolean;
+  /** Product category; empty = used for every category. */
+  category?: string;
 };
 export type AgentRun = {
   autoGeneration?: boolean;

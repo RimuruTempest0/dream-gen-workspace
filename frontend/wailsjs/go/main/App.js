@@ -6,6 +6,14 @@ export function Activate(arg1) {
   return window['go']['main']['App']['Activate'](arg1);
 }
 
+export function AddShopRuleFiles(arg1) {
+  return window['go']['main']['App']['AddShopRuleFiles'](arg1);
+}
+
+export function AddShopRuleFilesFromPaths(arg1, arg2) {
+  return window['go']['main']['App']['AddShopRuleFilesFromPaths'](arg1, arg2);
+}
+
 export function AgentRuntime() {
   return window['go']['main']['App']['AgentRuntime']();
 }
@@ -30,12 +38,24 @@ export function ChangeDataDirectory(arg1) {
   return window['go']['main']['App']['ChangeDataDirectory'](arg1);
 }
 
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
+}
+
 export function CheckGateways() {
   return window['go']['main']['App']['CheckGateways']();
 }
 
+export function ChooseCustomerFile() {
+  return window['go']['main']['App']['ChooseCustomerFile']();
+}
+
 export function ChooseDataDirectory() {
   return window['go']['main']['App']['ChooseDataDirectory']();
+}
+
+export function ChooseDiagnosticsPath() {
+  return window['go']['main']['App']['ChooseDiagnosticsPath']();
 }
 
 export function ChooseExportPath(arg1) {
@@ -74,12 +94,24 @@ export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
 }
 
+export function DeleteShopRule(arg1) {
+  return window['go']['main']['App']['DeleteShopRule'](arg1);
+}
+
 export function DeleteSkill(arg1) {
   return window['go']['main']['App']['DeleteSkill'](arg1);
 }
 
 export function DeleteTemplate(arg1) {
   return window['go']['main']['App']['DeleteTemplate'](arg1);
+}
+
+export function DownloadUpdate() {
+  return window['go']['main']['App']['DownloadUpdate']();
+}
+
+export function EstimateSuite(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['EstimateSuite'](arg1, arg2, arg3, arg4);
 }
 
 export function ExportAsset(arg1, arg2) {
@@ -96,6 +128,10 @@ export function ExportAssetsToPath(arg1, arg2) {
 
 export function ExportBatchToPath(arg1, arg2) {
   return window['go']['main']['App']['ExportBatchToPath'](arg1, arg2);
+}
+
+export function ExportDiagnosticsToPath(arg1) {
+  return window['go']['main']['App']['ExportDiagnosticsToPath'](arg1);
 }
 
 export function ExportGatewayCallsToPath(arg1, arg2) {
@@ -154,6 +190,10 @@ export function ImportAgentFiles() {
   return window['go']['main']['App']['ImportAgentFiles']();
 }
 
+export function ImportCustomerFile(arg1) {
+  return window['go']['main']['App']['ImportCustomerFile'](arg1);
+}
+
 export function ImportFiles() {
   return window['go']['main']['App']['ImportFiles']();
 }
@@ -164,6 +204,10 @@ export function ImportImage(arg1, arg2) {
 
 export function ImportSkill(arg1, arg2) {
   return window['go']['main']['App']['ImportSkill'](arg1, arg2);
+}
+
+export function InstallUpdate() {
+  return window['go']['main']['App']['InstallUpdate']();
 }
 
 export function LLMMonitor(arg1) {
@@ -202,6 +246,10 @@ export function ListRecentBatches(arg1) {
   return window['go']['main']['App']['ListRecentBatches'](arg1);
 }
 
+export function ListShopRules() {
+  return window['go']['main']['App']['ListShopRules']();
+}
+
 export function ListSkills() {
   return window['go']['main']['App']['ListSkills']();
 }
@@ -228,6 +276,10 @@ export function ReadAsset(arg1, arg2) {
 
 export function RefineAgentImage(arg1) {
   return window['go']['main']['App']['RefineAgentImage'](arg1);
+}
+
+export function RemoveShopRuleFile(arg1, arg2) {
+  return window['go']['main']['App']['RemoveShopRuleFile'](arg1, arg2);
 }
 
 export function Restore() {
@@ -258,6 +310,10 @@ export function SaveProject(arg1) {
   return window['go']['main']['App']['SaveProject'](arg1);
 }
 
+export function SaveShopRule(arg1) {
+  return window['go']['main']['App']['SaveShopRule'](arg1);
+}
+
 export function SaveSkill(arg1) {
   return window['go']['main']['App']['SaveSkill'](arg1);
 }
@@ -286,12 +342,28 @@ export function SetImageConcurrency(arg1) {
   return window['go']['main']['App']['SetImageConcurrency'](arg1);
 }
 
+export function SetShopRuleEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetShopRuleEnabled'](arg1, arg2);
+}
+
+export function SetSkillCategory(arg1, arg2) {
+  return window['go']['main']['App']['SetSkillCategory'](arg1, arg2);
+}
+
 export function SetSkillEnabled(arg1, arg2) {
   return window['go']['main']['App']['SetSkillEnabled'](arg1, arg2);
 }
 
 export function SetSmartMode(arg1) {
   return window['go']['main']['App']['SetSmartMode'](arg1);
+}
+
+export function SetUpdateAutoCheck(arg1) {
+  return window['go']['main']['App']['SetUpdateAutoCheck'](arg1);
+}
+
+export function SkillCategories() {
+  return window['go']['main']['App']['SkillCategories']();
 }
 
 export function SmartMode() {
@@ -328,6 +400,10 @@ export function UpdateAsset(arg1, arg2, arg3) {
 
 export function UpdateAssets(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateAssets'](arg1, arg2, arg3);
+}
+
+export function UpdateStatus() {
+  return window['go']['main']['App']['UpdateStatus']();
 }
 
 export function ValidateLLMCapabilities(arg1, arg2) {

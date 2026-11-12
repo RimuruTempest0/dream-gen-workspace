@@ -1,0 +1,382 @@
+.page {
+  padding: 30px 32px 48px;
+  max-width: 1800px;
+  margin: auto;
+}
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 26px;
+}
+.page-header p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+/* 智能生图页头：模式是一项设置，“新建需求”是一个操作，用竖线分开 */
+.page-header:has(.mode-switch) {
+  flex-wrap: wrap;
+}
+.page-header:has(.mode-switch) > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.smart-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.smart-header-divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--border);
+}
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.mode-switch legend {
+  float: left;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.mode-switch-options {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.mode-option {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 14px 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    box-shadow 0.15s;
+}
+.mode-option:hover {
+  border-color: var(--primary);
+}
+.mode-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.mode-option-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+  background: var(--surface);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.mode-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mode-option-label {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+.mode-option-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.mode-option:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.mode-option:has(input:checked) .mode-option-dot {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 3.5px var(--surface);
+  background: var(--primary);
+}
+.mode-option:has(input:checked) .mode-option-label {
+  color: var(--primary);
+}
+.mode-option:has(input:focus-visible) {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.mode-switch:disabled .mode-option {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.mode-switch:disabled .mode-option:hover {
+  border-color: var(--border);
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  margin-bottom: 24px;
+  min-width: 0;
+}
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 36px;
+  margin-bottom: 22px;
+}
+.panel-heading .ant-space {
+  font-size: 12px;
+}
+.workbench {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.12fr) minmax(300px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+  margin-bottom: 8px;
+}
+.field-label .muted {
+  font-size: 11px;
+  font-weight: 400;
+}
+.field-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 22px 0 10px;
+}
+.field-header .field-label {
+  margin: 0;
+}
+.prompt-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.prompt-header {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  margin-bottom: 8px;
+}
+.prompt-header .field-label {
+  margin: 0;
+}
+.template-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.template-select {
+  width: 140px;
+}
+.template-option {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.template-option strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.template-option small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.template-popup-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+  text-align: right;
+}
+.template-list .object-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.template-tags {
+  margin-top: 8px;
+}
+.template-actions {
+  flex: none;
+  justify-content: flex-end;
+  max-width: 420px;
+}
+.run-steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.run-steps li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 2px 10px;
+  align-items: start;
+  color: var(--muted);
+}
+.run-steps li > .run-step-mark {
+  grid-row: span 2;
+  line-height: 22px;
+  text-align: center;
+}
+.run-steps li > strong {
+  font-weight: 500;
+}
+.run-steps li > small {
+  grid-column: 2;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.run-steps .run-step-done {
+  color: var(--text);
+}
+.run-steps .run-step-done .run-step-mark {
+  color: var(--success);
+}
+.run-steps .run-step-active {
+  color: var(--text);
+}
+.run-steps .run-step-active strong {
+  font-weight: 600;
+}
+.run-steps .run-step-active .run-step-mark {
+  color: var(--primary);
+}
+.run-step-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+.run-step-note {
+  margin: -8px 0 16px 28px;
+  font-size: 12px;
+  color: var(--warning-text, #8a5a00);
+}
+.run-activity {
+  margin: 0 0 16px;
+}
+.run-activity > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.run-activity-body {
+  border-radius: 10px;
+  overflow: hidden;
+  background: #111827;
+  color: #e5e7eb;
+  font-family: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+  font-size: 12px;
+}
+.run-activity-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #374151;
+  color: #d1d5db;
+}
+.run-activity-log {
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 14px;
+  display: grid;
+  gap: 4px;
+}
+.run-activity-log:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: -2px;
+}
+.run-activity-line {
+  display: grid;
+  grid-template-columns: 62px 12px 1fr;
+  gap: 8px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  animation: image-in 160ms ease-out;
+}
+.run-activity-line time {
+  color: #9ca3af;
+}
+.run-activity-line.is-tool {
+  color: #93c5fd;
+}
+.run-activity-line.is-llm {
+  color: #86efac;
+}
+.run-activity-line.is-warn {
+  color: #fcd34d;
+}
+.run-step-reply {
+  margin: -4px 0 16px 28px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.task-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--background);
+}
+.task-thumb .image-frame {
+  width: 52px;
+  height: 52px;
+  aspect-ratio: auto;
+}
+.task-thumb-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+/* The main action stays in view however long the form is. */
+.sticky-actions,
+.generate-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--surface);
+}

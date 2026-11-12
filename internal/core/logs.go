@@ -29,6 +29,12 @@ var logURLPattern = regexp.MustCompile(`https?://[^\s"<>]+`)
 func (st *Store) safeLogText(text string) string {
 	// Compare with saved secrets before persisting. No raw request/response bodies
 	// or credential configuration is sent to the log writer.
+	return redactLogText(text, st.savedSecrets())
+}
+
+// savedSecrets returns the plain text of every saved connection key.
+func (st *Store) savedSecrets() []string {
+	out := []string{}
 	connections, _ := List[Connection](st, "connection")
 	for _, c := range connections {
 		if c.Credential == "" {
@@ -39,8 +45,15 @@ func (st *Store) safeLogText(text string) string {
 			continue
 		}
 		if plain, e := Unprotect(data); e == nil && len(plain) > 0 {
-			text = strings.ReplaceAll(text, string(plain), "[已隐藏]")
+			out = append(out, string(plain))
 		}
+	}
+	return out
+}
+
+func redactLogText(text string, secrets []string) string {
+	for _, secret := range secrets {
+		text = strings.ReplaceAll(text, secret, "[已隐藏]")
 	}
 	text = logAuthPattern.ReplaceAllString(text, "${1}[已隐藏]")
 	text = logURLPattern.ReplaceAllStringFunc(text, func(raw string) string {

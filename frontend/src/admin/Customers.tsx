@@ -10,6 +10,7 @@ import {
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -22,8 +23,9 @@ import {
   FolderOpenOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { call, errorText } from "../api";
-import { DataState, Header, useActions, time } from "../ui";
+import { DataState, Header, dateTime, useActions, time } from "../ui";
 import { useAdminState } from "./AdminApp";
 import {
   allSlots,
@@ -35,6 +37,7 @@ import {
   slotNeeds,
   useLabel,
   type Customer,
+  type AdminState,
   type Delivery,
 } from "./types";
 
@@ -207,7 +210,7 @@ export function CustomerDetail() {
   const { id } = useParams();
   const state = useAdminState();
   const actions = useActions();
-  const { modal } = AntApp.useApp();
+  const { modal, notification } = AntApp.useApp();
   const nav = useNavigate();
   const c = state.data?.customers.find((x) => x.id === id);
   const [version, setVersion] = useState("");
@@ -245,6 +248,7 @@ export function CustomerDetail() {
         planNote: c.planNote,
         quotaNote: c.quotaNote,
         trialImages: c.trialImages,
+        expiresOn: dateInput(c.expiresAt),
       });
   }, [c?.id]);
   if (!c)
@@ -576,21 +580,27 @@ export function CustomerDetail() {
           form={notes}
           layout="vertical"
           onFinish={(v) =>
-            actions.run(
-              () =>
-                call(
-                  "SetCustomerNotes",
-                  c.id,
-                  v.planNote || "",
-                  v.quotaNote || "",
-                  v.trialImages || 0,
-                ),
-              "已保存",
-            )
+            actions.run(async () => {
+              await call(
+                "SetCustomerNotes",
+                c.id,
+                v.planNote || "",
+                v.quotaNote || "",
+                v.trialImages || 0,
+              );
+              await call("SetCustomerExpiry", c.id, endOfDay(v.expiresOn));
+            }, "已保存")
           }
         >
-          <Form.Item name="planNote" label="套餐与有效期">
-            <Input placeholder="例如：标准版，2026-11-01 至 2027-10-31" />
+          <Form.Item
+            name="expiresOn"
+            label="有效期至（当天 23:59 到期；留空为不限）"
+            extra="写进下一次的交付包或续费授权文件。到期后客户不能生成新图片，已有图片不受影响；到期前 7 天软件会提醒。"
+          >
+            <Input type="date" style={{ width: 180 }} />
+          </Form.Item>
+          <Form.Item name="planNote" label="套餐备注">
+            <Input placeholder="例如：标准版，按年付费" />
           </Form.Item>
           <Form.Item name="quotaNote" label="额度备注">
             <Input placeholder="例如：主用 Key 各 ¥300，备用 Key 各 ¥100" />
@@ -601,6 +611,7 @@ export function CustomerDetail() {
           <Button htmlType="submit">保存</Button>
         </Form>
       </section>
+      <CustomerSkills customer={c} />
       <section className="panel" aria-labelledby="pkg-title">
         <div className="panel-heading">
           <h2 id="pkg-title">生成交付包</h2>
@@ -646,6 +657,30 @@ export function CustomerDetail() {
             ImageWorkbench-{c.name}-{version || "版本"}.zip，并检查包内没有任何
             Key 明文。
           </p>
+          <Space wrap>
+            <Button
+              disabled={!c.deliveries.length || !complete}
+              onClick={() =>
+                actions.run(async () => {
+                  const saved = await call<boolean>("SaveCustomerFile", c.id);
+                  if (saved)
+                    notification.success({
+                      message: "续费授权文件已保存",
+                      description:
+                        "把这个 customer.dat 发给客户，客户在“连接与设置 → 授权 → 导入授权文件”导入即可（软件 0.7.12 起）。",
+                    });
+                })
+              }
+            >
+              生成续费授权文件
+            </Button>
+            <span className="hint">
+              续费、改有效期或换 Key 后，只发这个小文件，不必重发整包。
+              {c.expiresAt
+                ? `当前有效期至 ${dateTime(c.expiresAt)}。`
+                : "当前不限有效期。"}
+            </span>
+          </Space>
           {log.length > 0 && (
             <div
               className="admin-log"
@@ -749,5 +784,84 @@ export function CustomerDetail() {
         </ul>
       </section>
     </>
+  );
+}
+
+// The date input works in local days; the licence stores a UTC instant.
+function dateInput(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function endOfDay(day?: string) {
+  if (!day) return "";
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+// Which built-in skills the package comes with (default all). The others start
+// switched off in the customer's app, who can still turn them on.
+function CustomerSkills({ customer }: { customer: Customer }) {
+  const state = useAdminState();
+  const qc = useQueryClient();
+  const { notification } = AntApp.useApp();
+  const all = state.data?.builtinSkills || [];
+  const current = customer.skills ?? all.map((b) => b.id);
+  // Each tick shows at once (the cached state is updated first) and is saved.
+  function save(next: string[]) {
+    const everything = next.length === all.length;
+    qc.setQueryData<AdminState>(
+      ["admin-state"],
+      (old) =>
+        old && {
+          ...old,
+          customers: old.customers.map((c) =>
+            c.id === customer.id
+              ? { ...c, skills: everything ? undefined : next }
+              : c,
+          ),
+        },
+    );
+    call("SetCustomerSkills", customer.id, next)
+      .catch((e) =>
+        notification.error({
+          message: "技能选择未保存",
+          description: errorText(e),
+        }),
+      )
+      .finally(() => qc.invalidateQueries({ queryKey: ["admin-state"] }));
+  }
+  return (
+    <section className="panel" aria-labelledby="customer-skills-title">
+      <div className="panel-heading">
+        <h2 id="customer-skills-title">内置技能</h2>
+      </div>
+      <p className="hint">
+        选择交付包带哪些内置技能（默认全部，改动立即保存）。没带的在客户软件里一开始是停用的，客户可以自己再打开。写进下一次的交付包或续费授权文件。
+      </p>
+      <ul className="admin-skill-list">
+        {all.map((b) => (
+          <li key={b.id}>
+            <Switch
+              size="small"
+              checked={current.includes(b.id)}
+              aria-label={`交付包带上 ${b.name}`}
+              onChange={(on) =>
+                save(
+                  all
+                    .map((x) => x.id)
+                    .filter((id) => (id === b.id ? on : current.includes(id))),
+                )
+              }
+            />
+            <span>{b.name}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

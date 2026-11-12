@@ -55,6 +55,9 @@ func validateSkill(content string) (string, string, error) {
 	return name, description, nil
 }
 func (s *Service) initializeAgents() error {
+	if e := s.unsealBuiltinSkills(); e != nil {
+		return e
+	}
 	runs, e := List[AgentRun](s.store, "agent_run")
 	if e != nil {
 		return e
@@ -207,10 +210,9 @@ func builtinSkillContent(id, description, body string) string {
 	return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s\n", id, description, body)
 }
 
-// upgradeBuiltinSkills replaces built-in skills whose content still equals a
-// previously shipped version. Runs keep the frozen copy they started with.
-func (s *Service) upgradeBuiltinSkills() error {
-	previous := map[string][]string{
+// previousBuiltinContents lists every earlier shipped text of each built-in skill.
+func previousBuiltinContents() map[string][]string {
+	return map[string][]string{
 		"product-analysis": {
 			builtinSkillContent("product-analysis", productAnalysisDescriptionV1, productAnalysisBodyV1),
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.3.3.md")),
@@ -273,6 +275,13 @@ func (s *Service) upgradeBuiltinSkills() error {
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.7.8.md")),
 		},
 	}
+}
+
+// upgradeBuiltinSkills replaces built-in skills whose content still equals a
+// previously shipped version. Runs keep the frozen copy they started with. Sealed
+// copies (customer packages) always read the current text and need no upgrade.
+func (s *Service) upgradeBuiltinSkills() error {
+	previous := previousBuiltinContents()
 	for _, b := range builtinSkills {
 		var rec SkillRecord
 		if s.store.Get("skill", b.id, &rec) != nil || rec.Source != "内置" {
@@ -303,6 +312,7 @@ func (s *Service) ListSkills() ([]SkillRecord, error) {
 func (s *Service) SaveSkill(v SkillRecord) (SkillRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	v.Sealed = false
 	_, description, e := validateSkill(v.Content)
 	if e != nil {
 		return v, e

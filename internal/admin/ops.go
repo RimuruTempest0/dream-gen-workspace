@@ -42,8 +42,16 @@ func (a *Admin) SaveUpstream(u Upstream) (Upstream, error) {
 		if u.AuthMode == "" {
 			u.AuthMode = "api-key"
 		}
+		u.Protocol = ""
 	} else {
 		u.Mode, u.AuthMode, u.MaxOutputTokens = "", "", 0
+		switch u.Protocol {
+		case "", "openai-images":
+			u.Protocol = ""
+		case "async-jobs":
+		default:
+			return u, errors.New("图片协议无效")
+		}
 	}
 	if u.ID == "" {
 		u.ID = newID()
@@ -539,12 +547,15 @@ func kindLabel(kind string) string {
 // ---- views (never include secrets) -------------------------------------------
 
 type State struct {
-	SigningPublicKey string     `json:"signingPublicKey"`
-	RepoRoot         string     `json:"repoRoot"`
-	DataDir          string     `json:"dataDir"`
-	Upstreams        []Upstream `json:"upstreams"`
-	Keys             []PoolKey  `json:"keys"`
-	Customers        []Customer `json:"customers"`
+	SigningPublicKey string `json:"signingPublicKey"`
+	RepoRoot         string `json:"repoRoot"`
+	UpdateURL        string `json:"updateURL"`
+	// BuiltinSkills are the app's shipped skills, for the per-customer selection.
+	BuiltinSkills []core.BuiltinSkill `json:"builtinSkills"`
+	DataDir       string              `json:"dataDir"`
+	Upstreams     []Upstream          `json:"upstreams"`
+	Keys          []PoolKey           `json:"keys"`
+	Customers     []Customer          `json:"customers"`
 }
 
 func (a *Admin) State() State {
@@ -582,7 +593,7 @@ func (a *Admin) State() State {
 	if upstreams == nil {
 		upstreams = []Upstream{}
 	}
-	return State{SigningPublicKey: a.d.SigningPublicKey, RepoRoot: a.d.RepoRoot, DataDir: a.root, Upstreams: upstreams, Keys: keys, Customers: customers}
+	return State{SigningPublicKey: a.d.SigningPublicKey, RepoRoot: a.d.RepoRoot, UpdateURL: a.d.UpdateURL, BuiltinSkills: core.BuiltinSkills(), DataDir: a.root, Upstreams: upstreams, Keys: keys, Customers: customers}
 }
 
 // MarkPaid records that the customer paid and that the provider raised every

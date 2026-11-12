@@ -291,6 +291,7 @@ func main() {
 		settings.PutAreHostObjectsAllowed(false)
 		settings.PutIsStatusBarEnabled(false)
 	}
+	installGuards(chromium)
 	chromium.Resize()
 	chromium.Init(pageScript)
 	chromium.Navigate(*target)

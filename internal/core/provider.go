@@ -159,73 +159,13 @@ func (p *Provider) GenerateWithProgress(ctx context.Context, t Task, key string,
 	return p.generate(ctx, t, key, refs, root, report)
 }
 func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asset, root string, report func(func(*GenerationDiagnostic))) ([]Output, bool, error) {
-	var body io.Reader
-	contentType := "application/json"
-	endpoint := "/images/generations"
-	if len(refs) > 0 {
-		endpoint = "/images/edits"
-		var b bytes.Buffer
-		w := multipart.NewWriter(&b)
-		for k, v := range map[string]string{"model": t.Model, "prompt": t.Prompt, "n": "1"} {
-			if e := w.WriteField(k, v); e != nil {
-				return nil, false, e
-			}
-		}
-		for k, v := range map[string]string{"size": t.Size, "quality": t.Quality} {
-			if v != "" && v != "auto" {
-				if e := w.WriteField(k, v); e != nil {
-					return nil, false, e
-				}
-			}
-		}
-		field := "image"
-		if len(refs) > 1 {
-			field = "image[]"
-		}
-		for _, a := range refs {
-			data, e := readOwned(root, a.Path)
-			if e != nil {
-				return nil, false, e
-			}
-			// OpenAI-compatible edits reject application/octet-stream (CreateFormFile's
-			// default), so each part declares the detected image type.
-			header := textproto.MIMEHeader{}
-			header.Set("Content-Disposition", multipart.FileContentDisposition(field, filepath.Base(a.Path)))
-			header.Set("Content-Type", referenceImageType(data))
-			part, e := w.CreatePart(header)
-			if e != nil {
-				return nil, false, e
-			}
-			if _, e = part.Write(data); e != nil {
-				return nil, false, e
-			}
-		}
-		if e := w.Close(); e != nil {
-			return nil, false, e
-		}
-		body = &b
-		contentType = w.FormDataContentType()
-	} else {
-		payload := map[string]any{"model": t.Model, "prompt": t.Prompt, "n": 1}
-		if t.Size != "" && t.Size != "auto" {
-			payload["size"] = t.Size
-		}
-		if t.Quality != "" && t.Quality != "auto" {
-			payload["quality"] = t.Quality
-		}
-		b, e := json.Marshal(payload)
-		if e != nil {
-			return nil, false, e
-		}
-		body = bytes.NewReader(b)
+	if imageProtocol(t.Connection) == protocolAsyncJobs {
+		return p.generateAsync(ctx, t, key, refs, root, report)
 	}
-	req, e := http.NewRequestWithContext(ctx, "POST", t.Connection.BaseURL+endpoint, body)
+	req, e := buildImageRequest(ctx, t, key, refs, root, false)
 	if e != nil {
 		return nil, false, e
 	}
-	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("X-Client-Request-Id", t.ID)
 	if transport, ok := p.Client.Transport.(*http.Transport); ok {
 		proxied := false
 		if transport.Proxy != nil {
@@ -323,4 +263,84 @@ func validOutputs(outputs []Output) bool {
 		}
 	}
 	return true
+}
+
+// buildImageRequest is the generation or edit request of t (multipart with
+// reference images); async marks it for an async-jobs connection.
+func buildImageRequest(ctx context.Context, t Task, key string, refs []Asset, root string, async bool) (*http.Request, error) {
+	var body io.Reader
+	contentType := "application/json"
+	endpoint := "/images/generations"
+	if len(refs) > 0 {
+		endpoint = "/images/edits"
+		var b bytes.Buffer
+		w := multipart.NewWriter(&b)
+		fields := map[string]string{"model": t.Model, "prompt": t.Prompt, "n": "1"}
+		if async {
+			fields["async"] = "true"
+		}
+		for k, v := range fields {
+			if e := w.WriteField(k, v); e != nil {
+				return nil, e
+			}
+		}
+		for k, v := range map[string]string{"size": t.Size, "quality": t.Quality} {
+			if v != "" && v != "auto" {
+				if e := w.WriteField(k, v); e != nil {
+					return nil, e
+				}
+			}
+		}
+		field := "image"
+		if len(refs) > 1 {
+			field = "image[]"
+		}
+		for _, a := range refs {
+			data, e := readOwned(root, a.Path)
+			if e != nil {
+				return nil, e
+			}
+			// OpenAI-compatible edits reject application/octet-stream (CreateFormFile's
+			// default), so each part declares the detected image type.
+			header := textproto.MIMEHeader{}
+			header.Set("Content-Disposition", multipart.FileContentDisposition(field, filepath.Base(a.Path)))
+			header.Set("Content-Type", referenceImageType(data))
+			part, e := w.CreatePart(header)
+			if e != nil {
+				return nil, e
+			}
+			if _, e = part.Write(data); e != nil {
+				return nil, e
+			}
+		}
+		if e := w.Close(); e != nil {
+			return nil, e
+		}
+		body = &b
+		contentType = w.FormDataContentType()
+	} else {
+		payload := map[string]any{"model": t.Model, "prompt": t.Prompt, "n": 1}
+		if async {
+			payload["async"] = true
+		}
+		if t.Size != "" && t.Size != "auto" {
+			payload["size"] = t.Size
+		}
+		if t.Quality != "" && t.Quality != "auto" {
+			payload["quality"] = t.Quality
+		}
+		b, e := json.Marshal(payload)
+		if e != nil {
+			return nil, e
+		}
+		body = bytes.NewReader(b)
+	}
+	req, e := http.NewRequestWithContext(ctx, "POST", t.Connection.BaseURL+endpoint, body)
+	if e != nil {
+		return nil, e
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("X-Client-Request-Id", t.ID)
+	return req, nil
 }

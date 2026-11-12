@@ -88,6 +88,9 @@ func isolateLicenseState(t *testing.T) {
 	})
 }
 
+// testExpiresAt is the expiry writeCustomer signs into the file ("" = none).
+var testExpiresAt string
+
 // writeCustomer signs a customer.dat with a fresh admin key the app trusts.
 // image-1 uses imageKey; reuse keeps the ID, code and signing key (an upgrade).
 func writeCustomer(t *testing.T, base string, trial, revision int, imageKey string, reuse *testCustomer) testCustomer {
@@ -115,7 +118,7 @@ func writeCustomer(t *testing.T, base string, trial, revision int, imageKey stri
 		conns[i].KeyObf, _ = license.ObfuscateKey(conns[i].Key, c.id)
 		conns[i].Key = ""
 	}
-	data, e := license.Sign(license.Profile{SoftwareID: c.id, Customer: "客户 A", TrialImages: trial, Connections: conns, ImageBackups: []string{"image-2"}, LinesRevision: revision, CodeCheck: check}, c.priv)
+	data, e := license.Sign(license.Profile{SoftwareID: c.id, Customer: "客户 A", TrialImages: trial, Connections: conns, ImageBackups: []string{"image-2"}, LinesRevision: revision, CodeCheck: check, ExpiresAt: testExpiresAt}, c.priv)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -375,11 +378,11 @@ func TestCustomerFileProblemsBlockGeneration(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(c.dir, license.FileName))
 	tampered := t.TempDir()
 	os.WriteFile(filepath.Join(tampered, license.FileName), []byte(strings.Replace(string(data), `"payload": "`, `"payload": "e`, 1)), 0o600)
+	dev := saveConnection(t, s, server.URL+"/v1") // a line set up before the licence broke
 	s.LoadLicense(tampered)
 	if st := s.LicenseStatus(); st.Mode != "invalid" {
 		t.Fatal(st)
 	}
-	dev := saveConnection(t, s, server.URL+"/v1")
 	if _, e := s.Submit(request(dev)); e == nil || !strings.Contains(e.Error(), "授权文件无效") {
 		t.Fatal("tampered package generated", e)
 	}

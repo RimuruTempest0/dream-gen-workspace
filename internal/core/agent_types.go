@@ -30,6 +30,8 @@ type AgentInput struct {
 	SkillIDs          []string `json:"skillIDs"`
 	// AutoMode runs without asking the user: missing facts are decided by the Agent.
 	AutoMode bool `json:"autoMode,omitempty"`
+	// Category picks the skills filed under it (plus the uncategorised ones).
+	Category string `json:"category,omitempty"`
 }
 
 // ProductInfo.Error means the page itself could not be read; ImageNote only says
@@ -130,6 +132,11 @@ type SkillRecord struct {
 	Enabled     bool              `json:"enabled"`
 	Source      string            `json:"source"`
 	Attachments []SkillAttachment `json:"attachments"`
+	// Sealed marks a built-in skill that 0.7.10–0.7.16 stored only by reference in
+	// customer packages; it is restored to its full text at start (skill_unseal.go).
+	Sealed bool `json:"sealed,omitempty"`
+	// Category files the skill under a product category ("" = every category).
+	Category string `json:"category,omitempty"`
 }
 type AgentRun struct {
 	AutoGeneration       bool       `json:"autoGeneration"`
@@ -169,6 +176,8 @@ type AgentRun struct {
 	Input             AgentInput      `json:"input"`
 	LLMConnection     Connection      `json:"llmConnection"`
 	Skills            []SkillRecord   `json:"skills"`
+	// ShopRules are the shop rules enabled when the run started (frozen).
+	ShopRules []ShopRule `json:"shopRules,omitempty"`
 	Product           ProductInfo     `json:"product"`
 	Questions         []AgentQuestion `json:"questions"`
 	Plans             []SuitePlan     `json:"plans"`

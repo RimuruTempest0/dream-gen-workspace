@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -427,7 +428,7 @@ func (b *agentBridge) mcp(w http.ResponseWriter, r *http.Request) {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
 		json.Unmarshal(rpc.Params, &p)
-		result = map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "workbench", "version": "0.7.9"}}
+		result = map[string]any{"protocolVersion": p.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "workbench", "version": AppVersion}}
 	case "ping":
 		result = map[string]any{}
 	case "tools/list":
@@ -528,7 +529,11 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		if e = json.Unmarshal(args, &v); e != nil {
 			return nil, e
 		}
-		for _, skill := range r.Skills {
+		sources := slices.Clone(r.Skills)
+		for _, rule := range r.ShopRules {
+			sources = append(sources, SkillRecord{ID: rule.ID, Attachments: rule.Attachments})
+		}
+		for _, skill := range sources {
 			if skill.ID != v.SkillID {
 				continue
 			}

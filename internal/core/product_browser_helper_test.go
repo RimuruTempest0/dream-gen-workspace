@@ -91,6 +91,17 @@ func mockShop(t *testing.T) *httptest.Server {
 			io.WriteString(w, fmt.Sprintf(mockChallenge, 2000))
 		case "/blank":
 			io.WriteString(w, `<html><body></body></html>`)
+		case "/guarded":
+			// A page that tries to open windows, start a download and leave for a
+			// non-web address (ftp) before its product appears.
+			io.WriteString(w, `<html><body><a id="pop" href="/js" target="_blank">x</a><a id="dl" href="/file.bin" download>d</a><script>
+window.open('/js'); document.getElementById('pop').click(); document.getElementById('dl').click();
+setTimeout(function(){ location.href = 'ftp://127.0.0.1/qa.txt'; }, 300);
+</script>`+strings.TrimPrefix(mockProductHTML(server.URL, "受限页面商品"), "<html>"))
+		case "/file.bin":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition", `attachment; filename="file.bin"`)
+			io.WriteString(w, "binary")
 		case "/photo.png":
 			// Only a real browser gets the image, so the session fallback is exercised.
 			if strings.Contains(r.UserAgent(), "ImageWorkbench") {
@@ -199,5 +210,44 @@ func TestRealHelperReportsAnUnreachableSite(t *testing.T) {
 	}
 	if time.Since(started) > 60*time.Second {
 		t.Fatal("unreachable site took too long", time.Since(started))
+	}
+}
+
+// The helper only reads the page: new windows, downloads and non-web navigation
+// are blocked (and reported), and the product is still read.
+func TestRealHelperBlocksWindowsDownloadsAndOtherSchemes(t *testing.T) {
+	exe, runtimeDir := os.Getenv("IMAGEWORKBENCH_TEST_BROWSER"), os.Getenv("IMAGEWORKBENCH_TEST_WEBVIEW2")
+	if exe == "" || runtimeDir == "" {
+		t.Skip("set IMAGEWORKBENCH_TEST_BROWSER and IMAGEWORKBENCH_TEST_WEBVIEW2 (scripts/test-product-browser.ps1)")
+	}
+	server := mockShop(t)
+	b, e := startProductBrowser(productBrowserConfig{Executable: exe, Runtime: runtimeDir}, t.TempDir(), server.URL+"/guarded")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer b.Close()
+	blocked := map[string]bool{}
+	deadline := time.After(40 * time.Second)
+	for {
+		select {
+		case ev, ok := <-b.events:
+			if !ok {
+				t.Fatalf("helper ended early; blocked %v", blocked)
+			}
+			if ev.Event == "blocked" {
+				blocked[ev.What] = true
+			}
+			if ev.Event == "page" {
+				if !strings.Contains(ev.HTML, "受限页面商品") {
+					t.Fatal("product not read")
+				}
+				if !blocked["window"] || !blocked["download"] || !blocked["navigation"] {
+					t.Fatalf("not everything was blocked: %v", blocked)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatalf("no page; blocked %v", blocked)
+		}
 	}
 }

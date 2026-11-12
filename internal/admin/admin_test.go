@@ -2,9 +2,11 @@ package admin
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +21,7 @@ import (
 
 	"imageworkbench/internal/core"
 	"imageworkbench/internal/license"
+	"imageworkbench/internal/update"
 )
 
 func open(t *testing.T) *Admin {
@@ -156,8 +159,12 @@ func TestStateAndLedgerHoldNoSecrets(t *testing.T) {
 	}
 }
 
-// fakeBuilder writes the program files a real build would produce.
-type fakeBuilder struct{ leak string }
+// fakeBuilder writes the program files a real build would produce; with update it
+// also writes the program update package next to the build's own ZIP.
+type fakeBuilder struct {
+	leak   string
+	update bool
+}
 
 func (f fakeBuilder) Build(_ context.Context, b BuildRequest, log func(string)) error {
 	dir := filepath.Join(b.RepoRoot, b.ReleaseDir)
@@ -167,6 +174,23 @@ func (f fakeBuilder) Build(_ context.Context, b BuildRequest, log func(string)) 
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		if e := os.WriteFile(p, []byte(body), 0o644); e != nil {
 			return e
+		}
+	}
+	if f.update {
+		var buf bytes.Buffer
+		w := zip.NewWriter(&buf)
+		for _, name := range []string{"ImageWorkbench.exe", "version.json"} {
+			x, _ := w.Create(name)
+			body := "exe " + f.leak
+			if name == "version.json" {
+				body = "\xef\xbb\xbf" + `{"version":"` + b.Version + `"}`
+			}
+			x.Write([]byte(body))
+		}
+		w.Close()
+		os.WriteFile(filepath.Join(b.RepoRoot, strings.TrimSuffix(b.ZipPath, ".zip")+"-update.zip"), buf.Bytes(), 0o644)
+		if b.UpdateURL == "" {
+			return errors.New("update address not passed to the build")
 		}
 	}
 	log("fake build done")
@@ -728,5 +752,209 @@ func TestKeyUseChangeUpstreamDeletionAndModelChange(t *testing.T) {
 	held, _ := a.keyLocked(a.State().Customers[0].Slots["image-1"])
 	if e := a.SetKeyUse(held.ID, "backup"); e == nil {
 		t.Fatal("role of an assigned key changed")
+	}
+}
+
+func TestExpiryAndRenewalFile(t *testing.T) {
+	isolate(t)
+	a := open(t)
+	stock(t, a, 1, "http://127.0.0.1:1/v1")
+	repo(t, a)
+	c, _ := a.CreateCustomer("客户 B", 3)
+	a.AutoAssign(c.ID)
+	if e := a.SetCustomerExpiry(c.ID, "tomorrow"); e == nil {
+		t.Fatal("bad expiry saved")
+	}
+	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	if e := a.SetCustomerExpiry(c.ID, past); e != nil {
+		t.Fatal(e)
+	}
+	renewal := filepath.Join(t.TempDir(), "customer.dat")
+	if e := a.WriteCustomerFile(c.ID, renewal); e == nil {
+		t.Fatal("renewal file before any package")
+	}
+	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.12", fakeBuilder{}, "", func(string) {}); e != nil {
+		t.Fatal(e)
+	}
+	defer core.TrustLicenseKeyForTest(a.State().SigningPublicKey)()
+	var pkg string
+	for _, cu := range a.State().Customers {
+		if cu.ID == c.ID {
+			pkg = filepath.Join(filepath.Dir(cu.Deliveries[0].Zip), "0.7.12")
+		}
+	}
+	s, e := core.NewService(filepath.Join(t.TempDir(), "data"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Dispose()
+	s.LoadLicense(pkg)
+	if st := s.LicenseStatus(); st.Mode != "expired" {
+		t.Fatalf("package expiry not applied: %+v", st)
+	}
+	// Renewal: a new date, only customer.dat is sent; the app imports it.
+	future := time.Now().Add(365 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	a.SetCustomerExpiry(c.ID, future)
+	if e = a.WriteCustomerFile(c.ID, renewal); e != nil {
+		t.Fatal(e)
+	}
+	data, _ := os.ReadFile(renewal)
+	for _, sec := range []string{"sk-prim-", "sk-back-"} {
+		if strings.Contains(string(data), sec) {
+			t.Fatal("key in renewal file")
+		}
+	}
+	st, e := s.ImportCustomerFile(renewal)
+	if e != nil || st.Mode != "trial" || st.ExpiresAt != future {
+		t.Fatalf("renewal %+v %v", st, e)
+	}
+	var events []Event
+	for _, cu := range a.State().Customers {
+		if cu.ID == c.ID {
+			events = cu.Events
+		}
+	}
+	if last := events[len(events)-1]; last.Kind != "renewed" || !strings.Contains(last.Text, future) {
+		t.Fatalf("renewal not recorded: %+v", last)
+	}
+}
+
+func TestUpdateAddressAndPublishedManifest(t *testing.T) {
+	isolate(t)
+	a := open(t)
+	repo(t, a)
+	stock(t, a, 1, "http://127.0.0.1:1/v1")
+	if e := a.SetUpdateURL("ftp://x/update.json"); e == nil {
+		t.Fatal("bad update address saved")
+	}
+	if e := a.SetUpdateURL("https://dl.example.test/iw/update.json"); e != nil {
+		t.Fatal(e)
+	}
+	c, _ := a.CreateCustomer("客户 C", 3)
+	a.AutoAssign(c.ID)
+	d, e := a.BuildPackage(context.Background(), c.ID, "0.7.13", fakeBuilder{update: true}, "", func(string) {})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if d.UpdateZip == "" || !fileExists(d.UpdateZip) {
+		t.Fatal("update package not kept", d.UpdateZip)
+	}
+	dest := filepath.Join(t.TempDir(), "update.json")
+	m, e := a.PublishUpdate(UpdateRelease{Zip: d.UpdateZip, URL: "https://dl.example.test/iw/ImageWorkbench-update-0.7.13.zip", MinVersion: "0.7.12", Notes: "修复"}, dest)
+	if e != nil || m.Version != "0.7.13" || m.MinVersion != "0.7.12" {
+		t.Fatal(m, e)
+	}
+	data, _ := os.ReadFile(dest)
+	if _, e = update.Verify(data, []string{a.State().SigningPublicKey}); e != nil {
+		t.Fatal("published manifest does not verify", e)
+	}
+	// A customer package (with customer.dat) is not an update package.
+	if _, e = a.PublishUpdate(UpdateRelease{Zip: d.Zip, URL: "https://x/u.zip"}, dest); e == nil {
+		t.Fatal("customer package published as an update")
+	}
+}
+
+func TestUpstreamProtocolReachesThePackage(t *testing.T) {
+	isolate(t)
+	a := open(t)
+	stock(t, a, 1, "http://127.0.0.1:1/v1")
+	for _, image := range a.State().Upstreams {
+		if image.Kind != "image" {
+			continue
+		}
+		image.Protocol = "vendor-x"
+		if _, e := a.SaveUpstream(image); e == nil {
+			t.Fatal("unknown protocol saved")
+		}
+		image.Protocol = "async-jobs"
+		if _, e := a.SaveUpstream(image); e != nil {
+			t.Fatal(e)
+		}
+	}
+	c, _ := a.CreateCustomer("客户 D", 3)
+	a.AutoAssign(c.ID)
+	data, _, e := a.CustomerProfile(c.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e := license.Verify(data, []string{a.State().SigningPublicKey})
+	if e != nil || p.Format != 3 {
+		t.Fatal(p.Format, e)
+	}
+	for _, line := range p.Connections {
+		if line.Kind == "image" && line.Protocol != "async-jobs" {
+			t.Fatalf("line %s protocol %q", line.Slot, line.Protocol)
+		}
+	}
+}
+
+func TestBuiltinSkillSelectionPerCustomer(t *testing.T) {
+	isolate(t)
+	a := open(t)
+	stock(t, a, 1, "http://127.0.0.1:1/v1")
+	c, _ := a.CreateCustomer("客户 E", 3)
+	a.AutoAssign(c.ID)
+	if e := a.SetCustomerSkills(c.ID, []string{"no-such-skill"}); e == nil {
+		t.Fatal("unknown skill chosen")
+	}
+	// Default: all skills, file stays format 2.
+	data, _, _ := a.CustomerProfile(c.ID)
+	if p, _ := license.Verify(data, []string{a.State().SigningPublicKey}); p.Skills != nil || p.Format != 2 {
+		t.Fatal("default selection not all", p.Skills, p.Format)
+	}
+	all := []string{}
+	for _, b := range a.State().BuiltinSkills {
+		if b.ID != "p004-rules" {
+			all = append(all, b.ID)
+		}
+	}
+	if e := a.SetCustomerSkills(c.ID, all); e != nil {
+		t.Fatal(e)
+	}
+	data, _, _ = a.CustomerProfile(c.ID)
+	p, _ := license.Verify(data, []string{a.State().SigningPublicKey})
+	if p.Format != 3 || len(p.Skills) != len(all) || slices.Contains(p.Skills, "p004-rules") {
+		t.Fatal("selection not signed", p.Skills)
+	}
+
+	defer core.TrustLicenseKeyForTest(a.State().SigningPublicKey)()
+	pkg := t.TempDir()
+	os.WriteFile(filepath.Join(pkg, license.FileName), data, 0o600)
+	root := filepath.Join(t.TempDir(), "data")
+	enabled := func() map[string]bool {
+		s, e := core.NewService(root)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer s.Dispose()
+		s.LoadLicense(pkg)
+		out := map[string]bool{}
+		skills, _ := s.ListSkills()
+		for _, v := range skills {
+			out[v.ID] = v.Enabled
+		}
+		return out
+	}
+	if got := enabled(); got["p004-rules"] || !got["image-prompting"] {
+		t.Fatal("selection not applied", got)
+	}
+	// The customer turns P004 on again; the same selection is not applied twice.
+	s, _ := core.NewService(root)
+	s.LoadLicense(pkg)
+	s.SetSkillEnabled("p004-rules", true)
+	s.Dispose()
+	if got := enabled(); !got["p004-rules"] {
+		t.Fatal("customer's own switch overwritten")
+	}
+	// Choosing everything is stored as "all" again.
+	ids := []string{}
+	for _, b := range a.State().BuiltinSkills {
+		ids = append(ids, b.ID)
+	}
+	a.SetCustomerSkills(c.ID, ids)
+	for _, cu := range a.State().Customers {
+		if cu.ID == c.ID && cu.Skills != nil {
+			t.Fatal("all skills not stored as all")
+		}
 	}
 }

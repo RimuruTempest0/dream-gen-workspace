@@ -16,6 +16,9 @@ import (
 type sharedLicense struct {
 	Used int    `json:"used"`
 	Code string `json:"code,omitempty"` // the activation code once activated
+	// LastSeen is the latest time this software was seen running (RFC 3339): a
+	// clock set back before it cannot extend a licence with an expiry date.
+	LastSeen string `json:"lastSeen,omitempty"`
 }
 
 // licenseStateDir holds the per-software-ID files; tests point it elsewhere.
@@ -67,6 +70,9 @@ func loadShared(softwareID string) (sharedLicense, bool) {
 		out.Used = max(out.Used, v.Used)
 		if v.Code != "" {
 			out.Code = v.Code
+		}
+		if v.LastSeen > out.LastSeen {
+			out.LastSeen = v.LastSeen
 		}
 	}
 	b, e := os.ReadFile(filepath.Join(licenseStateDir(), softwareID+".bin"))

@@ -81,6 +81,7 @@ type browserEvent struct {
 	Error     string `json:"error"`
 	ElapsedMs int64  `json:"elapsedMs"`
 	Attempt   int    `json:"attempt"`
+	What      string `json:"what"` // "blocked": window, download or navigation
 }
 
 type browserSession struct {
@@ -97,6 +98,9 @@ type browserSession struct {
 }
 
 func startProductBrowser(cfg productBrowserConfig, profile, target string) (*browserSession, error) {
+	if e := verifyBundled(cfg.Executable, expectedProductBrowserSHA256, "浏览器辅助程序 product-browser.exe "); e != nil {
+		return nil, e
+	}
 	args := append(append([]string{}, cfg.Args...),
 		"-url", target, "-runtime", cfg.Runtime, "-profile", profile,
 		"-timeout", strconv.Itoa(int(productBrowserTimeout/time.Second)),

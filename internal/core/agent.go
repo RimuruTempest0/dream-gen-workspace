@@ -24,7 +24,7 @@ func (s *Service) AgentRuntime() AgentRuntimeInfo {
 	defer s.mu.Unlock()
 	info, e := os.Stat(s.agentExecutable)
 	if e != nil || info.IsDir() {
-		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 0.7.9 便携包。普通生图仍可使用。"}
+		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 " + AppVersion + " 便携包。普通生图仍可使用。"}
 	}
 	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: "内置运行时已就绪"}
 }
@@ -236,7 +236,11 @@ func (s *Service) StartAgentAnalysis(in AgentInput) (string, error) {
 			return "", errors.New("内置 Claude Code 缺失，请完整解压便携包")
 		}
 	}
-	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: "准备分析", Input: in, LLMConnection: llm, Skills: skills, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
+	shopRules, e := s.enabledShopRulesLocked()
+	if e != nil {
+		return "", e
+	}
+	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: "准备分析", Input: in, LLMConnection: llm, Skills: skills, ShopRules: shopRules, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
 	if e = s.store.Put("agent_run", r.ID, r); e != nil {
 		return "", e
 	}

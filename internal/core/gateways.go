@@ -388,7 +388,7 @@ func (s *Service) GatewayHealth() ([]GatewayHealth, error) {
 	if e != nil {
 		return nil, e
 	}
-	tasks, e := List[Task](s.store, "task")
+	tasks, e := workingTasks(s.store, healthWindow)
 	if e != nil {
 		return nil, e
 	}
@@ -450,8 +450,9 @@ var stateLabels = map[string]string{"slow": "变慢", "down": "不可用"}
 // routeLocked decides whether a queued, never-sent task may be sent now. It may
 // move it to a backup gateway (saved) or pause it unsent when its gateway is down.
 func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool {
-	// Without a primary or backup set up, images are sent exactly as before.
-	if g.PrimaryID == "" && len(g.BackupIDs) == 0 {
+	// Without a primary or backup set up, images are sent exactly as before; an
+	// async job already accepted is only ever polled on its own connection.
+	if (g.PrimaryID == "" && len(g.BackupIDs) == 0) || t.Diagnostic.UpstreamJobID != "" {
 		return true
 	}
 	h := hc.get(t.Connection)
@@ -500,7 +501,10 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 	if t.AutoRetryOf != "" {
 		return "这已是自动重新生成的图片，不会再次自动重发，请核对中转站记录。"
 	}
-	tasks, e := List[Task](s.store, "task")
+	if t.Diagnostic.UpstreamJobID != "" {
+		return "异步任务 " + t.Diagnostic.UpstreamJobID + " 可能仍在生成，没有自动重新生成，以免重复计费；请核对中转站记录。"
+	}
+	tasks, e := workingTasks(s.store, healthWindow)
 	if e != nil {
 		return "未能自动重新生成。"
 	}
