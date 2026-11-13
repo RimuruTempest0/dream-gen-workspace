@@ -251,15 +251,15 @@ const (
 	conceptStage       = "按概念改写提示词"
 )
 
-const conceptInstruction = `你要把一个“画面概念”融进一条电商生图提示词。概念由一个建筑形体和一个艺术立场组成，下面的规则写的是看得见的画面决定。
+const conceptInstruction = `你要把一个“画面概念”融进一条生图提示词。概念由一个建筑形体和一个艺术立场组成，下面的规则写的是看得见的画面决定。
 要求：
 1. 把概念规则转成具体的画面描述写进提示词：场景、尺度、材质、光线、构图、色彩都要落到看得见的东西上。不要只罗列“%s”“%s”这类名称，也不要写艺术家、真实建筑或品牌的名字。
-2. 保留用户原提示词里的主体、数量、商品细节、尺寸数字和明确要求；引号里的画面文字逐字保留，不翻译、不改大小写。
+2. 保留用户原提示词里的主体、数量、商品细节、尺寸数字和明确要求；引号里的画面文字连同引号逐字保留，不翻译、不改大小写；不要给画面添加用户没有写的文字、符号或图案；原提示词有画面文字时，在提示词里写明除这些文字外不出现其他文字、符号或表情图案。
 3. 概念强度：%s
 4. %s
 5. 规则里“避免”一行的内容不要出现在画面里；可以写成“不要……”。
 6. %s
-7. 只输出改写后的提示词，不要解释、标题、引号或代码块。
+7. 只输出改写后的提示词，不要解释、标题或代码块，也不要用引号把整条提示词包起来。
 
 形体：%s（%s）——%s
 %s
@@ -284,7 +284,7 @@ func conceptRequest(in ConceptInput, form, stance Concept, single bool) string {
 	}
 	prompt := "用户原提示词：\n" + in.Prompt
 	if strings.TrimSpace(in.Prompt) == "" {
-		prompt = "用户没有写提示词：请按这个概念自拟一个适合电商展示的画面主体（一件简洁的商品或一个人物），并写出完整提示词。"
+		prompt = "用户没有写提示词：请让这个形体本身成为画面主体（一座建筑或一处空间），自拟一个最能表现这个概念的场景，并写出完整提示词。不要加入商品。"
 	}
 	return fmt.Sprintf(conceptInstruction, form.Name, stance.Name, conceptStrengths[in.Strength], refs, output,
 		form.Name, form.En, form.Look, form.Rules, stance.Name, stance.En, stance.Look, stance.Rules, prompt)
