@@ -671,6 +671,113 @@ export namespace core {
 		    return a;
 		}
 	}
+	export class Concept {
+	    id: string;
+	    name: string;
+	    en: string;
+	    group: string;
+	    look: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Concept(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.en = source["en"];
+	        this.group = source["group"];
+	        this.look = source["look"];
+	    }
+	}
+	export class ConceptInput {
+	    prompt: string;
+	    form: string;
+	    stances: string[];
+	    strength: number;
+	    hasReferences: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConceptInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.prompt = source["prompt"];
+	        this.form = source["form"];
+	        this.stances = source["stances"];
+	        this.strength = source["strength"];
+	        this.hasReferences = source["hasReferences"];
+	    }
+	}
+	export class ConceptPick {
+	    name: string;
+	    form: string;
+	    stance: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConceptPick(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.form = source["form"];
+	        this.stance = source["stance"];
+	    }
+	}
+	export class ConceptLibrary {
+	    forms: Concept[];
+	    stances: Concept[];
+	    picks: ConceptPick[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ConceptLibrary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.forms = this.convertValues(source["forms"], Concept);
+	        this.stances = this.convertValues(source["stances"], Concept);
+	        this.picks = this.convertValues(source["picks"], ConceptPick);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ConceptResult {
+	    prompts: string[];
+	    labels: string[];
+	    usedLLM: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConceptResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.prompts = source["prompts"];
+	        this.labels = source["labels"];
+	        this.usedLLM = source["usedLLM"];
+	    }
+	}
 	
 	export class ConnectionInput {
 	    maxOutputTokens: number;
@@ -925,6 +1032,7 @@ export namespace core {
 	    size: string;
 	    quality: string;
 	    projectID: string;
+	    conceptLabels?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GenerateInput(source);
@@ -941,6 +1049,7 @@ export namespace core {
 	        this.size = source["size"];
 	        this.quality = source["quality"];
 	        this.projectID = source["projectID"];
+	        this.conceptLabels = source["conceptLabels"];
 	    }
 	}
 	export class GenerationDiagnostic {
@@ -1325,6 +1434,7 @@ export namespace core {
 	    }
 	}
 	export class Task {
+	    concept?: string;
 	    agentRunID?: string;
 	    planItemID?: string;
 	    refinedFrom?: string;
@@ -1376,6 +1486,7 @@ export namespace core {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.concept = source["concept"];
 	        this.agentRunID = source["agentRunID"];
 	        this.planItemID = source["planItemID"];
 	        this.refinedFrom = source["refinedFrom"];

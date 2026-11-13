@@ -7,6 +7,13 @@ colors:
   text: "#182230"
   success: "#18794E"
   danger: "#B42318"
+  ink: "#182230"
+  inkRaised: "#1F2B3B"
+  inkSelected: "#1E3054"
+  inkLine: "#3A4A60"
+  inkText: "#F2F4F7"
+  inkMuted: "#A7B2C2"
+  inkAccent: "#8FB0F5"
 typography:
   body:
     fontFamily: '"Microsoft YaHei UI", "Segoe UI", sans-serif'
@@ -83,3 +90,11 @@ Ant Design 提供共享 Button/Form/Select/Table/Modal/notification，使用 zh-
 0.2.2 日志页沿用共享 Header、Ant Design Table、Select、Input.Search、Switch 和 Modal。桌面筛选横排、窄窗口换行，表格在面板内横向滚动；级别用文字和语义色，详情支持长错误换行。
 
 0.3.0 智能生图采用制作需求与制作进度/结果双栏，隐藏商品分析、规则、Skills执行与方案编辑。张数和比例常显，供应商等参数折叠在“更多设置”；缺失资料用集中简短表单，右侧优先呈现图片和下载。沿用共享组件与语义色，窄窗口改单栏，所有反馈使用真实状态和时间。
+
+0.7.18 概念台：全应用唯一的深色面板，像展墙一样陈列概念卡；工作台其余部分保持浅色。设计方向（经 ui-ux-pro-max 技能核对：Minimalism & Swiss Style，适合专业工具）：靠克制显得高级——细边框、网格对齐、清楚的字号层级，不用渐变、装饰阴影和外部字体，全页只有 primary 一个强调色。
+
+- 颜色：墨色变量只用于概念台。`ink` 为底（与 text 同值），`inkRaised` 用于悬停底色，`inkSelected` 为选中卡片底，`inkLine` 为卡片和分隔细线，`inkText` 主文字、`inkMuted` 次文字（在 ink 上约 7.5:1），`inkAccent` 是 primary 的浅色版，只用于墨色上的选中边框、焦点环、“×”和立场序号；ink 上的焦点环改用 inkAccent（primary 在墨色上对比不足 3:1）。主按钮仍是 primary 实底白字。
+- 字体：只用系统字体。概念名 16px、字重 300、字距 0.06em，配 11px 英文副标；底部“形体 × 立场”标题 28px、字重 300、字距 0.08em；分组名 11px、大字距。
+- 卡片：1px inkLine 边框、8px 圆角、无填充；线稿 48×48 viewBox、currentColor、1.5 线宽、无填充。选中 = inkAccent 边框 + inkSelected 底，并用 `aria-pressed` 表达，不只靠颜色；多立场时右上角显示选择顺序。
+- 动效：卡片状态 150ms 颜色过渡；底部画面描述在选择变化时 150ms 淡入；遵守减少动画（全局规则关闭动画）。
+- 工作台入口：提示词下方一行细边框按钮，左侧是 36px 墨色小方块（概念台的唯一“预告”），已选时显示“形体 × 立场”与“撤销改写 / 更换 / 清除”。最近生成的概念标签为细边框小标签，与状态同行。

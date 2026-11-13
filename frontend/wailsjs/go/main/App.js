@@ -70,6 +70,10 @@ export function ClearProductBrowserData() {
   return window['go']['main']['App']['ClearProductBrowserData']();
 }
 
+export function ComposeConcept(arg1) {
+  return window['go']['main']['App']['ComposeConcept'](arg1);
+}
+
 export function ContinueAgentAnalysis(arg1) {
   return window['go']['main']['App']['ContinueAgentAnalysis'](arg1);
 }
@@ -224,6 +228,10 @@ export function ListAgentRuns(arg1, arg2) {
 
 export function ListAssets(arg1, arg2, arg3) {
   return window['go']['main']['App']['ListAssets'](arg1, arg2, arg3);
+}
+
+export function ListConcepts() {
+  return window['go']['main']['App']['ListConcepts']();
 }
 
 export function ListConnectionModels(arg1) {

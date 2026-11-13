@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func active(status string) bool {
@@ -82,13 +83,21 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 	}
 	batch := NewID()
 	tasks := []Task{}
-	for _, prompt := range in.Prompts {
+	labels := in.ConceptLabels
+	if len(labels) != len(in.Prompts) {
+		labels = nil // edited after the concept was applied: the labels no longer match
+	}
+	for i, prompt := range in.Prompts {
 		prompt = strings.TrimSpace(prompt)
+		concept := ""
+		if labels != nil && utf8.RuneCountInString(labels[i]) <= 64 {
+			concept = strings.TrimSpace(labels[i])
+		}
 		if prompt == "" || len(prompt) > 32000 {
 			return "", errors.New("提示词为空或过长")
 		}
 		for n := 0; n < in.Count; n++ {
-			tasks = append(tasks, Task{ID: NewID(), BatchID: batch, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: in.Size, Quality: in.Quality, References: append([]string{}, in.References...), ProjectID: in.ProjectID, Connection: c, AssetIDs: []string{}})
+			tasks = append(tasks, Task{ID: NewID(), BatchID: batch, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: in.Size, Quality: in.Quality, References: append([]string{}, in.References...), ProjectID: in.ProjectID, Connection: c, AssetIDs: []string{}, Concept: concept})
 		}
 	}
 	if e := s.ensureCanGenerateLocked(len(tasks), c.ID); e != nil {

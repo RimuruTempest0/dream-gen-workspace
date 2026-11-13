@@ -166,6 +166,14 @@ func (a *App) ListProjects() ([]core.Project, error)               { return a.se
 func (a *App) SaveProject(v core.Project) (core.Project, error)    { return a.service.SaveProject(v) }
 func (a *App) DeleteProject(id string) error                       { return a.service.DeleteProject(id) }
 func (a *App) ListTemplates() ([]core.Template, error)             { return a.service.ListTemplates() }
+
+// ListConcepts and ComposeConcept serve the workbench concept stage (0.7.18).
+func (a *App) ListConcepts() core.ConceptLibrary {
+	return a.service.ListConcepts()
+}
+func (a *App) ComposeConcept(v core.ConceptInput) (core.ConceptResult, error) {
+	return a.service.ComposeConcept(v)
+}
 func (a *App) SaveTemplate(v core.Template) (core.Template, error) { return a.service.SaveTemplate(v) }
 func (a *App) DeleteTemplate(id string) error                      { return a.service.DeleteTemplate(id) }
 func (a *App) Backup() (bool, error) {

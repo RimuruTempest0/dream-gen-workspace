@@ -1,0 +1,405 @@
+/* Concept stage (0.7.18): the entry below the prompt box, and the app's only dark
+   "gallery wall". Colours come from tokens.ts (ink*); no gradients or shadows. */
+
+/* ---- entry on the workbench ---- */
+.concept-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.concept-entry {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 14px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+.concept-entry:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+.concept-entry:disabled {
+  color: var(--muted);
+}
+.concept-entry > .anticon {
+  color: var(--muted);
+  font-size: 12px;
+}
+.concept-entry:hover:not(:disabled) > .anticon {
+  color: var(--primary);
+}
+.concept-entry-mark {
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--inkText);
+}
+.concept-entry-mark .concept-glyph {
+  width: 26px;
+  height: 26px;
+}
+.concept-entry-copy {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.concept-entry-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.concept-entry-copy span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.concept-bar-set {
+  min-height: 48px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+.concept-current {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding-left: 4px;
+}
+.concept-current-kicker {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.concept-current strong {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+.concept-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.concept-tag {
+  display: inline-block;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ---- the stage ---- */
+.concept-stage .ant-drawer-content {
+  background: var(--ink);
+  color: var(--inkText);
+}
+.concept-stage .ant-drawer-content-wrapper {
+  max-width: 100vw;
+}
+.concept-stage .ant-drawer-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--inkLine);
+}
+.concept-stage .ant-drawer-title,
+.concept-stage .ant-drawer-close {
+  color: var(--inkText);
+}
+.concept-stage .ant-drawer-close:hover {
+  color: var(--inkText);
+  background: var(--inkRaised);
+}
+.concept-stage .ant-drawer-body {
+  padding: 20px 20px 28px;
+}
+.concept-stage .ant-drawer-footer {
+  padding: 18px 20px 16px;
+  border-top: 1px solid var(--inkLine);
+}
+.concept-stage :focus-visible {
+  outline-color: var(--inkAccent);
+}
+.concept-stage-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.concept-stage-title {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.24em;
+}
+.concept-stage-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--inkMuted);
+  letter-spacing: 0.02em;
+}
+.concept-loading {
+  color: var(--inkMuted);
+}
+.concept-section + .concept-section,
+.concept-columns {
+  margin-top: 26px;
+}
+.concept-columns .concept-section {
+  margin-top: 0;
+}
+.concept-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--inkText);
+}
+.concept-section-title span {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--inkMuted);
+}
+.concept-picks {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.concept-pick,
+.concept-card {
+  position: relative;
+  border: 1px solid var(--inkLine);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--inkMuted);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+.concept-pick {
+  display: grid;
+  gap: 3px;
+  min-height: 56px;
+  padding: 9px 11px;
+}
+.concept-pick strong {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  color: var(--inkText);
+}
+.concept-pick span {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.concept-random {
+  border-style: dashed;
+}
+.concept-pick:hover,
+.concept-card:hover {
+  border-color: var(--inkMuted);
+  color: var(--inkText);
+}
+.concept-pick[aria-pressed="true"],
+.concept-card[aria-pressed="true"] {
+  border-color: var(--inkAccent);
+  background: var(--inkSelected);
+  color: var(--inkText);
+}
+.concept-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.concept-group + .concept-group {
+  margin-top: 12px;
+}
+.concept-group-name {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--inkMuted);
+}
+.concept-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.concept-card {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 8px 9px;
+}
+.concept-card .concept-glyph {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 6px;
+}
+.concept-card-name {
+  font-size: 16px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  color: var(--inkText);
+  white-space: nowrap;
+}
+.concept-card-en {
+  max-width: 100%;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.concept-card-order {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--inkAccent);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+.concept-footer {
+  display: grid;
+  gap: 14px;
+}
+.concept-summary-title {
+  margin: 0;
+  min-height: 40px;
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  color: var(--inkText);
+  overflow-wrap: anywhere;
+}
+.concept-times {
+  margin: 0 0.4em;
+  color: var(--inkAccent);
+  font-weight: 300;
+}
+.concept-placeholder {
+  font-size: 18px;
+  color: var(--inkMuted);
+}
+.concept-looks {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--inkMuted);
+  animation: concept-look-in 150ms ease-out;
+}
+.concept-looks li span {
+  display: inline-block;
+  min-width: 5.5em;
+  margin-right: 10px;
+  color: var(--inkText);
+  letter-spacing: 0.06em;
+}
+@keyframes concept-look-in {
+  from {
+    opacity: 0;
+  }
+}
+.concept-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.concept-strength {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--inkMuted);
+}
+.concept-stage .ant-segmented {
+  padding: 2px;
+  border: 1px solid var(--inkLine);
+  background: transparent;
+  color: var(--inkMuted);
+}
+.concept-stage .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+  color: var(--inkText);
+  background: var(--inkRaised);
+}
+.concept-stage .ant-segmented-item-selected,
+.concept-stage .ant-segmented-thumb {
+  background: var(--inkSelected);
+  color: var(--inkText);
+  box-shadow: inset 0 0 0 1px var(--inkAccent);
+}
+.concept-stage .ant-segmented-item:has(input:focus-visible) {
+  outline: 3px solid var(--inkAccent);
+  outline-offset: 1px;
+}
+.concept-actions .ant-btn-primary {
+  min-width: 176px;
+}
+.concept-actions .ant-btn-primary:disabled {
+  border-color: var(--inkLine);
+  background: var(--inkRaised);
+  color: var(--inkMuted);
+}
+.concept-note {
+  font-size: 11px;
+  color: var(--inkMuted);
+}
+@media (max-width: 760px) {
+  .concept-columns {
+    grid-template-columns: 1fr;
+  }
+  .concept-picks {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (forced-colors: active) {
+  .concept-card[aria-pressed="true"],
+  .concept-pick[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+  }
+}

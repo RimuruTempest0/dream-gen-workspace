@@ -21,6 +21,7 @@ let browser: Browser,
 let modelMode = "normal",
   modelRequests = 0;
 const gatewayHits = { models: 0, gw524: 0, gwok: 0 };
+const conceptRequests: string[] = [];
 const png = fs
   .readFileSync(path.resolve(import.meta.dirname, "fixture.png"))
   .toString("base64");
@@ -49,6 +50,33 @@ test.beforeAll(async () => {
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ data: [{ b64_json: png }] }));
       }, 50);
+      return;
+    }
+    // A local LLM for the concept stage: it names the stance it was asked for.
+    if (req.url === "/llm/v1/messages") {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const text = String(JSON.parse(raw).messages?.[0]?.content ?? "");
+        if (text.startsWith("你要把一个“画面概念”融进"))
+          conceptRequests.push(text);
+        const form = text.match(/形体：(\S+?)（/)?.[1] ?? "";
+        const stance = text.match(/立场：(\S+?)（/)?.[1] ?? "";
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            content: [
+              {
+                type: "text",
+                text: text.startsWith("你要把")
+                  ? `概念改写 ${form} ${stance}：晨雾里的灰色巨墙下，一只白色陶瓷杯`
+                  : "OK",
+              },
+            ],
+            usage: { input_tokens: 10, output_tokens: 10 },
+          }),
+        );
+      });
       return;
     }
     if (req.url === "/custom/v1/models") {
@@ -1027,4 +1055,150 @@ test("中转站监控：按中转站统计、调用记录筛选与导出 CSV", a
   });
   await session.send("Emulation.clearDeviceMetricsOverride");
   await session.detach();
+});
+test("概念台：精选组合、融入与撤销、对比提示词、键盘与无障碍", async () => {
+  test.setTimeout(90000);
+  const go = (name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
+      [name, args] as const,
+    );
+  await page.getByRole("link", { name: "生图工作台" }).click();
+  const prompt = page.getByLabel(/^提示词/);
+  const batch = page.getByRole("switch", { name: "批量提示词" });
+  if ((await batch.getAttribute("aria-checked")) === "true")
+    await batch.click();
+  await prompt.fill("白色陶瓷杯");
+  const entry = page.getByRole("button", { name: /给画面一个形体和立场/ });
+  const stage = page.getByRole("dialog", { name: "概念台" });
+
+  // Keyboard: Enter opens the stage, Escape closes it and returns to the entry.
+  await entry.focus();
+  await page.keyboard.press("Enter");
+  await expect(stage).toBeVisible();
+  await expect(stage.getByRole("button", { name: /^崇高/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(stage).toBeHidden();
+  await expect(entry).toBeFocused();
+
+  await entry.click();
+  await stage.getByRole("button", { name: /^崇高/ }).click();
+  await expect(stage.locator(".concept-summary-title")).toContainText("巨物");
+  await expect(stage.locator(".concept-summary-title")).toContainText(
+    "浪漫主义",
+  );
+  await expect(stage.getByRole("button", { name: /^巨物/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // Cards are reachable with Tab and chosen with Space; one stance always stays.
+  const minimal = stage.getByRole("button", { name: /^极简主义/ });
+  await minimal.focus();
+  await page.keyboard.press("Space");
+  await expect(minimal).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Tab");
+  await expect(stage.getByRole("button", { name: /^抽象主义/ })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Space");
+  await expect(minimal).toHaveAttribute("aria-pressed", "false");
+  const romantic = stage.getByRole("button", { name: /^浪漫主义/ });
+  await romantic.click();
+  await expect(romantic).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    stage.getByRole("button", { name: "融入提示词", exact: true }),
+  ).toBeVisible();
+
+  // The dark stage passes the same accessibility scan as the rest of the app.
+  await page.mouse.move(0, 0);
+  await expect(page.locator(".ant-notification-notice-success")).toHaveCount(
+    0,
+    {
+      timeout: 8000,
+    },
+  );
+  await page.waitForTimeout(400);
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  fs.writeFileSync(
+    path.join(docs, "accessibility-concept-stage.json"),
+    JSON.stringify(a11y.violations, null, 2),
+  );
+  expect(a11y.violations).toEqual([]);
+  // Earlier tests leave an error notice open; the screenshot shows the stage alone.
+  for (const close of await page
+    .locator(".ant-notification-notice-close")
+    .all())
+    await close.click();
+  await expect(page.locator(".ant-notification-notice")).toHaveCount(0);
+  await stage.locator(".ant-drawer-body").evaluate((e) => (e.scrollTop = 0));
+  await page.screenshot({ path: path.join(docs, "concept-stage-0.7.18.png") });
+
+  // Without an LLM line the card points are appended, and undo restores the text.
+  await stage.getByRole("button", { name: "融入提示词", exact: true }).click();
+  await expect(stage).toBeHidden();
+  await expect(prompt).toHaveValue(/^白色陶瓷杯\n画面概念 巨物 × 浪漫主义：/);
+  await expect(page.getByText("未配置 LLM，已直接附加概念要点")).toBeVisible();
+  await expect(page.locator(".concept-current")).toContainText(
+    "巨物 × 浪漫主义",
+  );
+  await page.getByRole("button", { name: "撤销改写" }).click();
+  await expect(prompt).toHaveValue("白色陶瓷杯");
+
+  // With an LLM line the prompt is rewritten (no image request is sent).
+  const root = baseURL.replace("/custom/v1", "");
+  const llm = (await go("SaveConnection", {
+    kind: "llm",
+    name: "QA 概念 LLM",
+    baseURL: `${root}/llm/v1`,
+    model: "qa-llm",
+    key: "qa-llm-key",
+  })) as { id: string };
+  const imagesBefore = requests;
+  await page.getByRole("button", { name: /给画面一个形体和立场/ }).click();
+  await stage.getByRole("button", { name: /^崇高/ }).click();
+  await stage.getByRole("button", { name: "融入提示词", exact: true }).click();
+  await expect(prompt).toHaveValue(
+    "概念改写 巨物 浪漫主义：晨雾里的灰色巨墙下，一只白色陶瓷杯",
+  );
+  await expect(prompt).toBeFocused();
+  expect(conceptRequests.at(-1)).toContain("白色陶瓷杯");
+  expect(conceptRequests.at(-1)).toContain("尺度：");
+  await page.getByRole("button", { name: "撤销改写" }).click();
+  await expect(prompt).toHaveValue("白色陶瓷杯");
+
+  // Three stances: three contrast prompts, one per line in batch mode.
+  await page.getByRole("button", { name: /给画面一个形体和立场/ }).click();
+  await stage.getByRole("button", { name: /^崇高/ }).click();
+  await stage.getByRole("button", { name: /^极简主义/ }).click();
+  await stage.getByRole("button", { name: /^侘寂/ }).click();
+  await stage
+    .getByRole("button", { name: "生成 3 条对比提示词", exact: true })
+    .click();
+  await expect(stage).toBeHidden();
+  await expect(batch).toHaveAttribute("aria-checked", "true");
+  const lines = (await prompt.inputValue()).split("\n");
+  expect(lines).toEqual([
+    "概念改写 巨物 浪漫主义：晨雾里的灰色巨墙下，一只白色陶瓷杯",
+    "概念改写 巨物 极简主义：晨雾里的灰色巨墙下，一只白色陶瓷杯",
+    "概念改写 巨物 侘寂：晨雾里的灰色巨墙下，一只白色陶瓷杯",
+  ]);
+  await expect(page.locator(".concept-current")).toContainText(
+    "巨物 × 浪漫主义 / 极简主义 / 侘寂",
+  );
+  expect(requests).toBe(imagesBefore);
+  await page.mouse.move(0, 0);
+  for (const close of await page
+    .locator(".ant-notification-notice-close")
+    .all())
+    await close.click();
+  await expect(page.locator(".ant-notification-notice")).toHaveCount(0);
+  await page.screenshot({ path: path.join(docs, "concept-bar-0.7.18.png") });
+
+  // Back to the state the other tests expect.
+  await page.getByRole("button", { name: "撤销改写" }).click();
+  await expect(prompt).toHaveValue("白色陶瓷杯");
+  await expect(batch).toHaveAttribute("aria-checked", "false");
+  await go("DeleteConnection", llm.id);
+  await prompt.fill("");
 });

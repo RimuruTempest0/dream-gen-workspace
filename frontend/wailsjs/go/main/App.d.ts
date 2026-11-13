@@ -36,6 +36,8 @@ export function ChooseSkillSource(arg1:boolean):Promise<string>;
 
 export function ClearProductBrowserData():Promise<void>;
 
+export function ComposeConcept(arg1:core.ConceptInput):Promise<core.ConceptResult>;
+
 export function ContinueAgentAnalysis(arg1:core.AgentContinuation):Promise<void>;
 
 export function ContinueSmartGeneration(arg1:core.AgentContinuation,arg2:string):Promise<string>;
@@ -113,6 +115,8 @@ export function LicenseStatus():Promise<core.LicenseStatus>;
 export function ListAgentRuns(arg1:number,arg2:number):Promise<core.AgentPage>;
 
 export function ListAssets(arg1:string,arg2:number,arg3:number):Promise<core.AssetPage>;
+
+export function ListConcepts():Promise<core.ConceptLibrary>;
 
 export function ListConnectionModels(arg1:string):Promise<Array<string>>;
 

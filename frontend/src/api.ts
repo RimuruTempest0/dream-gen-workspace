@@ -37,8 +37,11 @@ export type GenerateInput = {
   size: string;
   quality: string;
   projectID: string;
+  // Concept stage label of each prompt (same index as prompts), 0.7.18.
+  conceptLabels?: string[];
 };
 export type Task = {
+  concept?: string;
   agentRunID?: string;
   planItemID?: string;
   refinedFrom?: string;
@@ -129,6 +132,33 @@ export type Template = {
   prompt: string;
   size: string;
   quality: string;
+};
+// Concept stage (0.7.18): a form and one to three stances rewrite the prompt.
+export type Concept = {
+  id: string;
+  name: string;
+  en: string;
+  group: string;
+  look: string;
+};
+export type ConceptPick = { name: string; form: string; stance: string };
+export type ConceptLibrary = {
+  forms: Concept[];
+  stances: Concept[];
+  picks: ConceptPick[];
+};
+export type ConceptInput = {
+  prompt: string;
+  form: string;
+  stances: string[];
+  // 0 accent, 1 balanced, 2 dominant.
+  strength: number;
+  hasReferences: boolean;
+};
+export type ConceptResult = {
+  prompts: string[];
+  labels: string[];
+  usedLLM: boolean;
 };
 export type Page<T> = { items: T[]; total: number };
 export type Summary = {

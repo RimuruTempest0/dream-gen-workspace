@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  App as AntApp,
   Button,
   Input,
   InputNumber,
@@ -27,6 +28,7 @@ import {
   type Asset,
   type Template,
   type RecentBatch,
+  type ConceptResult,
 } from "../api";
 import {
   useData,
@@ -47,6 +49,15 @@ import {
 import { TemplateBar, type TemplateMode } from "../Templates";
 import { LicenseNotice } from "../License";
 import { gatewayLabel, useGateways } from "../Gateways";
+import { ConceptBar, ConceptStage } from "../Concepts";
+
+// What the prompt box held before a concept rewrite, and what the rewrite put there.
+type ConceptUndo = {
+  prompt: string;
+  batch: boolean;
+  labels?: string[];
+  after: string;
+};
 
 export function Workbench() {
   const navigate = useNavigate();
@@ -77,6 +88,10 @@ export function Workbench() {
   const promptRef = useRef<null | any>(null);
   const latestDraft = useRef<GenerateInput | null>(null);
   const [composing, setComposing] = useState(false);
+  const { modal, notification } = AntApp.useApp();
+  const [stageOpen, setStageOpen] = useState(false);
+  const [conceptUndo, setConceptUndo] = useState<ConceptUndo | null>(null);
+  const conceptEntry = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (ready)
       latestDraft.current = {
@@ -138,6 +153,63 @@ export function Workbench() {
     .map((s) => s.trim())
     .filter(Boolean);
   const total = prompts.length * input.count;
+  // Labels count per prompt line; once the lines no longer match they are dropped.
+  const conceptLabels =
+    input.conceptLabels?.length === prompts.length
+      ? input.conceptLabels
+      : undefined;
+  // The text a concept rewrite starts from. Several batch lines are replaced, so
+  // the user confirms first; the first line is the base.
+  function prepareConcept(n: number) {
+    const lines = prompt
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!batch || lines.length < 2) return Promise.resolve(prompt.trim());
+    return new Promise<string | null>((resolve) => {
+      modal.confirm({
+        title: `替换当前 ${lines.length} 条批量提示词？`,
+        content:
+          (n > 1
+            ? `将以第一条为底稿生成 ${n} 条对比提示词，替换现有内容。`
+            : "将以第一条为底稿融入概念，替换现有内容。") +
+          "改写后可点“撤销改写”恢复。",
+        okText: "替换",
+        cancelText: "取消",
+        autoFocusButton: "cancel",
+        onOk: () => resolve(lines[0]),
+        onCancel: () => resolve(null),
+      });
+    });
+  }
+  function applyConcept(r: ConceptResult) {
+    const single = r.prompts.length === 1;
+    const next = single
+      ? r.prompts[0]
+      : r.prompts.map((s) => s.replace(/\s*\n\s*/g, " ").trim()).join("\n");
+    setConceptUndo({ prompt, batch, labels: input.conceptLabels, after: next });
+    setPrompt(next);
+    // Several prompts are one line each in batch mode; one prompt may keep its lines.
+    if (!single) setBatch(true);
+    else if (next.includes("\n")) setBatch(false);
+    change({ conceptLabels: r.labels });
+    setStageOpen(false);
+    if (r.usedLLM)
+      notification.success({
+        message: single
+          ? "已按概念改写提示词"
+          : `已生成 ${r.prompts.length} 条对比提示词`,
+      });
+    else notification.info({ message: "未配置 LLM，已直接附加概念要点" });
+  }
+  function undoConcept() {
+    if (!conceptUndo) return;
+    setPrompt(conceptUndo.prompt);
+    setBatch(conceptUndo.batch);
+    change({ conceptLabels: conceptUndo.labels });
+    setConceptUndo(null);
+    promptRef.current?.focus();
+  }
   function change(p: Partial<GenerateInput>) {
     setInput((v) => ({ ...v, ...p }));
   }
@@ -166,6 +238,7 @@ export function Workbench() {
         await call("Submit", {
           ...input,
           prompts,
+          conceptLabels,
           model: input.model || selected.model,
           requestID,
         });
@@ -176,6 +249,7 @@ export function Workbench() {
   function applyTemplate(t: Template, mode: TemplateMode) {
     if (mode === "replace") {
       setPrompt(t.prompt);
+      change({ conceptLabels: undefined });
       // One template is one prompt: lines in it must not become separate images.
       if (t.prompt.includes("\n")) setBatch(false);
       change({
@@ -290,6 +364,30 @@ export function Workbench() {
               {batch ? "每行独立生成" : "文生图 / 添加参考图后转为图生图"}
             </span>
           </div>
+          <ConceptBar
+            labels={conceptLabels || []}
+            canUndo={!!conceptUndo && conceptUndo.after === prompt}
+            disabled={!ready}
+            onOpen={() => setStageOpen(true)}
+            onClear={() => {
+              change({ conceptLabels: undefined });
+              setConceptUndo(null);
+            }}
+            onUndo={undoConcept}
+            openRef={conceptEntry}
+          />
+          <ConceptStage
+            open={stageOpen}
+            hasReferences={input.references.length > 0}
+            onClose={() => setStageOpen(false)}
+            onAfterClose={(applied) =>
+              applied
+                ? promptRef.current?.focus()
+                : conceptEntry.current?.focus()
+            }
+            prepare={prepareConcept}
+            onComposed={applyConcept}
+          />
           <div className="field-header">
             <label className="field-label">
               参考图 <span className="muted">可选 · 最多 4 张</span>
@@ -505,7 +603,12 @@ export function Workbench() {
                           </div>
                         )}
                         <div className="result-copy">
-                          <Status state={t.status} task={t} />
+                          <div className="result-status">
+                            <Status state={t.status} task={t} />
+                            {t.concept && (
+                              <span className="concept-tag">{t.concept}</span>
+                            )}
+                          </div>
                           <p>{t.prompt}</p>
                           <small>
                             {t.model} · {time(t.createdAt)}

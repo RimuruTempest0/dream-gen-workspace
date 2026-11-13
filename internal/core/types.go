@@ -42,8 +42,13 @@ type GenerateInput struct {
 	Size         string   `json:"size"`
 	Quality      string   `json:"quality"`
 	ProjectID    string   `json:"projectID"`
+	// ConceptLabels names the concept of each prompt (same index as Prompts),
+	// e.g. "巨物 × 浪漫主义"; optional (0.7.18).
+	ConceptLabels []string `json:"conceptLabels,omitempty"`
 }
 type Task struct {
+	// Concept is the concept stage label the prompt was written with (0.7.18).
+	Concept    string `json:"concept,omitempty"`
 	AgentRunID string `json:"agentRunID,omitempty"`
 	PlanItemID string `json:"planItemID,omitempty"`
 	// RefinedFrom is the task whose image this attempt adjusts; RefineInstruction is the user's request.

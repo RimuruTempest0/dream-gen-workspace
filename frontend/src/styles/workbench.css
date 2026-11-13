@@ -179,6 +179,22 @@
 .result-copy {
   padding: 14px;
 }
+/* 0.7.18: status and concept label share one line above the prompt. */
+.result-status {
+  display: flex;
+  align-items: center;
+  gap: 6px 8px;
+  flex-wrap: wrap;
+}
+.result-item {
+  transition: border-color 150ms ease-out;
+}
+.result-item:hover {
+  border-color: var(--scrollbar);
+}
+.composer #prompt {
+  line-height: 1.7;
+}
 .result-copy p {
   font-size: 13px;
   margin: 7px 0;
