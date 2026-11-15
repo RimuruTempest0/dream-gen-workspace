@@ -138,7 +138,7 @@ func (s *Service) LoadLicense(programDir string) error {
 	rec, exists := s.licenseRecordLocked()
 	if exists && rec.SoftwareID != p.SoftwareID {
 		s.lic.mode = "mismatch"
-		s.lic.message = fmt.Sprintf("此数据目录属于另一份软件（%s），不能沿用它的授权和额度。请使用对应的软件，或在“连接与设置”中选择新的保存位置。", rec.SoftwareID)
+		s.lic.message = fmt.Sprintf("此数据目录属于另一份软件（%s），不能沿用它的授权和额度。请使用对应的软件，或在“系统 → 连接”中选择新的保存位置。", rec.SoftwareID)
 		_ = s.store.appendLog("error", "license", "", s.lic.message)
 		return nil
 	}
@@ -454,9 +454,9 @@ func fetchUsage(ctx context.Context, url, key string) (limited bool, remaining f
 
 func (s *Service) trialLocked() bool { return s.lic.mode == "trial" }
 
-const missingCustomerFile = "缺少软件授权文件 customer.dat，暂时不能生图。请完整解压软件提供方发来的软件包，或在“连接与设置 → 授权”导入授权文件。"
+const missingCustomerFile = "缺少软件授权文件 customer.dat，暂时不能生图。请完整解压软件提供方发来的软件包，或在“系统 → 连接 → 授权”导入授权文件。"
 
-const trialUsedUp = "试用额度已用完，请在“连接与设置”输入激活码后继续使用。"
+const trialUsedUp = "试用额度已用完，请在“系统 → 连接”输入激活码后继续使用。"
 
 const trialLinesOnly = "试用期只能使用图片线路 1 和 LLM 线路 1，输入激活码后可使用全部线路。"
 

@@ -141,7 +141,7 @@ export function RunActivity({ run }: { run: AgentRun }) {
   const facts = [
     p?.agentVersion && `Claude Code ${p.agentVersion}`,
     run.llmConnection?.model,
-    p?.llmRequests && `${p.llmRequests} 次 LLM 请求`,
+    p?.llmRequests && `${p.llmRequests} 次 AI 模型请求`,
     p?.contextTokens && `上下文 ${p.contextTokens.toLocaleString("en-US")}`,
     p?.outputTokens && `输出 ${p.outputTokens.toLocaleString("en-US")} tokens`,
   ].filter(Boolean);

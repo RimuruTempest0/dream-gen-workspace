@@ -51,7 +51,7 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 		return "", e
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择生图中转站，LLM 连接不能提交图片任务")
+		return "", errors.New("请选择图片服务，AI 模型连接不能提交图片任务")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
@@ -171,7 +171,7 @@ func (s *Service) StopBatch(batch string) error {
 
 const (
 	canceledUnsent   = "已取消生成。这张图尚未提交，未计费。"
-	canceledInFlight = "已取消生成，不再等待中转站结果。请求此前已发送，中转站可能仍会生成并计费，请以中转站记录为准。"
+	canceledInFlight = "已取消生成，不再等待图片服务结果。请求此前已发送，图片服务可能仍会生成并计费，请以图片服务记录为准。"
 )
 
 // CancelTask cancels one image: an unsent one is simply dropped; an in-flight
@@ -199,7 +199,7 @@ func (s *Service) CancelTask(id string) error {
 		s.canceled[id] = true
 		cancel()
 	case "downloading":
-		return errors.New("中转站已返回这张图，正在保存，不能取消")
+		return errors.New("图片服务已返回这张图，正在保存，不能取消")
 	default:
 		return errors.New("这张图已结束，无需取消")
 	}
@@ -267,7 +267,7 @@ func (s *Service) ResumeBlocked(id string) error {
 func (s *Service) retryAgentLocked(t Task) error {
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
-		return missing(e, "这张图片使用的生图中转站已删除，请新建需求")
+		return missing(e, "这张图片使用的图片服务已删除，请新建需求")
 	}
 	// A manual retry starts the automatic resends after a content refusal afresh.
 	t.PolicyStep = 0
@@ -279,7 +279,7 @@ func (s *Service) retryAgentLocked(t Task) error {
 // autoRetryOf marks an automatic re-generation after a relay timeout.
 func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (Task, error) {
 	if normalizeConnection(c).Kind != "image" {
-		return Task{}, errors.New("请选择生图中转站")
+		return Task{}, errors.New("请选择图片服务")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return Task{}, e
@@ -316,7 +316,7 @@ func (s *Service) resumeBlockedLocked(t Task) error {
 	}
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
-		return missing(e, "这张图片使用的生图中转站已删除，请新建需求")
+		return missing(e, "这张图片使用的图片服务已删除，请新建需求")
 	}
 	if c.BaseURL != t.Connection.BaseURL {
 		return errors.New("连接地址已修改，请先恢复原地址，或明确重新生成")

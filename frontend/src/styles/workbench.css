@@ -392,3 +392,76 @@
 .ant-table-wrapper {
   min-height: 280px;
 }
+/* 0.7.25: pro mode — the empty reference area is itself the add button, and lights
+   up while a file is dragged over it. */
+.reference-area {
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+.reference-area.dragging {
+  border-color: var(--primary);
+  border-style: solid;
+}
+.reference-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 84px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.reference-empty > .anticon {
+  font-size: 18px;
+  color: var(--muted);
+}
+.reference-empty:hover > .anticon,
+.reference-area.dragging .reference-empty > .anticon {
+  color: var(--primary);
+}
+.reference-empty:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.generate-footer > .footer-blocked {
+  font-size: 12px;
+  color: var(--warning);
+}
+/* Recent results: the image opens the large viewer; actions sit under it. */
+.result-item .image-open .image-frame {
+  border-radius: 0;
+}
+.result-item .image-open:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.result-item .image-open:hover img {
+  filter: brightness(1.06);
+}
+.result-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+}
+.result-prompt {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.result-copy .reuse-prompt {
+  display: flex;
+  padding: 0;
+  height: auto;
+  margin-bottom: 4px;
+  font-size: 12px;
+}

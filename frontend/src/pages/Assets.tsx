@@ -98,10 +98,10 @@ export function Assets() {
   return (
     <>
       <Header
-        title="素材库"
-        sub="生成原图与参考图保存在本机，随时预览、导出或再次使用。"
+        title="作品与素材"
+        sub="生成的图片和参考图都保存在本机，随时预览、导出或再次使用。"
       />
-      <section className="panel">
+      <section className="panel works-panel">
         <div className="panel-heading">
           <h2>{q.data?.total || 0} 张本地图片</h2>
           <Space wrap>
@@ -148,7 +148,7 @@ export function Assets() {
               disabled={!chosen.length || actions.busy}
               onClick={() =>
                 actions.confirm(
-                  `从素材库移除 ${ids.length} 张图片？`,
+                  `移除 ${ids.length} 张图片？`,
                   "图片会从列表隐藏，文件和任务引用仍保留。",
                   async () => {
                     await call("UpdateAssets", ids, "", true);
@@ -212,7 +212,7 @@ export function Assets() {
                     {a.width} × {a.height} ·{" "}
                     {a.kind === "reference" ? "参考图" : "生成图片"}
                   </small>
-                  <Space>
+                  <Space className="asset-card-actions">
                     <Button size="small" onClick={() => useReference(a)}>
                       作为参考图
                     </Button>
@@ -277,7 +277,7 @@ export function Assets() {
                 icon={<DeleteOutlined aria-hidden="true" />}
                 onClick={() =>
                   actions.confirm(
-                    "从素材库移除？",
+                    "移除这张图片？",
                     "图片会从列表隐藏，文件和任务引用仍保留。",
                     async () => {
                       await call(

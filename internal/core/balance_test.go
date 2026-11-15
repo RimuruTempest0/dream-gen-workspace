@@ -43,7 +43,7 @@ func TestEmptyAccountPausesTheBatchWithoutAskingForAKey(t *testing.T) {
 		t.Fatal("images were sent to an empty account", g.imageHits.Load())
 	}
 	failed := tasksWhere(s, func(t Task) bool { return t.Status == "failed" })[0]
-	if !strings.HasPrefix(failed.Error, "中转站账户余额不足（HTTP 403）") || strings.Contains(failed.Error, "API Key 无效") || !strings.Contains(failed.Error, "insufficient balance") {
+	if !strings.HasPrefix(failed.Error, "图片服务账户余额不足（HTTP 403）") || strings.Contains(failed.Error, "API Key 无效") || !strings.Contains(failed.Error, "insufficient balance") {
 		t.Fatal(failed.Error)
 	}
 	paused := tasksWhere(s, func(t Task) bool { return t.Status == "blocked" })[0]

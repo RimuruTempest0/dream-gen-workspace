@@ -235,7 +235,7 @@ export function CancelTaskButton({
         actions.confirm(
           "是否确认取消生成？",
           sent
-            ? "这张图已提交到中转站。取消后不再等待结果；中转站可能仍会生成并计费，请以中转站记录为准。"
+            ? "这张图已提交到图片服务。取消后不再等待结果；图片服务可能仍会生成并计费，请以图片服务记录为准。"
             : "这张图尚未提交，取消后不会计费。",
           () => call("CancelTask", task.id),
           true,
@@ -373,9 +373,9 @@ export function Status({ state, task }: { state: string; task?: Task }) {
       ? (
           {
             preparing: "准备请求",
-            connecting: "连接中转站",
+            connecting: "连接图片服务",
             connected: "提交请求",
-            waiting: "等待中转站",
+            waiting: "等待图片服务",
             receiving: "接收结果",
           } as Record<string, string>
         )[task?.diagnostic?.stage || ""]
@@ -452,7 +452,7 @@ export function TaskTiming({ task }: { task: Task }) {
         <p>
           {task.status === "downloading"
             ? "正在下载已返回的图片，临时网络错误会自动重试。请保持应用运行，不会重新生图。"
-            : "中转站响应较慢，请保持应用运行。再次生成会提交新的计费请求。"}
+            : "图片服务响应较慢，请保持应用运行。再次生成会提交新的计费请求。"}
         </p>
       )}
     </div>
@@ -460,7 +460,7 @@ export function TaskTiming({ task }: { task: Task }) {
 }
 // Which gateway produced the image when it was moved or re-generated automatically.
 function TaskRoute({ task }: { task: Task }) {
-  const name = task.connection?.name || "备用中转站";
+  const name = task.connection?.name || "备用图片服务";
   if (task.policyRetryOf)
     return (
       <small className="task-route">
@@ -475,7 +475,7 @@ function TaskRoute({ task }: { task: Task }) {
     return (
       <small className="task-route">
         {task.status === "queued"
-          ? `结果未知后自动重新生成：等待「${name}」或健康的备用中转站（新的计费请求）`
+          ? `结果未知后自动重新生成：等待「${name}」或健康的备用图片服务（新的计费请求）`
           : `结果未知后自动重新生成 · 「${name}」（可能重复计费）`}
       </small>
     );
@@ -494,6 +494,8 @@ const balanceWords =
 export function rejectionOf(task: Task): "balance" | "auth" | "" {
   if (task.status !== "failed" || !task.error) return "";
   if (
+    task.error.startsWith("图片服务账户余额不足") ||
+    // Tasks saved before 0.7.24 use the old wording.
     task.error.startsWith("中转站账户余额不足") ||
     (task.error.startsWith("API Key 无效") && balanceWords.test(task.error))
   )
@@ -530,15 +532,15 @@ export function TaskFailureAlert({ task }: { task: Task }) {
         : "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。";
   } else if (task.status === "unknown") {
     message = task.autoRetryOf
-      ? "自动重新生成的结果仍未知，不会再次自动重发。请先核对中转站记录。"
-      : "结果未知，未能自动重新生成，请查看详细错误并核对中转站记录。";
+      ? "自动重新生成的结果仍未知，不会再次自动重发。请先核对图片服务记录。"
+      : "结果未知，未能自动重新生成，请查看详细错误并核对图片服务记录。";
   } else if (task.status === "blocked") {
     message = "已暂停，尚未提交、未计费。修正后可恢复生成。";
   } else if (rejectionOf(task) === "balance") {
     message =
-      "中转站账户余额不足，中转站拒绝了请求，未生成也不计费。请到中转站后台充值后重新生成。";
+      "图片服务账户余额不足，图片服务拒绝了请求，未生成也不计费。请到图片服务后台充值后重新生成。";
   } else if (rejectionOf(task) === "auth") {
-    message = "API Key 无效，中转站拒绝了请求，未生成也不计费。";
+    message = "API Key 无效，图片服务拒绝了请求，未生成也不计费。";
   }
   return (
     <Alert

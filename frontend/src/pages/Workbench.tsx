@@ -18,6 +18,7 @@ import {
   UploadOutlined,
   DownloadOutlined,
   CloseOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import {
   call,
@@ -29,6 +30,7 @@ import {
   type Template,
   type RecentBatch,
   type ConceptResult,
+  type Task,
 } from "../api";
 import {
   useData,
@@ -45,6 +47,8 @@ import {
   presetSizes,
   time,
   withCurrent,
+  ImageViewer,
+  type ViewerItem,
 } from "../ui";
 import { TemplateBar, type TemplateMode } from "../Templates";
 import { LicenseNotice } from "../License";
@@ -92,6 +96,8 @@ export function Workbench() {
   const [stageOpen, setStageOpen] = useState(false);
   const [conceptUndo, setConceptUndo] = useState<ConceptUndo | null>(null);
   const conceptEntry = useRef<HTMLButtonElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   useEffect(() => {
     if (ready)
       latestDraft.current = {
@@ -200,7 +206,7 @@ export function Workbench() {
           ? "已按概念改写提示词"
           : `已生成 ${r.prompts.length} 条对比提示词`,
       });
-    else notification.info({ message: "未配置 LLM，已直接附加概念要点" });
+    else notification.info({ message: "未配置 AI 模型，已直接附加概念要点" });
   }
   function undoConcept() {
     if (!conceptUndo) return;
@@ -212,7 +218,81 @@ export function Workbench() {
   }
   function change(p: Partial<GenerateInput>) {
     setInput((v) => ({ ...v, ...p }));
+    setFormError("");
   }
+  // Every image of the recent batches, in display order, for the large viewer.
+  const viewerItems: ViewerItem[] = [];
+  const viewerTasks = new Map<string, Task>();
+  tasks.data?.forEach((b) =>
+    b.tasks.forEach((t) =>
+      t.assetIDs.forEach((assetID) => {
+        viewerItems.push({
+          assetID,
+          label: t.prompt.length > 28 ? t.prompt.slice(0, 28) + "…" : t.prompt,
+        });
+        viewerTasks.set(assetID, t);
+      }),
+    ),
+  );
+  function openViewer(assetID: string) {
+    const i = viewerItems.findIndex((v) => v.assetID === assetID);
+    if (i >= 0) setViewerIndex(i);
+  }
+  function addReference(assetID: string) {
+    if (input.references.includes(assetID)) {
+      notification.info({ message: "这张图已经是参考图" });
+      return;
+    }
+    if (input.references.length >= 4) {
+      notification.warning({ message: "参考图最多 4 张，请先移除一张" });
+      return;
+    }
+    change({ references: [...input.references, assetID] });
+    notification.success({ message: "已添加为参考图" });
+  }
+  // Puts a past prompt and its size and quality back in the form. The current text
+  // is replaced only after a confirm, so nothing typed is lost by a stray click.
+  function reusePrompt(t: Task) {
+    const apply = () => {
+      setPrompt(t.prompt);
+      setBatch(false);
+      setConceptUndo(null);
+      change({
+        conceptLabels: undefined,
+        ...(t.size ? { size: t.size } : {}),
+        ...(t.quality ? { quality: t.quality } : {}),
+      });
+      setViewerIndex(null);
+      requestAnimationFrame(() => {
+        promptRef.current?.focus();
+        document
+          .getElementById("prompt")
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    };
+    const current = prompt.trim();
+    if (!current || current === t.prompt.trim()) return apply();
+    modal.confirm({
+      title: "用这条提示词替换当前内容？",
+      content: "同时套用它的尺寸和质量。",
+      okText: "替换",
+      cancelText: "取消",
+      autoFocusButton: "cancel",
+      onOk: apply,
+    });
+  }
+  // Why the generate button is off, said next to it instead of a silent grey button.
+  const blocked = !ready
+    ? ""
+    : !connections.data?.length
+      ? "先添加图片服务"
+      : !input.connectionID
+        ? "请选择图片服务"
+        : !selected?.hasKey
+          ? "所选图片服务未保存 API Key"
+          : total > 200
+            ? `一次最多 200 张，当前 ${total} 张`
+            : "";
   async function generate() {
     if (!selected?.hasKey) {
       setFormError("请先选择已保存密钥的连接。");
@@ -232,7 +312,8 @@ export function Workbench() {
     actions.confirm(
       `生成 ${total} 张图片？`,
       <>
-        将使用“{selected.name}”提交 {total} 个子任务。费用以中转站实际计费为准。
+        将使用“{selected.name}”提交 {total}{" "}
+        个子任务。费用以图片服务实际计费为准。
       </>,
       async () => {
         await call("Submit", {
@@ -298,8 +379,8 @@ export function Workbench() {
     <>
       <LicenseNotice />
       <Header
-        title="把想法变成图片"
-        sub="输入提示词，选择连接与模型，结果自动归档到本地。"
+        title="专业模式"
+        sub="自己写提示词，选择连接、模型和参数。结果自动保存在本机。"
         action={
           <Button
             icon={<SettingOutlined aria-hidden="true" />}
@@ -347,7 +428,10 @@ export function Workbench() {
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              setFormError("");
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing)
                 generate();
@@ -361,7 +445,11 @@ export function Workbench() {
           <div className="prompt-meta">
             <span>
               {prompt.length} 字 ·{" "}
-              {batch ? "每行独立生成" : "文生图 / 添加参考图后转为图生图"}
+              {batch
+                ? `${prompts.length} 条提示词，每行独立生成`
+                : input.references.length
+                  ? `图生图 · ${input.references.length} 张参考图`
+                  : "文生图 / 添加参考图后转为图生图"}
             </span>
           </div>
           <ConceptBar
@@ -403,22 +491,30 @@ export function Workbench() {
             </Button>
           </div>
           <div
-            className="reference-area"
-            onDragOver={(e) => e.preventDefault()}
+            className={"reference-area" + (dragging ? " dragging" : "")}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (input.references.length < 4) setDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node))
+                setDragging(false);
+            }}
             onDrop={(e) => {
               e.preventDefault();
+              setDragging(false);
               if (e.dataTransfer.files.length)
                 browserDrop(e.dataTransfer.files);
             }}
           >
             {input.references.length ? (
-              input.references.map((id) => (
+              input.references.map((id, i) => (
                 <div className="reference" key={id}>
                   <AssetImage id={id} />
                   <Button
                     size="small"
                     icon={<CloseOutlined aria-hidden="true" />}
-                    aria-label="移除参考图"
+                    aria-label={`移除参考图 ${i + 1}`}
                     onClick={() =>
                       change({
                         references: input.references.filter((x) => x !== id),
@@ -428,17 +524,30 @@ export function Workbench() {
                 </div>
               ))
             ) : (
-              <span className="muted">
-                拖入 PNG、JPEG、WebP，或点击添加图片
-              </span>
+              <button
+                type="button"
+                className="reference-empty"
+                onClick={addFiles}
+                disabled={actions.busy}
+              >
+                <UploadOutlined aria-hidden="true" />
+                <span>
+                  {dragging
+                    ? "松开即可添加"
+                    : "拖入 PNG、JPEG、WebP，或点击添加图片"}
+                </span>
+                <span className="muted">
+                  也可在“最近生成”里把结果设为参考图
+                </span>
+              </button>
             )}
           </div>
           <div className="divider" />
           <div className="parameter-grid">
             <div>
-              <label className="field-label">中转站连接</label>
+              <label className="field-label">图片服务</label>
               <UISelect
-                aria-label="中转站连接"
+                aria-label="图片服务"
                 value={input.connectionID || undefined}
                 placeholder="选择已配置连接"
                 options={(connections.data || []).map((c) => ({
@@ -508,19 +617,26 @@ export function Workbench() {
             />
           )}
           <div className="generate-footer">
-            <span className="muted">
-              {draftError
-                ? "草稿未保存：" + draftError
-                : ready
-                  ? "草稿保存在本机 · Ctrl + Enter 生成"
-                  : "正在读取草稿"}
+            <span
+              className={blocked ? "footer-blocked" : "muted"}
+              role="status"
+            >
+              {blocked
+                ? blocked
+                : draftError
+                  ? "草稿未保存：" + draftError
+                  : ready
+                    ? batch && prompts.length > 1
+                      ? `${prompts.length} 条 × 每条 ${input.count} 张 · Ctrl + Enter 生成`
+                      : "草稿保存在本机 · Ctrl + Enter 生成"
+                    : "正在读取草稿"}
             </span>
             <Button
               type="primary"
               size="large"
               icon={<ArrowRightOutlined aria-hidden="true" />}
               onClick={generate}
-              disabled={!ready || !selected?.hasKey || total > 200}
+              disabled={!ready || !!blocked}
               loading={actions.busy}
             >
               生成{total > 1 ? ` ${total} 张图片` : "图片"}
@@ -530,7 +646,7 @@ export function Workbench() {
             <Alert
               showIcon
               type="info"
-              message="先添加一个中转站连接"
+              message="先添加一个图片服务"
               description="在应用设置里填写 Base URL 与 API Key。"
               action={
                 <Button onClick={() => navigate("/settings")}>去配置</Button>
@@ -581,18 +697,40 @@ export function Workbench() {
                       <div key={t.id} className="result-item">
                         {t.assetIDs.length ? (
                           <div>
-                            {t.assetIDs.map((id) => (
+                            {t.assetIDs.map((id, n) => (
                               <div key={id}>
-                                <AssetImage id={id} />
-                                <Button
-                                  className="image-download"
-                                  size="small"
-                                  icon={<DownloadOutlined aria-hidden="true" />}
-                                  disabled={downloads.busy}
-                                  onClick={() => downloads.downloadAsset(id)}
+                                <button
+                                  type="button"
+                                  className="image-open"
+                                  aria-label={`查看大图：${t.prompt.slice(0, 24)}${t.assetIDs.length > 1 ? `（第 ${n + 1} 张）` : ""}`}
+                                  onClick={() => openViewer(id)}
                                 >
-                                  下载图片
-                                </Button>
+                                  <AssetImage id={id} />
+                                </button>
+                                <div className="result-image-actions">
+                                  <Button
+                                    size="small"
+                                    icon={
+                                      <DownloadOutlined aria-hidden="true" />
+                                    }
+                                    disabled={downloads.busy}
+                                    onClick={() => downloads.downloadAsset(id)}
+                                  >
+                                    下载图片
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    disabled={
+                                      input.references.length >= 4 ||
+                                      input.references.includes(id)
+                                    }
+                                    onClick={() => addReference(id)}
+                                  >
+                                    {input.references.includes(id)
+                                      ? "已是参考图"
+                                      : "作为参考图"}
+                                  </Button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -609,7 +747,18 @@ export function Workbench() {
                               <span className="concept-tag">{t.concept}</span>
                             )}
                           </div>
-                          <p>{t.prompt}</p>
+                          <p className="result-prompt" title={t.prompt}>
+                            {t.prompt}
+                          </p>
+                          <Button
+                            type="link"
+                            size="small"
+                            className="reuse-prompt"
+                            icon={<EditOutlined aria-hidden="true" />}
+                            onClick={() => reusePrompt(t)}
+                          >
+                            复用提示词
+                          </Button>
                           <small>
                             {t.model} · {time(t.createdAt)}
                           </small>
@@ -638,6 +787,45 @@ export function Workbench() {
           </DataState>
         </section>
       </div>
+      <ImageViewer
+        items={viewerItems}
+        index={viewerIndex}
+        onIndex={setViewerIndex}
+        onClose={() => setViewerIndex(null)}
+        actions={(item) => {
+          const t = viewerTasks.get(item.assetID);
+          return (
+            <>
+              <Button
+                icon={<DownloadOutlined aria-hidden="true" />}
+                disabled={downloads.busy}
+                onClick={() => downloads.downloadAsset(item.assetID)}
+              >
+                下载图片
+              </Button>
+              <Button
+                disabled={
+                  input.references.length >= 4 ||
+                  input.references.includes(item.assetID)
+                }
+                onClick={() => addReference(item.assetID)}
+              >
+                {input.references.includes(item.assetID)
+                  ? "已是参考图"
+                  : "作为参考图"}
+              </Button>
+              {t && (
+                <Button
+                  icon={<EditOutlined aria-hidden="true" />}
+                  onClick={() => reusePrompt(t)}
+                >
+                  复用提示词
+                </Button>
+              )}
+            </>
+          );
+        }}
+      />
     </>
   );
 }

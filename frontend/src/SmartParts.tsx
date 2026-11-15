@@ -379,7 +379,7 @@ export function SuiteEstimateHint(p: {
     );
   return (
     <p className="hint" id="suite-estimate">
-      参考：{parts.join("；")}。实际以中转站和 LLM 供应商的计费为准。
+      参考：{parts.join("；")}。实际以图片服务和 AI 模型的计费为准。
     </p>
   );
 }

@@ -10,7 +10,7 @@ import {
   Space,
   Tag,
 } from "antd";
-import { FileTextOutlined, PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined } from "@ant-design/icons";
 import { call, type Template } from "./api";
 import {
   DataState,
@@ -261,8 +261,8 @@ export function TemplatesPage() {
   return (
     <>
       <Header
-        title="提示词模板"
-        sub="保存常用的提示词和制作指令，在生图工作台和智能生图里一键套用。"
+        title="模板"
+        sub="保存常用的提示词和制作指令，在创作和专业模式里一键套用。"
         action={
           <Button
             type="primary"
@@ -288,9 +288,7 @@ export function TemplatesPage() {
             {templates.data?.map((t) => (
               <div className="object-row" key={t.id}>
                 <div>
-                  <strong>
-                    <FileTextOutlined aria-hidden="true" /> {t.name}
-                  </strong>
+                  <strong>{t.name}</strong>
                   <p className="line-clamp">{t.prompt}</p>
                   {(t.size || t.quality) && (
                     <Space size={4} className="template-tags">
@@ -302,23 +300,27 @@ export function TemplatesPage() {
                 <Space wrap className="template-actions">
                   <Button
                     size="small"
-                    onClick={() => nav("/", { state: { templateID: t.id } })}
+                    onClick={() => nav("/pro", { state: { templateID: t.id } })}
                   >
-                    用于生图工作台
+                    用于专业模式
                   </Button>
                   <Button
                     size="small"
-                    onClick={() =>
-                      nav("/smart", { state: { templateID: t.id } })
-                    }
+                    onClick={() => nav("/", { state: { templateID: t.id } })}
                   >
-                    用于智能生图
+                    用于创作
                   </Button>
-                  <Button size="small" onClick={() => setEditing(t)}>
+                  <Button
+                    size="small"
+                    type="text"
+                    className="template-edit"
+                    onClick={() => setEditing(t)}
+                  >
                     编辑
                   </Button>
                   <Button
                     size="small"
+                    type="text"
                     danger
                     onClick={() =>
                       actions.confirm(

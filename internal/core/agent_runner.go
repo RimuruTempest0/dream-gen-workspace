@@ -263,9 +263,9 @@ func (s *Service) executeAgent(ctx context.Context, r AgentRun, instruction stri
 		c := normalizeConnection(r.LLMConnection)
 		// Customers cannot edit the lines in customer.dat; only the provider can raise the limit.
 		if c.Managed != "" {
-			return fmt.Errorf("LLM 单次输出超过上限（%d tokens），方案没有保存。请联系软件提供方调高 LLM 线路的单次输出上限，按提供方发来的新版本覆盖安装后继续制作", c.MaxOutputTokens)
+			return fmt.Errorf("AI 模型单次输出超过上限（%d tokens），方案没有保存。请联系软件提供方调高 LLM 线路的单次输出上限，按提供方发来的新版本覆盖安装后继续制作", c.MaxOutputTokens)
 		}
-		return fmt.Errorf("LLM 单次输出超过上限（%d tokens），方案没有保存。可在“连接与设置 → LLM 供应商 → 编辑”调高“单次输出上限”后继续制作", c.MaxOutputTokens)
+		return fmt.Errorf("AI 模型单次输出超过上限（%d tokens），方案没有保存。可在“系统 → 连接 → AI 模型 → 编辑”调高“单次输出上限”后继续制作", c.MaxOutputTokens)
 	}
 	if e != nil {
 		return errors.New(redact(redact(e.Error(), key), token))

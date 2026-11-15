@@ -300,7 +300,7 @@ export function ConceptStage({
         </Button>
       </div>
       <p className="concept-note">
-        由 LLM 改写提示词，不生成图片、不产生生图费用；未配置 LLM
+        由 AI 模型改写提示词，不生成图片、不产生生图费用；未配置 AI 模型
         时直接附加概念要点。
       </p>
     </div>

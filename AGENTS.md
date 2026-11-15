@@ -8,3 +8,13 @@
 - 不删除实际数据目录，不覆盖 `data-location.txt` 指向的另一份配置。需要调整时遵循 `docs/local-development-profile.md`。
 - API Key 继续使用现有 Windows DPAPI 加密文件，不写入源码、文档、对话或发布包。不要为验证配置保留而调用真实付费生成。
 - 改动本机配置保留流程后，运行 `scripts/test-local-profile.ps1`。测试与桌面 QA 必须继续使用隔离数据，避免回写用户配置。
+
+## Agent skills
+
+### Issue tracker
+
+Issue 使用 GitHub Issues（`RimuruTempest0/dream-gen-workspace`），通过 `gh` CLI 操作。详见 `docs/agents/issue-tracker.md`。
+
+### Domain docs
+
+single-context：仓库根目录一份 `CONTEXT.md` + `docs/adr/`。详见 `docs/agents/domain.md`。

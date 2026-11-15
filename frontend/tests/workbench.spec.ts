@@ -149,17 +149,19 @@ test.afterAll(async () => {
   await new Promise<void>((r) => server?.close(() => r()));
 });
 test("desktop connection CRUD, masked key, non-billable model test and prompt draft", async () => {
+  // The app opens on 创作; the manual workbench is 专业模式.
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "把想法变成图片" }),
+    page.getByRole("heading", { name: "专业模式", level: 1 }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   await page.getByRole("button", { name: "添加连接", exact: true }).click();
   const modal = page.getByRole("dialog");
   await modal.getByRole("button", { name: "测试连接 / 获取模型" }).click();
   await expect(
     modal.getByText("请填写 Base URL", { exact: true }),
   ).toBeVisible();
-  await modal.getByLabel("连接名称").fill("QA 中转站");
+  await modal.getByLabel("连接名称").fill("QA 图片服务");
   await modal.getByLabel("Base URL", { exact: true }).fill(baseURL);
   const key = modal.getByLabel("API Key", { exact: true });
   await modal.getByRole("button", { name: "测试连接 / 获取模型" }).click();
@@ -178,9 +180,9 @@ test("desktop connection CRUD, masked key, non-billable model test and prompt dr
   await modal.getByRole("button", { name: "保存连接" }).click();
   await expect(modal).not.toBeVisible();
   await expect(page.getByText(baseURL, { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "生图工作台" }).click();
-  await page.getByRole("combobox", { name: "中转站连接" }).click();
-  await page.getByText("QA 中转站", { exact: true }).last().click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
+  await page.getByRole("combobox", { name: "图片服务" }).click();
+  await page.getByText("QA 图片服务", { exact: true }).last().click();
   await page.getByLabel("提示词", { exact: true }).fill("桌面测试白底产品图");
   await expect
     .poll(() =>
@@ -231,7 +233,7 @@ test("real desktop generates locally and an unknown result is re-generated once"
     .toBe("unknown:true:unknown");
   await page.waitForTimeout(1500);
   expect(requests).toBe(3);
-  await page.getByRole("link", { name: /任务中心/ }).click();
+  await page.getByRole("link", { name: /生成记录/ }).click();
   await expect(
     page.getByText("结果未知", { exact: true }).first(),
   ).toBeVisible();
@@ -245,7 +247,7 @@ test("real desktop generates locally and an unknown result is re-generated once"
   expect(requests).toBe(3);
 });
 test("an image waiting on the relay can be cancelled after confirming", async () => {
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   await page.getByLabel("提示词", { exact: true }).fill("hang");
   await page.getByRole("button", { name: "生成图片", exact: true }).click();
   await page
@@ -253,16 +255,16 @@ test("an image waiting on the relay can be cancelled after confirming", async ()
     .getByRole("button", { name: "继续", exact: true })
     .click();
   await expect.poll(() => requests).toBe(4);
-  await page.getByRole("link", { name: /任务中心/ }).click();
-  const row = page.getByRole("row").filter({ hasText: "等待中转站" });
+  await page.getByRole("link", { name: /生成记录/ }).click();
+  const row = page.getByRole("row").filter({ hasText: "等待图片服务" });
   await row.getByRole("button", { name: "取消生成" }).click();
   const dialog = page.getByRole("dialog", { name: "是否确认取消生成？" });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("中转站可能仍会生成并计费");
+  await expect(dialog).toContainText("图片服务可能仍会生成并计费");
   // Keeping it is the default choice.
   await dialog.getByRole("button", { name: "继续生成" }).click();
   await expect(dialog).toBeHidden();
-  await expect(row.getByText("等待中转站")).toBeVisible();
+  await expect(row.getByText("等待图片服务")).toBeVisible();
   await row.getByRole("button", { name: "取消生成" }).click();
   await page
     .getByRole("dialog")
@@ -284,14 +286,14 @@ test("an image waiting on the relay can be cancelled after confirming", async ()
   expect(requests).toBe(4);
 });
 test("settings no longer offer a detail level for the smart page", async () => {
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "本地数据与备份" }),
   ).toBeVisible();
   await expect(page.getByText("制作详情显示")).toHaveCount(0);
 });
 test("workbench picks the model from the gateway's list and sizes from options", async () => {
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   const field = (name: string) =>
     page
       .getByRole("combobox", { name, exact: true })
@@ -331,9 +333,9 @@ test("workbench picks the model from the gateway's list and sizes from options",
   await expect(page.getByRole("link", { name: /项目/ })).toHaveCount(0);
 });
 test("prompt templates: saved once, used from both generation pages without losing text", async () => {
-  await page.getByRole("link", { name: "提示词模板" }).click();
+  await page.getByRole("link", { name: "模板", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "提示词模板", level: 1 }),
+    page.getByRole("heading", { name: "模板", level: 1 }),
   ).toBeVisible();
   await page.getByRole("button", { name: "新建模板" }).first().click();
   const editor = page.getByRole("dialog", { name: "保存为模板" });
@@ -345,7 +347,7 @@ test("prompt templates: saved once, used from both generation pages without losi
   await expect(page.getByText("产品摄影", { exact: true })).toBeVisible();
   const prompt = page.getByLabel(/^提示词/);
   // From the template page into the workbench: existing text is not overwritten silently.
-  await page.getByRole("button", { name: "用于生图工作台" }).click();
+  await page.getByRole("button", { name: "用于专业模式" }).click();
   const choose = page.getByRole("dialog", { name: /套用模板/ });
   await expect(choose).toBeVisible();
   await choose.getByRole("button", { name: "取消" }).click();
@@ -390,11 +392,11 @@ test("prompt templates: saved once, used from both generation pages without losi
   await expect(save).toBeHidden();
   await page.getByRole("switch", { name: "批量提示词" }).click();
   // From the template page into a new smart request; the product link fills in.
-  await page.getByRole("link", { name: "提示词模板" }).click();
+  await page.getByRole("link", { name: "模板", exact: true }).click();
   await page
     .locator(".object-row")
     .filter({ hasText: "链接模板" })
-    .getByRole("button", { name: "用于智能生图" })
+    .getByRole("button", { name: "用于创作" })
     .click();
   const instruction = page.getByLabel("完整制作指令", { exact: true });
   await expect(instruction).toHaveValue(
@@ -411,12 +413,12 @@ test("prompt templates: saved once, used from both generation pages without losi
   await choose.getByRole("button", { name: "替换当前内容" }).click();
   await expect(instruction).toHaveValue("white background product");
   await instruction.fill("");
-  await page.getByRole("link", { name: "提示词模板" }).click();
+  await page.getByRole("link", { name: "模板", exact: true }).click();
   await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(docs, "templates-0.6.22.png") });
 });
 test("assets show images at once when coming back and keep readable names", async () => {
-  await page.getByRole("link", { name: "素材库" }).click();
+  await page.getByRole("link", { name: "作品与素材", exact: true }).click();
   await expect(page.getByRole("button", { name: /预览/ })).toHaveCount(1);
   await expect(page.getByRole("combobox", { name: "项目筛选" })).toHaveCount(0);
   await expect(page.locator(".asset-card-copy strong").first()).toHaveText(
@@ -433,13 +435,13 @@ test("assets show images at once when coming back and keep readable names", asyn
       return read(...a);
     };
   });
-  await page.getByRole("link", { name: "任务中心" }).click();
+  await page.getByRole("link", { name: /生成记录/ }).click();
   await expect(page.locator(".task-thumb img").first()).toBeVisible();
   await page.getByRole("combobox", { name: "任务状态" }).focus();
   await page.keyboard.press("ArrowDown");
   await expect(page.locator(".ant-select-dropdown:visible")).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("link", { name: "素材库" }).click();
+  await page.getByRole("link", { name: "作品与素材", exact: true }).click();
   await expect(page.locator(".asset-card img").first()).toBeVisible();
   expect(await page.evaluate(() => (window as any).__reads)).toBe(0);
   await page.screenshot({
@@ -448,7 +450,7 @@ test("assets show images at once when coming back and keep readable names", asyn
   });
 });
 test("accessibility and small viewport layout", async () => {
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   // A message fading out reads as low contrast; scan once it has gone.
   await expect(page.locator(".ant-message-notice")).toHaveCount(0, {
     timeout: 8000,
@@ -461,7 +463,7 @@ test("accessibility and small viewport layout", async () => {
     JSON.stringify(results.violations, null, 2),
   );
   expect(results.violations).toEqual([]);
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   const session = await browser.contexts()[0].newCDPSession(page);
   await session.send("Emulation.setDeviceMetricsOverride", {
     width: 900,
@@ -484,7 +486,7 @@ test("accessibility and small viewport layout", async () => {
   await session.detach();
 });
 test("保存位置：取消、拒绝非空目录、迁移数据与设置持久化", async () => {
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   const open = page.getByRole("button", { name: "打开数据位置", exact: true });
   await expect(open).toBeEnabled();
   const change = page.getByRole("button", {
@@ -570,7 +572,7 @@ test("保存位置：取消、拒绝非空目录、迁移数据与设置持久�
 });
 
 test("connection test: saved key, complete JSON, auth failure and cancel", async () => {
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   await page.getByRole("button", { name: "编辑 / 测试" }).click();
   const dialog = page.getByRole("dialog");
   const testButton = dialog.getByRole("button", {
@@ -612,7 +614,7 @@ test("connection test: saved key, complete JSON, auth failure and cancel", async
 });
 
 test("open data location really shows Explorer folder", async () => {
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   const summary = await page.evaluate(
     async () =>
       (await window.go!.main!.App!.Dashboard()) as { dataDir: string },
@@ -639,7 +641,7 @@ test("open data location really shows Explorer folder", async () => {
 });
 
 test("recent results: single download, whole ten-image set and cancelled export", async () => {
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   await page.getByLabel("提示词", { exact: true }).fill("QA ten image set");
   await page.getByRole("spinbutton", { name: "每条生成张数" }).fill("10");
   const before = requests;
@@ -742,7 +744,7 @@ test("recent results: single download, whole ten-image set and cancelled export"
   await session.detach();
 });
 test("素材库批量管理：多选、导出 ZIP 和移除", async () => {
-  await page.getByRole("link", { name: "素材库" }).click();
+  await page.getByRole("link", { name: "作品与素材", exact: true }).click();
   const go = (name: string, ...args: unknown[]) =>
     page.evaluate(
       ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
@@ -801,7 +803,7 @@ test("素材库批量管理：多选、导出 ZIP 和移除", async () => {
   await picks.nth(1).click();
   await bar.getByRole("button", { name: "移除", exact: true }).click();
   const confirm = page.getByRole("dialog", {
-    name: "从素材库移除 2 张图片？",
+    name: "移除 2 张图片？",
   });
   await confirm.getByRole("button", { name: "确认执行" }).click();
   await expect.poll(total).toBe(before - 2);
@@ -837,7 +839,7 @@ test("素材库批量管理：多选、导出 ZIP 和移除", async () => {
     page.getByRole("button", { name: /^预览 / }).first(),
   ).toBeVisible();
 });
-test("备用中转站：免费检查、主用/备用、结果未知自动重新生成与自动切换", async () => {
+test("备用图片服务：免费检查、主用/备用、结果未知自动重新生成与自动切换", async () => {
   const go = (name: string, ...args: unknown[]) =>
     page.evaluate(
       ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
@@ -856,7 +858,7 @@ test("备用中转站：免费检查、主用/备用、结果未知自动重新�
     model: "qa-image",
     key: "qa-key-123",
   })) as { id: string };
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   const rowOf = (name: string) =>
     page.locator(".connection-row").filter({ hasText: name });
   await rowOf("QA 超时站").getByRole("radio", { name: "主用" }).click();
@@ -864,7 +866,7 @@ test("备用中转站：免费检查、主用/备用、结果未知自动重新�
     .poll(async () => ((await go("GetGatewaySettings")) as any).primaryID)
     .toBe(a.id);
   await rowOf("QA 备用站")
-    .getByRole("switch", { name: "将 QA 备用站 设为备用中转站" })
+    .getByRole("switch", { name: "将 QA 备用站 设为备用图片服务" })
     .click();
   await expect(rowOf("QA 备用站").getByText("备用 1")).toBeVisible();
 
@@ -884,7 +886,7 @@ test("备用中转站：免费检查、主用/备用、结果未知自动重新�
 
   // Automatic re-generation is always on; the settings only explain its cost.
   await expect(
-    page.getByRole("switch", { name: /524 后自动换中转站重新生成/ }),
+    page.getByRole("switch", { name: /524 后自动换图片服务重新生成/ }),
   ).toHaveCount(0);
   await expect(
     page.getByText(/结果未知（例如 HTTP\s*524）的图片会自动重新生成一次/),
@@ -922,7 +924,7 @@ test("备用中转站：免费检查、主用/备用、结果未知自动重新�
   await page.waitForTimeout(500);
   expect(gatewayHits.gw524).toBe(1);
   expect(gatewayHits.gwok).toBe(2);
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   const latest = page.locator(".recent-batch").first();
   await expect(
     latest.getByText(/结果未知后自动重新生成 · 「QA 备用站」/),
@@ -944,7 +946,7 @@ test("备用中转站：免费检查、主用/备用、结果未知自动重新�
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth > innerWidth,
@@ -964,10 +966,11 @@ test("备用中转站：免费检查、主用/备用、结果未知自动重新�
   await go("SetImageConcurrency", 3);
   expect(b.id).toBeTruthy();
 });
-test("中转站监控：按中转站统计、调用记录筛选与导出 CSV", async () => {
-  await page.getByRole("link", { name: "中转站监控" }).click();
+test("图片服务监控：按图片服务统计、调用记录筛选与导出 CSV", async () => {
+  await page.getByRole("link", { name: "系统", exact: true }).click();
+  await page.getByRole("link", { name: "服务状态", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "中转站监控", level: 1 }),
+    page.getByRole("heading", { name: "服务状态", level: 1 }),
   ).toBeVisible();
   const card = (name: string) =>
     page.locator(".monitor-card").filter({ hasText: name });
@@ -1016,7 +1019,7 @@ test("中转站监控：按中转站统计、调用记录筛选与导出 CSV", a
     ).originalExportPicker;
   });
   const csv = fs.readFileSync(csvPath, "utf8");
-  expect(csv.startsWith("﻿时间,中转站")).toBe(true);
+  expect(csv.startsWith("﻿时间,图片服务")).toBe(true);
   expect(csv).toContain("QA 超时站");
   expect(csv).not.toContain("QA 备用站"); // the result filter applies to the export
   expect(csv).not.toContain("qa-key-123");
@@ -1063,7 +1066,7 @@ test("概念台：精选组合、融入与撤销、对比提示词、键盘与�
       ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
       [name, args] as const,
     );
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   const prompt = page.getByLabel(/^提示词/);
   const batch = page.getByRole("switch", { name: "批量提示词" });
   if ((await batch.getAttribute("aria-checked")) === "true")
@@ -1126,10 +1129,14 @@ test("概念台：精选组合、融入与撤销、对比提示词、键盘与�
   );
   expect(a11y.violations).toEqual([]);
   // Earlier tests leave an error notice open; the screenshot shows the stage alone.
-  for (const close of await page
-    .locator(".ant-notification-notice-close")
-    .all())
-    await close.click();
+  // Notices also close on their own, so take the first one each time instead of
+  // a list made up front.
+  const closes = page.locator(".ant-notification-notice-close");
+  while (await closes.count())
+    await closes
+      .first()
+      .click({ timeout: 2000 })
+      .catch(() => {});
   await expect(page.locator(".ant-notification-notice")).toHaveCount(0);
   await stage.locator(".ant-drawer-body").evaluate((e) => (e.scrollTop = 0));
   await page.screenshot({ path: path.join(docs, "concept-stage-0.7.18.png") });
@@ -1138,7 +1145,9 @@ test("概念台：精选组合、融入与撤销、对比提示词、键盘与�
   await stage.getByRole("button", { name: "融入提示词", exact: true }).click();
   await expect(stage).toBeHidden();
   await expect(prompt).toHaveValue(/^白色陶瓷杯\n画面概念 巨物 × 浪漫主义：/);
-  await expect(page.getByText("未配置 LLM，已直接附加概念要点")).toBeVisible();
+  await expect(
+    page.getByText("未配置 AI 模型，已直接附加概念要点"),
+  ).toBeVisible();
   await expect(page.locator(".concept-current")).toContainText(
     "巨物 × 浪漫主义",
   );
@@ -1149,7 +1158,7 @@ test("概念台：精选组合、融入与撤销、对比提示词、键盘与�
   const root = baseURL.replace("/custom/v1", "");
   const llm = (await go("SaveConnection", {
     kind: "llm",
-    name: "QA 概念 LLM",
+    name: "QA 概念 AI 模型",
     baseURL: `${root}/llm/v1`,
     model: "qa-llm",
     key: "qa-llm-key",
@@ -1188,10 +1197,13 @@ test("概念台：精选组合、融入与撤销、对比提示词、键盘与�
   );
   expect(requests).toBe(imagesBefore);
   await page.mouse.move(0, 0);
-  for (const close of await page
-    .locator(".ant-notification-notice-close")
-    .all())
-    await close.click();
+  // Notices also close on their own, so take the first one each time instead of
+  // a list made up front.
+  while (await closes.count())
+    await closes
+      .first()
+      .click({ timeout: 2000 })
+      .catch(() => {});
   await expect(page.locator(".ant-notification-notice")).toHaveCount(0);
   await page.screenshot({ path: path.join(docs, "concept-bar-0.7.18.png") });
 

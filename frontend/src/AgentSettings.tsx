@@ -45,7 +45,7 @@ export function ConnectionFields({
         rules={[{ required: true, message: "请填写便于识别的连接名称" }]}
       >
         <Input
-          placeholder={llm ? "例如：我的 LLM 供应商" : "例如：我的生图中转站"}
+          placeholder={llm ? "例如：我的 AI 模型" : "例如：我的图片服务"}
           maxLength={100}
         />
       </UIForm.Item>
@@ -104,8 +104,8 @@ export function ConnectionFields({
       </UIForm.Item>
       <UIForm.Item
         name="model"
-        label={llm ? "LLM 模型 ID" : "默认模型 ID（可选）"}
-        rules={llm ? [{ required: true, message: "请填写 LLM 模型 ID" }] : []}
+        label={llm ? "模型 ID" : "默认模型 ID（可选）"}
+        rules={llm ? [{ required: true, message: "请填写 模型 ID" }] : []}
       >
         <Input placeholder="从查询结果选择，或手动填写" />
       </UIForm.Item>
@@ -113,7 +113,7 @@ export function ConnectionFields({
         <UIForm.Item
           name="protocol"
           label="接口协议"
-          extra="大多数中转站是 OpenAI Images（一次请求直接返回图片）。异步任务：提交后返回任务 ID，再轮询结果；应用重启后继续查询同一个任务，不会重复提交。"
+          extra="大多数图片服务是 OpenAI Images（一次请求直接返回图片）。异步任务：提交后返回任务 ID，再轮询结果；应用重启后继续查询同一个任务，不会重复提交。"
         >
           <UISelect
             options={[
@@ -244,7 +244,7 @@ export function LLMConnections() {
             kind: "llm",
             clearKey: false,
           }),
-        "LLM 连接已保存",
+        "AI 模型连接已保存",
       );
       if (out) {
         setEditing(undefined);
@@ -267,7 +267,7 @@ export function LLMConnections() {
   function validate(c: Connection) {
     actions.confirm(
       "验证 Agent 能力？",
-      `将使用“${c.name}”的 ${c.model} 发送 4 项小型验证请求（文本、图片、工具、流式）。可能产生 LLM 费用，不会生成商品图片。`,
+      `将使用“${c.name}”的 ${c.model} 发送 4 项小型验证请求（文本、图片、工具、流式）。可能产生 AI 模型费用，不会生成商品图片。`,
       async () => {
         const id = crypto.randomUUID();
         validationID.current = id;
@@ -303,14 +303,14 @@ export function LLMConnections() {
     <section className="panel">
       <div className="panel-heading">
         <h2>
-          <ApiOutlined aria-hidden="true" /> LLM 供应商
+          <ApiOutlined aria-hidden="true" /> AI 模型
         </h2>
         {!llms.some((c) => c.managed) && (
           <Button
             icon={<PlusOutlined aria-hidden="true" />}
             onClick={() => open(null)}
           >
-            添加 LLM 供应商
+            添加 AI 模型
           </Button>
         )}
       </div>
@@ -321,7 +321,7 @@ export function LLMConnections() {
       <DataState
         query={q}
         empty={!llms.length}
-        emptyText="配置智能生图使用的 LLM 供应商"
+        emptyText="配置创作使用的 AI 模型"
       >
         <div className="connection-list">
           {llms.map((c) => (
@@ -391,7 +391,7 @@ export function LLMConnections() {
                       disabled={!!validating}
                       onClick={() =>
                         actions.confirm(
-                          "清除 LLM 密钥？",
+                          "清除 AI 模型密钥？",
                           "新分析将无法启动，模型能力验证会重置。",
                           () =>
                             call("SaveConnection", {
@@ -408,7 +408,7 @@ export function LLMConnections() {
                   <Button
                     danger
                     disabled={!!validating}
-                    aria-label={`删除 LLM 连接 ${c.name}`}
+                    aria-label={`删除 AI 模型连接 ${c.name}`}
                     icon={<DeleteOutlined aria-hidden="true" />}
                     onClick={() =>
                       actions.confirm(
@@ -458,7 +458,7 @@ export function LLMConnections() {
         />
       )}
       <Modal
-        title={editing ? "编辑 LLM 连接" : "添加 LLM 供应商"}
+        title={editing ? "编辑 AI 模型连接" : "添加 AI 模型"}
         open={editing !== undefined}
         onCancel={close}
         onOk={save}
@@ -481,7 +481,7 @@ export function LLMConnections() {
                 取消查询
               </Button>
             )}
-            <span className="muted">仅查询模型，不调用 LLM</span>
+            <span className="muted">仅查询模型，不调用 AI 模型</span>
           </Space>
           {error && <Alert type="error" showIcon message={error} />}{" "}
           {result && (
@@ -496,7 +496,7 @@ export function LLMConnections() {
                 <UISelect
                   className="full-width"
                   showSearch
-                  aria-label="查询到的 LLM 模型"
+                  aria-label="查询到的 AI 模型模型"
                   options={result.ids.map((id) => ({ value: id, label: id }))}
                   onChange={(id) => form.setFieldValue("model", id)}
                 />
@@ -693,7 +693,7 @@ export function AgentSettings() {
         destroyOnHidden
       >
         <p className="hint">
-          留空表示通用：每次制作都用。填了品类的技能只在智能生图选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。
+          留空表示通用：每次制作都用。填了品类的技能只在创作选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。
         </p>
         <label className="field-label" htmlFor="skill-category">
           品类

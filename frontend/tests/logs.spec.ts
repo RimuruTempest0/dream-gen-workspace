@@ -51,6 +51,7 @@ test.afterAll(async () => {
 
 test("logs display real errors, redact keys, filter, refresh and show details", async () => {
   await queryModels("desktop-log-one");
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   await page.getByRole("link", { name: "日志", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "日志", exact: true }),
@@ -125,6 +126,7 @@ test("logs paginate and filtering returns to the first page", async () => {
 });
 
 test("diagnostic package exports from the logs page", async () => {
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   await page.getByRole("link", { name: "日志", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "导出诊断包", exact: true }),

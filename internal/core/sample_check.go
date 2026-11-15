@@ -88,7 +88,7 @@ func (s *Service) checkSample(id string) {
 		}
 	}
 	s.mu.Unlock()
-	pass, problems, e := false, []string{}, errors.New("没有可用的 LLM")
+	pass, problems, e := false, []string{}, errors.New("没有可用的 AI 模型")
 	if ok && len(files) > 0 {
 		ctx, cancel := context.WithTimeout(s.ctx, sampleCheckTimeout)
 		pass, problems, e = s.askSampleCheck(ctx, c, key, t, files)
@@ -134,7 +134,7 @@ func (s *Service) checkSample(id string) {
 func (s *Service) redrawSampleLocked(t *Task) string {
 	var live Connection
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
-		return "原生图中转站已删除，没有重画"
+		return "原图片服务已删除，没有重画"
 	}
 	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
 	if e != nil {

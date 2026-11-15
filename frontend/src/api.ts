@@ -205,7 +205,7 @@ export const blankDraft: GenerateInput = {
 };
 export const stateNames: Record<string, string> = {
   queued: "等待执行",
-  submitting: "等待中转站",
+  submitting: "等待图片服务",
   running: "生成中",
   downloading: "保存图片",
   succeeded: "已完成",

@@ -33,7 +33,7 @@ func TestDraftRecoversFromDeletedConnection(t *testing.T) {
 	}
 	in.ImageConnectionID = old.ID
 	_, e := s.StartSmartGeneration(in, "deleted-connection")
-	if e == nil || !strings.Contains(e.Error(), "生图中转站已删除") || strings.Contains(e.Error(), "no rows") {
+	if e == nil || !strings.Contains(e.Error(), "图片服务已删除") || strings.Contains(e.Error(), "no rows") {
 		t.Fatal("deleted connection not explained", e)
 	}
 }

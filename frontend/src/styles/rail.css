@@ -1,0 +1,257 @@
+/* 0.7.20 app shell: a narrow icon rail that widens over the page on hover or
+   keyboard focus. The admin tool keeps the fixed sidebar in shell.css. */
+body {
+  background: var(--background);
+  color: var(--text);
+}
+h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 28px;
+  letter-spacing: 0.01em;
+}
+.shell {
+  min-height: 100vh;
+}
+.shell-main {
+  margin-left: 60px;
+  min-width: 0;
+}
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px;
+  overflow: hidden;
+  background: var(--background);
+  border-right: 1px solid var(--border);
+  transition: width 0.2s ease 0.12s;
+}
+/* Open on hover or keyboard focus. After a click the rail stays closed until
+   the pointer leaves, so it never covers the page it just opened. */
+.rail:not(.rail-closed):hover,
+.rail:has(:focus-visible) {
+  width: 216px;
+}
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 6px;
+  margin-bottom: 18px;
+  white-space: nowrap;
+}
+.rail-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.rail-mark circle {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+.rail-mark path {
+  fill: var(--text);
+}
+.rail-wordmark {
+  font: 600 17px/1 var(--serif);
+  letter-spacing: 0.04em;
+}
+.rail nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rail-gap {
+  height: 1px;
+  margin: 10px 8px;
+  background: var(--border);
+}
+.rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.rail-item > .anticon,
+.rail-item > .nav-progress-visual {
+  flex: none;
+  width: 20px;
+  justify-content: center;
+  font-size: 18px;
+}
+.rail-label,
+.rail-wordmark,
+.rail .license-badge,
+.rail .update-badge {
+  transition: color 0.15s ease 0.12s;
+}
+.rail .rail-label,
+.rail .rail-wordmark {
+  color: transparent;
+}
+.rail:not(.rail-closed):hover .rail-label,
+.rail:has(:focus-visible) .rail-label,
+.rail:not(.rail-closed):hover .rail-wordmark,
+.rail:has(:focus-visible) .rail-wordmark {
+  color: inherit;
+}
+.rail .license-badge,
+.rail .update-badge {
+  width: 40px;
+}
+.rail:not(.rail-closed):hover .license-badge,
+.rail:has(:focus-visible) .license-badge,
+.rail:not(.rail-closed):hover .update-badge,
+.rail:has(:focus-visible) .update-badge {
+  width: auto;
+}
+.rail-item:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.rail-item.active {
+  background: var(--soft);
+  color: var(--text);
+}
+.rail-item:focus-visible {
+  outline-offset: -2px;
+}
+/* The unfinished-task count sits on the icon so it shows on the narrow rail. */
+.rail-item .count {
+  position: absolute;
+  left: 24px;
+  top: 3px;
+  margin: 0;
+  min-width: 16px;
+  text-align: center;
+  background: var(--warning);
+  color: var(--background);
+  border-radius: 8px;
+  line-height: 16px;
+}
+.rail-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rail-progress {
+  color: var(--warning);
+  font-size: 12px;
+}
+.rail .license-badge,
+.rail .update-badge {
+  flex: none;
+  gap: 14px;
+  height: 40px;
+  margin: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  background: none;
+  font-size: 12px;
+}
+.rail .license-badge .anticon,
+.rail .update-badge .anticon {
+  flex: none;
+  width: 20px;
+  justify-content: center;
+  font-size: 18px;
+}
+.rail .license-badge:hover,
+.rail .update-badge:hover {
+  background: var(--surface);
+}
+.rail-version {
+  padding: 8px 10px 0;
+  white-space: nowrap;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease 0.12s;
+}
+.rail:not(.rail-closed):hover .rail-version,
+.rail:has(:focus-visible) .rail-version {
+  opacity: 1;
+}
+/* Tabs shared by the four system pages. */
+.system-tabs {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.system-tabs a {
+  padding: 10px 0;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+}
+.system-tabs a:hover {
+  color: var(--text);
+}
+.system-tabs a.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+@media (max-width: 760px) {
+  .system-tabs {
+    gap: 18px;
+    overflow-x: auto;
+  }
+}
+@media (forced-colors: active) {
+  .rail {
+    border-color: CanvasText;
+  }
+}
+/* Status tags: the dark algorithm derives text colours that miss 4.5:1 on the
+   tinted fills, so they use the status tokens directly. */
+.ant-tag.ant-tag-error {
+  color: var(--danger);
+  background: var(--dangerBg);
+}
+.ant-tag.ant-tag-success {
+  color: var(--success);
+  background: var(--successBg);
+}
+.ant-tag.ant-tag-warning {
+  color: var(--warning);
+  background: var(--warningBg);
+}
+.ant-tag.ant-tag-processing {
+  color: var(--text);
+  background: var(--soft);
+}
+.ant-tag {
+  border-color: var(--border);
+}
+/* Empty states are one quiet line; the component library's grey illustration
+   reads as a template. */
+.ant-empty .ant-empty-image {
+  display: none;
+}
+.ant-empty .ant-empty-description {
+  color: var(--muted);
+}
+.ant-empty-normal,
+.ant-empty {
+  margin-block: 20px;
+}
+/* Delete buttons keep the red glyph but not a red frame until hovered. */
+.ant-btn-dangerous.ant-btn-variant-outlined:not(:hover):not(:disabled) {
+  border-color: var(--border);
+}

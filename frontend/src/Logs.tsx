@@ -145,7 +145,7 @@ export function Logs() {
           </Space>
         </div>
         <p className="hint">
-          仅记录阶段和错误摘要，密钥已脱敏，不记录提示词、图片内容或思考原文。从此版本开始记录，历史任务仍可在任务中心查看。
+          仅记录阶段和错误摘要，密钥已脱敏，不记录提示词、图片内容或思考原文。从此版本开始记录，历史任务仍可在生成记录查看。
         </p>
         <div role="status" aria-live="polite" className="hint">
           {q.data ? `共 ${q.data.total} 条符合条件的日志` : "正在读取日志"}

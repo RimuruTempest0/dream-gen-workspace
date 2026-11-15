@@ -7,7 +7,7 @@ package core
 // every concept is a card of visible decisions (scale, material, light,
 // composition, colour, what to avoid) and the configured LLM writes those
 // decisions into the user's prompt. Rewriting generates no image; the user still
-// presses "生成" as usual. Without an LLM the card points are appended as they are.
+// presses "生成" as usual. Without an AI 模型 the card points are appended as they are.
 
 import (
 	"context"
@@ -370,7 +370,7 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 			result.Prompts[i] = conceptFallback(in.Prompt, form, st, single)
 		}
 		s.mu.Lock()
-		_ = s.store.appendLog("info", "image", "", "未配置 LLM，已直接附加概念要点")
+		_ = s.store.appendLog("info", "image", "", "未配置 AI 模型，已直接附加概念要点")
 		s.mu.Unlock()
 		return result, nil
 	}

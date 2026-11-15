@@ -246,7 +246,7 @@ func (r *responseReader) Read(b []byte) (int, error) {
 func networkProblem(e error, fallback string) string {
 	var n net.Error
 	if errors.Is(e, context.DeadlineExceeded) || (errors.As(e, &n) && n.Timeout()) {
-		return "等待中转站响应超时"
+		return "等待图片服务响应超时"
 	}
 	if errors.Is(e, context.Canceled) {
 		return "请求被本地中止"

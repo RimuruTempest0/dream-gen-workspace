@@ -52,7 +52,7 @@ func TestGatewayMonitorCountsEachSentImageOnItsGateway(t *testing.T) {
 	if len(m.Days) != 7 || today.Counts[a.ID] != 1 || today.Counts[b.ID] != 3 {
 		t.Fatalf("daily counts: %+v", today)
 	}
-	if m.CallTotal != 4 || !strings.HasPrefix(m.Calls[0].SourceLabel, "生图工作台 · 批次 ") {
+	if m.CallTotal != 4 || !strings.HasPrefix(m.Calls[0].SourceLabel, "专业模式 · 批次 ") {
 		t.Fatalf("calls: %+v", m.Calls)
 	}
 	cut, _ := s.GatewayMonitor(MonitorQuery{Days: 7, Result: "unknown"})
@@ -75,7 +75,7 @@ func TestGatewayMonitorCountsEachSentImageOnItsGateway(t *testing.T) {
 	}
 	data, _ := os.ReadFile(path)
 	text := string(data)
-	if !strings.HasPrefix(text, "\xef\xbb\xbf时间,中转站") || strings.Count(text, "\n") != 5 || !strings.Contains(text, "结果未知") || !strings.Contains(text, ",A,") {
+	if !strings.HasPrefix(text, "\xef\xbb\xbf时间,图片服务") || strings.Count(text, "\n") != 5 || !strings.Contains(text, "结果未知") || !strings.Contains(text, ",A,") {
 		t.Fatalf("csv: %s", text)
 	}
 	if strings.Contains(text, "test-key") {
@@ -122,7 +122,7 @@ func TestLLMMonitorRecordsBridgeRequests(t *testing.T) {
 	defer up.Close()
 	llm := saveLLM(t, s, up.URL+"/v1")
 	s.store.Get("connection", llm.ID, &llm)
-	run := AgentRun{ID: NewID(), Status: "submitted", AuthorizedCount: 12, LLMConnection: llm, Input: AgentInput{Instruction: "圣诞卫衣套图 12 张"}, Events: []AgentEvent{{Now(), "分析参考图"}, {Now(), "等待 LLM 响应"}}}
+	run := AgentRun{ID: NewID(), Status: "submitted", AuthorizedCount: 12, LLMConnection: llm, Input: AgentInput{Instruction: "圣诞卫衣套图 12 张"}, Events: []AgentEvent{{Now(), "分析参考图"}, {Now(), "等待 AI 模型响应"}}}
 	s.store.Put("agent_run", run.ID, run)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -68,7 +68,7 @@ export function ShopRules() {
         <Button onClick={() => open(null)}>新建店铺规则</Button>
       </div>
       <p className="hint">
-        写下你的店铺每套图都要遵守的要求（模特、尺寸上限、刺绣位置、不能出现的元素等），可以附上参考图或文字资料。启用的规则在智能生图时优先于所有技能；已开始的制作沿用当时的规则。
+        写下你的店铺每套图都要遵守的要求（模特、尺寸上限、刺绣位置、不能出现的元素等），可以附上参考图或文字资料。启用的规则在创作时优先于所有技能；已开始的制作沿用当时的规则。
       </p>
       <DataState query={q} empty={!q.data?.length} emptyText="还没有店铺规则">
         <div className="connection-list">

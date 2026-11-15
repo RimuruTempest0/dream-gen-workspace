@@ -94,7 +94,7 @@ func (p *Provider) generateAsync(ctx context.Context, t Task, key string, refs [
 			return job.Data, false, nil
 		}
 		if jobID = job.id(); jobID == "" {
-			return nil, true, errors.New("中转站没有返回任务 ID，结果未知，请核对平台记录")
+			return nil, true, errors.New("图片服务没有返回任务 ID，结果未知，请核对平台记录")
 		}
 		report(func(d *GenerationDiagnostic) { d.UpstreamJobID = jobID })
 	}
@@ -157,7 +157,7 @@ func (p *Provider) pollAsync(ctx context.Context, base, jobID, key string, repor
 			case "failed":
 				msg := strings.TrimSpace(job.Error.Message)
 				if msg == "" {
-					msg = "中转站报告任务失败（" + job.Status + "）"
+					msg = "图片服务报告任务失败（" + job.Status + "）"
 				}
 				return nil, false, errors.New(redact(msg, key))
 			}
@@ -200,7 +200,7 @@ func (p *Provider) pollOnce(ctx context.Context, address, key string) (asyncJob,
 	case resp.StatusCode >= 500 || resp.StatusCode == 408 || resp.StatusCode == 429:
 		return asyncJob{}, fmt.Sprintf("HTTP %d", resp.StatusCode), nil
 	case resp.StatusCode == 404:
-		return asyncJob{}, "", errors.New("中转站找不到这个异步任务（HTTP 404），请核对平台记录")
+		return asyncJob{}, "", errors.New("图片服务找不到这个异步任务（HTTP 404），请核对平台记录")
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return asyncJob{}, "", fmt.Errorf("查询异步任务失败：HTTP %d：%s", resp.StatusCode, apiMessage(b, key))
 	}

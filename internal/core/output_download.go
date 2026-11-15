@@ -88,7 +88,7 @@ func downloadImageAttempt(ctx context.Context, rawURL string, client *http.Clien
 	if resp.StatusCode != http.StatusOK {
 		retryable := resp.StatusCode == 408 || resp.StatusCode == 429 || resp.StatusCode >= 500 && resp.StatusCode <= 599
 		if resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 404 || resp.StatusCode == 410 {
-			return nil, false, fmt.Errorf("图片链接不可访问或已过期（HTTP %d），请核对中转站记录", resp.StatusCode)
+			return nil, false, fmt.Errorf("图片链接不可访问或已过期（HTTP %d），请核对图片服务记录", resp.StatusCode)
 		}
 		return nil, retryable, fmt.Errorf("图片下载服务返回 HTTP %d", resp.StatusCode)
 	}

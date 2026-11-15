@@ -230,11 +230,11 @@ func (s *Service) step(claimed Task) bool {
 			t.Error = fmt.Sprintf("%s（HTTP %d），图片没有生成，一般不计费。%s原始错误：%s", policyRefusedPrefix, t.Diagnostic.HTTPStatus, s.policyRetryLocked(&t), t.Error)
 		case rejected == "balance" && t.Trial:
 			// The trial key's upstream quota is the hard trial limit.
-			t.Error = fmt.Sprintf("试用额度已用完（HTTP %d，中转站返回额度不足），此图未生成也不计费。请在“连接与设置”输入激活码后继续使用。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			t.Error = fmt.Sprintf("试用额度已用完（HTTP %d，图片服务返回额度不足），此图未生成也不计费。请在“系统 → 连接”输入激活码后继续使用。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
 		case rejected == "balance":
-			t.Error = fmt.Sprintf("中转站账户余额不足（HTTP %d），中转站拒绝了请求，未生成也不计费。请到该中转站后台充值后重新生成，API Key 不需要重新输入。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			t.Error = fmt.Sprintf("图片服务账户余额不足（HTTP %d），图片服务拒绝了请求，未生成也不计费。请到该图片服务后台充值后重新生成，API Key 不需要重新输入。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
 		case rejected == "auth":
-			t.Error = fmt.Sprintf("API Key 无效（HTTP %d），生图中转站拒绝了请求，未生成也不计费。请在“连接与设置”重新输入该生图中转站的 API Key 后重新生成。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			t.Error = fmt.Sprintf("API Key 无效（HTTP %d），图片服务拒绝了请求，未生成也不计费。请在“系统 → 连接”重新输入该图片服务的 API Key 后重新生成。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
 			// Re-check the key right away with the free probe.
 			delete(s.probes, t.Connection.ID)
 		}
@@ -249,7 +249,7 @@ func (s *Service) step(claimed Task) bool {
 		if unknown {
 			note := s.autoRegenerateLocked(&t)
 			if relayTimedOut(t.Diagnostic) {
-				t.Error = fmt.Sprintf("中转站等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在中转站生成并已计费。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), note, t.Error)
+				t.Error = fmt.Sprintf("图片服务等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在图片服务生成并已计费。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), note, t.Error)
 			} else {
 				t.Error = "结果未知，这张图可能已生成并计费。" + note + "原始错误：" + t.Error
 			}
@@ -294,9 +294,9 @@ func timeoutLabel(d GenerationDiagnostic) string {
 // relay rejected the API key or the account has no balance. Requests already in
 // flight finish on their own.
 func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
-	reason, fix, logText := "API Key 无效", "重新输入密钥后可恢复生成。", "生图中转站拒绝 API Key"
+	reason, fix, logText := "API Key 无效", "重新输入密钥后可恢复生成。", "图片服务拒绝 API Key"
 	if kind == "balance" {
-		reason, fix, logText = "中转站账户余额不足", "到中转站充值后可恢复生成。", "生图中转站账户余额不足"
+		reason, fix, logText = "图片服务账户余额不足", "到图片服务充值后可恢复生成。", "图片服务账户余额不足"
 	} else if kind == "trial" {
 		reason, fix, logText = "试用额度已用完", "输入激活码后可恢复生成。", "试用额度已用完"
 	}

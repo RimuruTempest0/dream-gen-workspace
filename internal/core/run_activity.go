@@ -199,7 +199,7 @@ func (s *Service) noteAgentEvent(id string, line []byte, clean func(string) stri
 			s.addActivity(id, "agent", fmt.Sprintf("Claude Code %s 已启动 · 模型 %s · %d 个工具", version, clean(event.Model), len(event.Tools)))
 			s.setProgress(id, func(p *RunProgress) { p.AgentVersion = version })
 		case "api_retry":
-			s.addActivity(id, "warn", fmt.Sprintf("Claude Code 正在重试 LLM 请求（第 %d 次）", event.Attempt))
+			s.addActivity(id, "warn", fmt.Sprintf("Claude Code 正在重试 AI 模型请求（第 %d 次）", event.Attempt))
 		}
 	case "assistant":
 		for _, block := range event.Message.Content {
@@ -243,11 +243,11 @@ func (s *Service) noteLLMCall(id string, number int, line string, call LLMCall, 
 	kind, text := "llm", ""
 	switch call.Status {
 	case "completed":
-		text = fmt.Sprintf("LLM 请求 #%d 完成 · %s · 输入 %s · 输出 %s tokens · 首字 %s · 共 %s", number, line, groupDigits(call.InputTokens), groupDigits(call.OutputTokens), spanText(call.FirstByteMS), spanText(total))
+		text = fmt.Sprintf("AI 模型请求 #%d 完成 · %s · 输入 %s · 输出 %s tokens · 首字 %s · 共 %s", number, line, groupDigits(call.InputTokens), groupDigits(call.OutputTokens), spanText(call.FirstByteMS), spanText(total))
 	case "dropped":
-		kind, text = "warn", fmt.Sprintf("LLM 请求 #%d 连接中断 · %s · 已等 %s", number, line, spanText(total))
+		kind, text = "warn", fmt.Sprintf("AI 模型请求 #%d 连接中断 · %s · 已等 %s", number, line, spanText(total))
 	default:
-		kind, text = "warn", fmt.Sprintf("LLM 请求 #%d 没有成功 · %s · 已等 %s", number, line, spanText(total))
+		kind, text = "warn", fmt.Sprintf("AI 模型请求 #%d 没有成功 · %s · 已等 %s", number, line, spanText(total))
 		if call.HTTPStatus != 0 {
 			text += fmt.Sprintf(" · HTTP %d", call.HTTPStatus)
 		}

@@ -292,7 +292,7 @@
 .run-step-note {
   margin: -8px 0 16px 28px;
   font-size: 12px;
-  color: var(--warning-text, #8a5a00);
+  color: var(--warning);
 }
 .run-activity {
   margin: 0 0 16px;
@@ -306,8 +306,9 @@
 .run-activity-body {
   border-radius: 10px;
   overflow: hidden;
-  background: #111827;
-  color: #e5e7eb;
+  background: var(--ink);
+  color: var(--inkText);
+  border: 1px solid var(--inkLine);
   font-family: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
   font-size: 12px;
 }
@@ -316,8 +317,8 @@
   flex-wrap: wrap;
   gap: 4px 16px;
   padding: 10px 14px;
-  border-bottom: 1px solid #374151;
-  color: #d1d5db;
+  border-bottom: 1px solid var(--inkLine);
+  color: var(--inkMuted);
 }
 .run-activity-log {
   max-height: 260px;

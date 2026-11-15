@@ -57,10 +57,10 @@ export function Tasks() {
   return (
     <>
       <Header
-        title="任务中心"
-        sub="查看持久化队列、生成参数和结果。离开页面不会中断任务。"
+        title="生成记录"
+        sub="每一张图的生成过程、参数和结果。离开页面不会中断生成。"
       />
-      <section className="panel">
+      <section className="panel records-panel">
         <div className="panel-heading">
           <h2>生成任务</h2>
           <UISelect
@@ -97,7 +97,7 @@ export function Tasks() {
             columns={[
               {
                 title: "图片",
-                width: 76,
+                width: 96,
                 render: (_, t) =>
                   t.assetIDs[0] ? (
                     <div className="task-thumb">

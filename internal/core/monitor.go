@@ -175,9 +175,9 @@ func (s *Service) gatewayCallsLocked(q MonitorQuery, now time.Time) ([]GatewayCa
 		}
 		if t.AgentRunID != "" {
 			c.Source = "smart"
-			c.SourceLabel = "智能生图"
+			c.SourceLabel = "创作"
 			if n := slots[t.AgentRunID+"/"+t.PlanItemID]; n > 0 {
-				c.SourceLabel = fmt.Sprintf("智能生图 · 第 %d 张", n)
+				c.SourceLabel = fmt.Sprintf("创作 · 第 %d 张", n)
 			}
 		} else {
 			c.Source = "workbench"
@@ -185,7 +185,7 @@ func (s *Service) gatewayCallsLocked(q MonitorQuery, now time.Time) ([]GatewayCa
 			if len(batch) > 6 {
 				batch = batch[:6]
 			}
-			c.SourceLabel = "生图工作台 · 批次 " + batch
+			c.SourceLabel = "专业模式 · 批次 " + batch
 		}
 		if (q.ConnectionID != "" && c.ConnectionID != q.ConnectionID) || (q.Source != "" && c.Source != q.Source) {
 			continue
@@ -381,7 +381,7 @@ func (s *Service) ExportGatewayCalls(q MonitorQuery, path string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	rows := [][]string{{"时间", "中转站", "来源", "模型", "结果", "HTTP 状态", "生成秒数", "下载秒数", "中转站请求 ID", "转入自", "自动重新生成", "任务 ID"}}
+	rows := [][]string{{"时间", "图片服务", "来源", "模型", "结果", "HTTP 状态", "生成秒数", "下载秒数", "图片服务请求 ID", "转入自", "自动重新生成", "任务 ID"}}
 	for _, c := range calls {
 		if q.Result != "" && c.Result != q.Result {
 			continue

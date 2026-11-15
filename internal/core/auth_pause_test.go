@@ -112,7 +112,7 @@ func TestRelayTimeoutIsExplained(t *testing.T) {
 	if len(tasks) != 2 || tasks[0].Status != "queued" || tasks[0].AutoRetryOf != tasks[1].ID {
 		t.Fatal("unknown image not re-generated automatically", tasks)
 	}
-	if tasks[1].Status != "unknown" || !strings.HasPrefix(tasks[1].Error, "中转站等待约") || !strings.Contains(tasks[1].Error, "HTTP 524") || !strings.Contains(tasks[1].Error, "可能仍在中转站生成并已计费") {
+	if tasks[1].Status != "unknown" || !strings.HasPrefix(tasks[1].Error, "图片服务等待约") || !strings.Contains(tasks[1].Error, "HTTP 524") || !strings.Contains(tasks[1].Error, "可能仍在图片服务生成并已计费") {
 		t.Fatal("relay timeout not explained", tasks[1].Status, tasks[1].Error)
 	}
 	if !relayTimedOut(GenerationDiagnostic{ElapsedMS: 116_000, NetworkError: "unexpected EOF"}) || relayTimedOut(GenerationDiagnostic{ElapsedMS: 5_000, NetworkError: "unexpected EOF"}) {

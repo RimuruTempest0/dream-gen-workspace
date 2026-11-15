@@ -209,7 +209,7 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 			b.service.noteLLMCall(b.runID, number, connection.Name, *call, started)
 		}
 	}
-	b.service.updateAgent(b.runID, "等待 LLM 响应", func(run *AgentRun) error {
+	b.service.updateAgent(b.runID, "等待 AI 模型响应", func(run *AgentRun) error {
 		// Asking the model again after reading the page means it is now analyzing.
 		if p := progressOf(run); call != nil && (p.Step == stepProduct || p.Step == stepImages) {
 			p.enter(stepReferences)
@@ -492,7 +492,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 			return nil, errors.New("只能读取本次需求的参考图")
 		}
 		if !r.LLMConnection.Capabilities.Vision {
-			return nil, errors.New("当前 LLM 未通过图片验证")
+			return nil, errors.New("当前 AI 模型未通过图片验证")
 		}
 		uri, e := b.service.ReadAsset(v.AssetID, false)
 		if e != nil {
@@ -547,7 +547,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 				}
 				if strings.HasPrefix(http.DetectContentType(data), "image/") {
 					if !r.LLMConnection.Capabilities.Vision {
-						return nil, errors.New("当前 LLM 未通过图片能力验证")
+						return nil, errors.New("当前 AI 模型未通过图片能力验证")
 					}
 					block, e := visionImageBlock(data)
 					if e != nil {
@@ -602,7 +602,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		return b.answerQuestions(r, args)
 	case "crop_reference":
 		if !r.LLMConnection.Capabilities.Vision {
-			return nil, errors.New("当前 LLM 未通过图片验证")
+			return nil, errors.New("当前 AI 模型未通过图片验证")
 		}
 		return b.cropReference(r, args)
 	case "save_suite_plan":
@@ -734,7 +734,7 @@ func (s *Service) readSkillAttachment(path string) ([]byte, error) {
 // noteLLMReconnect records a cut LLM stream. Claude Code retries it itself, so it
 // is shown as a note; the run fails only if the analysis then gives up.
 func (s *Service) noteLLMReconnect(runID, message string) {
-	s.updateAgent(runID, "LLM 连接中断，自动重试", func(run *AgentRun) error {
+	s.updateAgent(runID, "AI 模型连接中断，自动重试", func(run *AgentRun) error {
 		run.LLMReconnects++
 		run.LLMReconnectError = message
 		return nil

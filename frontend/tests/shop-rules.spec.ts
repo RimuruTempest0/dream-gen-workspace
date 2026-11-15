@@ -29,7 +29,17 @@ test.afterAll(async () => {
   await browser?.close();
 });
 
-test("店铺规则：新建、附件、启停；技能按品类归类，智能生图可选品类", async () => {
+// 创作's entry keeps the link, references and settings under 更多选项.
+async function openMore() {
+  const more = page.getByRole("button", { name: "更多选项", exact: true });
+  if (
+    (await more.count()) &&
+    (await more.getAttribute("aria-expanded")) === "false"
+  )
+    await more.click();
+}
+
+test("店铺规则：新建、附件、启停；技能按品类归类，创作可选品类", async () => {
   await page.goto("http://wails.localhost/#/settings");
   const panel = page.locator("#shop-rules");
   await expect(panel.getByText("还没有店铺规则")).toBeVisible();
@@ -69,7 +79,8 @@ test("店铺规则：新建、附件、启停；技能按品类归类，智能�
   await cat.getByLabel("品类").fill("马克杯");
   await cat.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText("品类：马克杯")).toBeVisible();
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
+  await openMore();
   await page.getByText("更多设置", { exact: true }).click();
   await expect(page.getByLabel("商品品类（可选）")).toBeVisible();
   await go("SetSkillCategory", "image-prompting", "");

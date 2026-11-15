@@ -82,7 +82,7 @@ test("客户版：授权到期后停止生成，导入续费文件后恢复，�
       projectID: "",
     });
   await expect(submit()).rejects.toThrow(/到期/);
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   await expect(page.getByText("软件授权已到期")).toBeVisible();
 
   // Renewed for three more days: generation works again and the warning shows.
@@ -123,9 +123,9 @@ test("客户版：试用 2 张、用完拦截、激活后切换到专属线路",
   await expect(panel.getByText("试用中")).toBeVisible();
   // Customers see lines, never addresses or keys, and cannot add or edit them.
   await expect(page.getByRole("button", { name: "添加连接" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "添加 LLM 供应商" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "添加 AI 模型" })).toHaveCount(
+    0,
+  );
   await expect(
     page.locator(".connection-row").filter({ hasText: "图片线路 1" }),
   ).toBeVisible();
@@ -167,7 +167,7 @@ test("客户版：试用 2 张、用完拦截、激活后切换到专属线路",
   expect(keysUsed).toEqual(["line-image-1", "line-image-1"]);
   await expect(badge).toHaveText(/试用剩余 0 \/ 2 张/, { timeout: 15000 });
   await expect(submit(1)).rejects.toThrow(/试用额度已用完/);
-  await page.getByRole("link", { name: "生图工作台" }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   await expect(page.getByText("试用额度已用完", { exact: true })).toBeVisible();
 
   await page
@@ -198,7 +198,7 @@ test("客户版：试用 2 张、用完拦截、激活后切换到专属线路",
   const status = await go<{ mode: string }>("LicenseStatus");
   expect(status.mode).toBe("active");
 
-  await page.getByRole("link", { name: "连接与设置" }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   // Built-in skills are open: customers see their text, edit them and turn
   // them off (P004 included; turned off, its fixed rules are not added).
   const skills = await go<{ source: string; content: string }[]>("ListSkills");

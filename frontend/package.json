@@ -1,7 +1,7 @@
 {
   "name": "image-workbench-ui",
   "private": true,
-  "version": "0.7.19",
+  "version": "0.7.25",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

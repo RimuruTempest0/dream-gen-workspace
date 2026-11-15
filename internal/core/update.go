@@ -77,7 +77,7 @@ func (s *Service) updateSupportedLocked() bool {
 // updateBlockedLocked explains why no update is offered with this licence, or "".
 func (s *Service) updateBlockedLocked() string {
 	if s.lic.mode == "invalid" || s.lic.mode == "mismatch" {
-		return "软件授权无效，不能在线更新。请先在“连接与设置 → 授权”导入授权文件。"
+		return "软件授权无效，不能在线更新。请先在“系统 → 连接 → 授权”导入授权文件。"
 	}
 	return ""
 }
@@ -317,7 +317,7 @@ func (s *Service) StartUpdate() error {
 		return errors.New("新版本还没有下载完成")
 	}
 	if e := s.agentBusy(); e != nil {
-		return errors.New("智能生图正在进行，请等它完成后再更新")
+		return errors.New("创作正在进行，请等它完成后再更新")
 	}
 	counts, e := s.store.taskStatusCounts(false)
 	if e != nil {

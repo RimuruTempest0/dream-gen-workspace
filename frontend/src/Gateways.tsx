@@ -139,7 +139,7 @@ export function GatewayRow({
               size="small"
               checked={backupIndex >= 0}
               disabled={actions.busy}
-              aria-label={`将 ${connection.name} 设为备用中转站`}
+              aria-label={`将 ${connection.name} 设为备用图片服务`}
               onChange={(on) =>
                 save({
                   backupIDs: on
@@ -223,13 +223,13 @@ export function GatewayFailover() {
       </div>
       {!configured && (
         <p className="hint">
-          在上方生图中转站中选择一个“主用”，并把其他中转站设为“备用”后，以下功能生效。未设置时生图行为与之前相同。
+          在上方图片服务中选择一个“主用”，并把其他图片服务设为“备用”后，以下功能生效。未设置时生图行为与之前相同。
         </p>
       )}
       <p className="hint">
         生图期间每 3
-        分钟免费检查一次主用和备用中转站（只读取模型列表，不生成图片、不计费），并根据最近的生成耗时和超时判断是否变慢。只有模型列表中包含完全相同模型
-        ID 的中转站才会被用作备用。
+        分钟免费检查一次主用和备用图片服务（只读取模型列表，不生成图片、不计费），并根据最近的生成耗时和超时判断是否变慢。只有模型列表中包含完全相同模型
+        ID 的图片服务才会被用作备用。
       </p>
       <div className="gateway-switch">
         <Switch
@@ -240,16 +240,16 @@ export function GatewayFailover() {
         />
         <div>
           <strong id="auto-reroute-label">
-            自动把未发送的图片转到备用中转站
+            自动把未发送的图片转到备用图片服务
           </strong>
           <p className="hint">
-            主用中转站变慢或不可用时，还没发送的图片改用健康的备用中转站。这些图片从未发送过，不会额外计费。
+            主用图片服务变慢或不可用时，还没发送的图片改用健康的备用图片服务。这些图片从未发送过，不会额外计费。
           </p>
         </div>
       </div>
       <p className="hint">
         结果未知（例如 HTTP
-        524）的图片会自动重新生成一次，优先改用健康、模型完全相同的备用中转站；原请求可能已计费，这些图片可能产生两次费用。已收到但没保存成功的图片会自动补下载，不会重新生图。
+        524）的图片会自动重新生成一次，优先改用健康、模型完全相同的备用图片服务；原请求可能已计费，这些图片可能产生两次费用。已收到但没保存成功的图片会自动补下载，不会重新生图。
       </p>
     </section>
   );

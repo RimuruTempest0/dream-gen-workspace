@@ -1,9 +1,12 @@
 /* Split by area; the order below is the cascade order and must be kept. */
 @import "./styles/agent.css";
 @import "./styles/shell.css";
+@import "./styles/rail.css";
 @import "./styles/page.css";
 @import "./styles/workbench.css";
 @import "./styles/concepts.css";
+@import "./styles/create.css";
+@import "./styles/works.css";
 @import "./styles/forms-responsive.css";
 @import "./styles/monitor-license.css";
 @import "./styles/logs-admin.css";

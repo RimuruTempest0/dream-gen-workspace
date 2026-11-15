@@ -388,7 +388,7 @@ func TestCutLLMStreamIsNamedWhenTheAnalysisFails(t *testing.T) {
 	}
 	s.waitAgent()
 	r, _ := s.GetAgentRun(id)
-	if r.Status != "failed" || !strings.Contains(r.Error, "Claude Code 退出") || !strings.Contains(r.Error, "LLM 连接中断 1 次") || !strings.Contains(r.Error, "10808") {
+	if r.Status != "failed" || !strings.Contains(r.Error, "Claude Code 退出") || !strings.Contains(r.Error, "AI 模型连接中断 1 次") || !strings.Contains(r.Error, "10808") {
 		t.Fatalf("failure must name the cut connection: %s %q", r.Status, r.Error)
 	}
 }

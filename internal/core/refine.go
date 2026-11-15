@@ -45,7 +45,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 		return "", errors.New("找不到这张图片的任务")
 	}
 	if source.AgentRunID == "" || source.PlanItemID == "" {
-		return "", errors.New("只能优化智能生图的结果")
+		return "", errors.New("只能优化创作的结果")
 	}
 	if source.Status != "succeeded" {
 		return "", errors.New("只能优化已完成的图片")
@@ -75,7 +75,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 		return "", errors.New("原生图连接已删除，请重新配置后再优化")
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择生图中转站")
+		return "", errors.New("请选择图片服务")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e

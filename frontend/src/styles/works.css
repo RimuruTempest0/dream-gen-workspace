@@ -1,0 +1,143 @@
+/* 作品与素材 (0.7.23): images hang on the wall. No outer panel, no card
+   borders; the caption sits under each image and the actions appear over it
+   on hover or keyboard focus. */
+.works-panel,
+.records-panel {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.works-panel > .panel-heading h2,
+.records-panel > .panel-heading h2 {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 14px;
+}
+.works-panel .asset-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 28px 18px;
+}
+.works-panel .asset-card {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.works-panel .asset-card .image-frame {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.works-panel .asset-card img {
+  transition: transform 0.2s ease;
+}
+.works-panel .image-button:hover {
+  filter: none;
+}
+.works-panel .image-button:hover img {
+  transform: scale(1.03);
+}
+.works-panel .asset-card-copy {
+  padding: 10px 2px 0;
+}
+.works-panel .asset-card-copy strong {
+  font-weight: 400;
+  font-size: 13px;
+}
+.works-panel .asset-card-copy small {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+.works-panel .asset-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.works-panel .asset-card:hover .asset-card-actions,
+.works-panel .asset-card:focus-within .asset-card-actions {
+  opacity: 1;
+}
+.works-panel .asset-card-actions .ant-btn {
+  border-color: transparent;
+  background: rgb(22 19 15 / 82%);
+  color: var(--text);
+  backdrop-filter: blur(6px);
+}
+.works-panel .asset-card-actions .ant-btn:hover {
+  background: var(--background);
+  border-color: var(--muted);
+}
+/* While picking, the whole image is the control. */
+.works-panel .asset-card:has(.asset-pick) .asset-card-actions {
+  display: none;
+}
+.works-panel .asset-card-picked {
+  box-shadow: none;
+}
+.works-panel .asset-card-picked .image-frame {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.works-panel .asset-card-picked .asset-pick-box {
+  color: var(--background);
+}
+.works-panel .asset-batch-bar {
+  position: sticky;
+  top: 12px;
+  z-index: 4;
+  margin: 0 0 20px;
+  background: var(--soft);
+}
+@media (hover: none) {
+  .works-panel .asset-card-actions {
+    opacity: 1;
+  }
+}
+/* 生成记录: a plain ledger. Rows are separated by hairlines only. */
+.records-panel .ant-table,
+.records-panel .ant-table-thead > tr > th,
+.records-panel .ant-table-tbody > tr > td {
+  background: transparent;
+}
+.records-panel .ant-table-thead > tr > th {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 13px;
+  border-bottom-color: var(--border);
+}
+.records-panel .ant-table-thead > tr > th::before {
+  display: none;
+}
+.records-panel .ant-table-tbody > tr > td {
+  border-bottom-color: var(--border);
+  padding-block: 14px;
+}
+.records-panel .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: var(--surface);
+}
+.records-panel .task-thumb,
+.records-panel .task-thumb .image-frame {
+  width: 64px;
+  height: 64px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.records-panel .task-thumb-empty {
+  width: 64px;
+  height: 64px;
+  border-radius: 4px;
+  background: var(--surface);
+}
+.records-panel .ant-table-cell .ant-btn-sm {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  padding-inline: 8px;
+}
+.records-panel .ant-table-cell .ant-btn-sm:not(:disabled):hover {
+  background: var(--soft);
+  border-color: transparent;
+}

@@ -48,7 +48,7 @@ func (s *Service) waitAgent() {
 }
 func (s *Service) agentBusy() error {
 	if s.agentRunID != "" {
-		return errors.New("智能生图正在分析，请先完成或取消")
+		return errors.New("创作需求正在分析，请先完成或取消")
 	}
 	return nil
 }
@@ -132,7 +132,7 @@ func (s *Service) SetAgentDraft(v AgentInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(v.Instruction) > 32000 || len(v.ProductText) > 64000 || len(v.References) > 20 {
-		return errors.New("智能生图草稿过长")
+		return errors.New("创作草稿过长")
 	}
 	return s.store.Put("draft", "agent", v)
 }
@@ -151,26 +151,26 @@ func (s *Service) validateAgentInput(in AgentInput) (Connection, []SkillRecord, 
 	}
 	var llm, imageConn Connection
 	if e := s.store.Get("connection", in.LLMConnectionID, &llm); e != nil {
-		return llm, nil, missing(e, "所选 LLM 供应商已删除或未选择，请在“更多设置”中重新选择")
+		return llm, nil, missing(e, "所选 AI 模型已删除或未选择，请在“更多设置”中重新选择")
 	}
 	llm = normalizeConnection(llm)
 	if llm.Kind != "llm" || llm.Model == "" {
-		return llm, nil, errors.New("请选择已设置模型的 LLM 供应商")
+		return llm, nil, errors.New("请选择已设置模型的 AI 模型")
 	}
 	if !llm.Capabilities.Text || !llm.Capabilities.Tools || !llm.Capabilities.Streaming || llm.Capabilities.Model != llm.Model {
-		return llm, nil, errors.New("请先在设置中验证 LLM 的文本、工具调用和流式能力")
+		return llm, nil, errors.New("请先在设置中验证 AI 模型的文本、工具调用和流式能力")
 	}
 	if (len(in.References) > 0 || in.ProductURL != "") && !llm.Capabilities.Vision {
-		return llm, nil, errors.New("此需求需要图片分析，请先选择通过图片能力验证的 LLM")
+		return llm, nil, errors.New("此需求需要图片分析，请先选择通过图片能力验证的 AI 模型")
 	}
 	if _, e := s.key(llm.Credential); e != nil {
 		return llm, nil, e
 	}
 	if e := s.store.Get("connection", in.ImageConnectionID, &imageConn); e != nil {
-		return llm, nil, missing(e, "所选生图中转站已删除或未选择，请在“更多设置”中重新选择")
+		return llm, nil, missing(e, "所选图片服务已删除或未选择，请在“更多设置”中重新选择")
 	}
 	if normalizeConnection(imageConn).Kind != "image" {
-		return llm, nil, errors.New("请选择生图中转站")
+		return llm, nil, errors.New("请选择图片服务")
 	}
 	if in.ProjectID != "" {
 		var p Project
@@ -209,7 +209,7 @@ func (s *Service) validateAgentInput(in AgentInput) (Connection, []SkillRecord, 
 			switch strings.ToLower(filepath.Ext(a.Name)) {
 			case ".png", ".jpg", ".jpeg", ".webp":
 				if !llm.Capabilities.Vision {
-					return llm, nil, errors.New("选定的 Skill 包含图片，请先验证 LLM 图片能力")
+					return llm, nil, errors.New("选定的 Skill 包含图片，请先验证 AI 模型图片能力")
 				}
 			}
 		}
@@ -262,7 +262,7 @@ func (s *Service) ContinueAgentAnalysis(in AgentContinuation) error {
 		return errors.New("请使用继续制作接口，保留本次授权参数")
 	}
 	if r.BatchID != "" {
-		return errors.New("此方案已提交生图，请创建新的智能生图需求")
+		return errors.New("此方案已提交生图，请创建新的创作需求")
 	}
 	if len(in.Instruction) > 32000 || len(in.ProductText) > 64000 || len(in.References) > 20 {
 		return errors.New("补充资料过长或图片过多")
@@ -346,7 +346,7 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 				current.Status = "failed"
 				current.Error = redact(e.Error(), "")
 				if current.LLMReconnectError != "" {
-					current.Error += fmt.Sprintf("（LLM 连接中断 %d 次，最近一次：%s）", current.LLMReconnects, current.LLMReconnectError)
+					current.Error += fmt.Sprintf("（AI 模型连接中断 %d 次，最近一次：%s）", current.LLMReconnects, current.LLMReconnectError)
 				}
 				if wasCanceled {
 					current.Status = "interrupted"
@@ -600,7 +600,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 		return "", e
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择生图中转站")
+		return "", errors.New("请选择图片服务")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e

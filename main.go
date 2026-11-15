@@ -99,7 +99,7 @@ func launch(root, data string) {
 	s.SetProductBrowser(filepath.Join(root, productBrowserExe), runtimePath)
 	// A customer package carries customer.dat beside the program; none = developer mode.
 	s.LoadLicense(root)
-	e = wails.Run(&options.App{Title: "生图工作台", Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: &options.RGBA{R: 245, G: 246, B: 248, A: 1}, AssetServer: &assetserver.Options{Assets: assets},
+	e = wails.Run(&options.App{Title: "生图工作台", Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: &options.RGBA{R: 22, G: 19, B: 15, A: 1}, AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup: func(ctx context.Context) {
 			if needDirectory {
 				path, err := runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: "应用目录不可写，请选择本地数据目录"})

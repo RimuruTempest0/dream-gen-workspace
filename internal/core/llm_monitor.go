@@ -82,7 +82,11 @@ func (c *LLMCall) readBodyUsage(raw []byte) {
 
 // waitingStages are set by the bridge itself; the stage worth showing is the
 // last step the Agent reported before the request.
-var waitingStages = map[string]bool{"等待 LLM 响应": true, "LLM 连接中断，自动重试": true, "LLM 流中断": true}
+// The second row is the wording saved by versions before 0.7.24.
+var waitingStages = map[string]bool{
+	"等待 AI 模型响应": true, "AI 模型连接中断，自动重试": true, "AI 模型流中断": true,
+	"等待 LLM 响应": true, "LLM 连接中断，自动重试": true, "LLM 流中断": true,
+}
 
 // newLLMCallLocked starts a record for a request about to be sent.
 func (s *Service) newLLMCallLocked(kind, runID string, c Connection, body []byte) LLMCall {
@@ -484,12 +488,12 @@ func (s *Service) ExportLLMCalls(q MonitorQuery, path string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	rows := [][]string{{"时间", "类型", "需求", "阶段", "LLM 供应商", "模型", "结果", "HTTP 状态", "首次响应秒数", "总秒数", "输入 tokens", "输出 tokens", "供应商请求 ID", "错误"}}
+	rows := [][]string{{"时间", "类型", "需求", "阶段", "AI 模型", "模型", "结果", "HTTP 状态", "首次响应秒数", "总秒数", "输入 tokens", "输出 tokens", "供应商请求 ID", "错误"}}
 	for _, c := range calls {
 		if q.Result != "" && c.Status != q.Result {
 			continue
 		}
-		kind := "智能生图分析"
+		kind := "创作分析"
 		switch c.Kind {
 		case "test":
 			kind = "能力验证"

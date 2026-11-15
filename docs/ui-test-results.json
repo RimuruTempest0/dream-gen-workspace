@@ -5,7 +5,8 @@
       "D:\\image_workplace\\frontend\\node_modules\\@playwright\\test\\cli.js",
       "test",
       "--grep-invert",
-      "open data location really shows Explorer folder"
+      "Explorer",
+      "--max-failures=0"
     ],
     "configFile": "D:\\image_workplace\\frontend\\playwright.config.ts",
     "rootDir": "D:/image_workplace/frontend/tests",
@@ -17,7 +18,7 @@
     "globalTimeout": 0,
     "grep": {},
     "grepInvert": null,
-    "maxFailures": 1,
+    "maxFailures": 0,
     "metadata": {
       "actualWorkers": 1
     },
@@ -112,12 +113,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 3030,
+                  "duration": 3221,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T01:59:41.026Z",
+                  "startTime": "2026-11-13T08:46:48.472Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -127,7 +128,7 @@
           ],
           "id": "00574607846d83245288-6b01099d5a7b4d237da0",
           "file": "agent.spec.ts",
-          "line": 572,
+          "line": 582,
           "column": 1
         },
         {
@@ -146,12 +147,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 223,
+                  "duration": 208,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T01:59:44.257Z",
+                  "startTime": "2026-11-13T08:46:51.857Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -161,7 +162,7 @@
           ],
           "id": "00574607846d83245288-f11098fa54fe336357d6",
           "file": "agent.spec.ts",
-          "line": 633,
+          "line": 643,
           "column": 1
         },
         {
@@ -180,12 +181,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 13284,
+                  "duration": 12943,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T01:59:44.492Z",
+                  "startTime": "2026-11-13T08:46:52.075Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -195,7 +196,7 @@
           ],
           "id": "00574607846d83245288-e2aa0bcf8b8babecff00",
           "file": "agent.spec.ts",
-          "line": 658,
+          "line": 669,
           "column": 1
         },
         {
@@ -214,12 +215,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1308,
+                  "duration": 1272,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T01:59:57.789Z",
+                  "startTime": "2026-11-13T08:47:05.028Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -229,7 +230,7 @@
           ],
           "id": "00574607846d83245288-604f4252c303de7410ae",
           "file": "agent.spec.ts",
-          "line": 915,
+          "line": 930,
           "column": 1
         },
         {
@@ -248,12 +249,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 559,
+                  "duration": 569,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T01:59:59.109Z",
+                  "startTime": "2026-11-13T08:47:06.311Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -263,7 +264,7 @@
           ],
           "id": "00574607846d83245288-c9a0c7c53e8658108d65",
           "file": "agent.spec.ts",
-          "line": 953,
+          "line": 968,
           "column": 1
         },
         {
@@ -282,12 +283,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 12729,
+                  "duration": 13141,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T01:59:59.677Z",
+                  "startTime": "2026-11-13T08:47:06.894Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -297,7 +298,7 @@
           ],
           "id": "00574607846d83245288-688c7944a000ba4210a0",
           "file": "agent.spec.ts",
-          "line": 988,
+          "line": 1003,
           "column": 1
         },
         {
@@ -316,12 +317,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6020,
+                  "duration": 5994,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:12.417Z",
+                  "startTime": "2026-11-13T08:47:20.045Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -331,7 +332,7 @@
           ],
           "id": "00574607846d83245288-7c005d9a6b108c2db0a7",
           "file": "agent.spec.ts",
-          "line": 1073,
+          "line": 1088,
           "column": 1
         },
         {
@@ -350,12 +351,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 5243,
+                  "duration": 5189,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:18.452Z",
+                  "startTime": "2026-11-13T08:47:26.048Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -365,7 +366,7 @@
           ],
           "id": "00574607846d83245288-65f79d31ad49e14666f3",
           "file": "agent.spec.ts",
-          "line": 1107,
+          "line": 1122,
           "column": 1
         },
         {
@@ -384,12 +385,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4139,
+                  "duration": 4148,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:23.708Z",
+                  "startTime": "2026-11-13T08:47:31.245Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -399,7 +400,7 @@
           ],
           "id": "00574607846d83245288-1608c5846123b76e0876",
           "file": "agent.spec.ts",
-          "line": 1142,
+          "line": 1161,
           "column": 1
         },
         {
@@ -418,12 +419,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 18610,
+                  "duration": 18823,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:27.856Z",
+                  "startTime": "2026-11-13T08:47:35.402Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -433,7 +434,7 @@
           ],
           "id": "00574607846d83245288-c52a0bc2f12a6db032e6",
           "file": "agent.spec.ts",
-          "line": 1175,
+          "line": 1194,
           "column": 1
         },
         {
@@ -452,12 +453,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2545,
+                  "duration": 2478,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:46.476Z",
+                  "startTime": "2026-11-13T08:47:54.234Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -467,7 +468,7 @@
           ],
           "id": "00574607846d83245288-7a98c20addd19922042f",
           "file": "agent.spec.ts",
-          "line": 1278,
+          "line": 1297,
           "column": 1
         },
         {
@@ -486,12 +487,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1386,
+                  "duration": 1305,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:49.030Z",
+                  "startTime": "2026-11-13T08:47:56.724Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -501,7 +502,7 @@
           ],
           "id": "00574607846d83245288-da9202abc6580ac6014a",
           "file": "agent.spec.ts",
-          "line": 1394,
+          "line": 1416,
           "column": 1
         },
         {
@@ -520,12 +521,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1583,
+                  "duration": 1591,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:50.424Z",
+                  "startTime": "2026-11-13T08:47:58.038Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -535,7 +536,7 @@
           ],
           "id": "00574607846d83245288-7c75d8071e27f1cdcdc3",
           "file": "agent.spec.ts",
-          "line": 1413,
+          "line": 1435,
           "column": 1
         },
         {
@@ -554,12 +555,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1576,
+                  "duration": 1447,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:52.016Z",
+                  "startTime": "2026-11-13T08:47:59.637Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -569,7 +570,7 @@
           ],
           "id": "00574607846d83245288-ca1ba4d783613f3a728c",
           "file": "agent.spec.ts",
-          "line": 1439,
+          "line": 1461,
           "column": 1
         }
       ]
@@ -605,12 +606,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6399,
+                  "duration": 6345,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:00:54.015Z",
+                  "startTime": "2026-11-13T08:48:01.593Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -657,12 +658,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6509,
+                  "duration": 6382,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:00.503Z",
+                  "startTime": "2026-11-13T08:48:08.012Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -708,12 +709,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2457,
+                  "duration": 1727,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:07.214Z",
+                  "startTime": "2026-11-13T08:48:14.678Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -742,12 +743,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 362,
+                  "duration": 308,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:09.788Z",
+                  "startTime": "2026-11-13T08:48:16.527Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -757,7 +758,7 @@
           ],
           "id": "ee800b8f709b91acd6c6-ddee4509a05371fa21a6",
           "file": "logs.spec.ts",
-          "line": 113,
+          "line": 114,
           "column": 1
         },
         {
@@ -776,12 +777,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 56,
+                  "duration": 159,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:10.158Z",
+                  "startTime": "2026-11-13T08:48:16.844Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -791,7 +792,7 @@
           ],
           "id": "ee800b8f709b91acd6c6-e09f30be6caccb7bd9cc",
           "file": "logs.spec.ts",
-          "line": 127,
+          "line": 128,
           "column": 1
         }
       ]
@@ -803,7 +804,7 @@
       "line": 0,
       "specs": [
         {
-          "title": "店铺规则：新建、附件、启停；技能按品类归类，智能生图可选品类",
+          "title": "店铺规则：新建、附件、启停；技能按品类归类，创作可选品类",
           "ok": true,
           "tags": [],
           "tests": [
@@ -818,12 +819,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2883,
+                  "duration": 2735,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:10.309Z",
+                  "startTime": "2026-11-13T08:48:17.102Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -831,9 +832,9 @@
               "status": "expected"
             }
           ],
-          "id": "c6fe8a00b24da9b743b4-657b3456beba8cede9c4",
+          "id": "c6fe8a00b24da9b743b4-38df961f21afcaf6b86a",
           "file": "shop-rules.spec.ts",
-          "line": 32,
+          "line": 42,
           "column": 1
         }
       ]
@@ -860,12 +861,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 3234,
+                  "duration": 3198,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:13.372Z",
+                  "startTime": "2026-11-13T08:48:19.972Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -911,12 +912,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2643,
+                  "duration": 3055,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:16.899Z",
+                  "startTime": "2026-11-13T08:48:23.337Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -963,12 +964,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2971,
+                  "duration": 2966,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:19.793Z",
+                  "startTime": "2026-11-13T08:48:26.606Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -987,7 +988,7 @@
           ],
           "id": "921e070f285a8b470d11-3470174be10a3de09ee6",
           "file": "workbench.spec.ts",
-          "line": 198,
+          "line": 200,
           "column": 1
         },
         {
@@ -1015,12 +1016,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2726,
+                  "duration": 1972,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:22.773Z",
+                  "startTime": "2026-11-13T08:48:29.580Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1039,7 +1040,7 @@
           ],
           "id": "921e070f285a8b470d11-547ea4e19df533261966",
           "file": "workbench.spec.ts",
-          "line": 247,
+          "line": 249,
           "column": 1
         },
         {
@@ -1067,12 +1068,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 247,
+                  "duration": 341,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:25.510Z",
+                  "startTime": "2026-11-13T08:48:31.559Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1091,7 +1092,7 @@
           ],
           "id": "921e070f285a8b470d11-4d6980b2c596c99d5d36",
           "file": "workbench.spec.ts",
-          "line": 286,
+          "line": 288,
           "column": 1
         },
         {
@@ -1119,12 +1120,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1516,
+                  "duration": 1757,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:25.766Z",
+                  "startTime": "2026-11-13T08:48:31.907Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1143,7 +1144,7 @@
           ],
           "id": "921e070f285a8b470d11-b7467e3bc2f2a7c6f7b9",
           "file": "workbench.spec.ts",
-          "line": 293,
+          "line": 295,
           "column": 1
         },
         {
@@ -1171,12 +1172,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 9285,
+                  "duration": 8259,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:27.290Z",
+                  "startTime": "2026-11-13T08:48:33.673Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1195,7 +1196,7 @@
           ],
           "id": "921e070f285a8b470d11-7898129f1907ae6e0833",
           "file": "workbench.spec.ts",
-          "line": 333,
+          "line": 335,
           "column": 1
         },
         {
@@ -1223,12 +1224,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 321,
+                  "duration": 243,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:36.587Z",
+                  "startTime": "2026-11-13T08:48:41.940Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1247,7 +1248,7 @@
           ],
           "id": "921e070f285a8b470d11-ffec5130ebf34c88ab01",
           "file": "workbench.spec.ts",
-          "line": 418,
+          "line": 420,
           "column": 1
         },
         {
@@ -1275,12 +1276,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 3077,
+                  "duration": 3521,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:36.918Z",
+                  "startTime": "2026-11-13T08:48:42.191Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1299,7 +1300,7 @@
           ],
           "id": "921e070f285a8b470d11-47064ea0303dedbf889a",
           "file": "workbench.spec.ts",
-          "line": 450,
+          "line": 452,
           "column": 1
         },
         {
@@ -1327,12 +1328,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2215,
+                  "duration": 2608,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:40.005Z",
+                  "startTime": "2026-11-13T08:48:45.721Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1351,7 +1352,7 @@
           ],
           "id": "921e070f285a8b470d11-0072b6ed58a658ed1ea3",
           "file": "workbench.spec.ts",
-          "line": 486,
+          "line": 488,
           "column": 1
         },
         {
@@ -1379,12 +1380,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1606,
+                  "duration": 1530,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:42.235Z",
+                  "startTime": "2026-11-13T08:48:48.338Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1403,7 +1404,7 @@
           ],
           "id": "921e070f285a8b470d11-1788bb48f5b52dd07a59",
           "file": "workbench.spec.ts",
-          "line": 572,
+          "line": 574,
           "column": 1
         },
         {
@@ -1431,12 +1432,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2431,
+                  "duration": 2348,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:43.850Z",
+                  "startTime": "2026-11-13T08:48:49.876Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1455,7 +1456,7 @@
           ],
           "id": "921e070f285a8b470d11-bb7a6f63e4cde2cc115e",
           "file": "workbench.spec.ts",
-          "line": 641,
+          "line": 643,
           "column": 1
         },
         {
@@ -1483,12 +1484,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2384,
+                  "duration": 2238,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:46.291Z",
+                  "startTime": "2026-11-13T08:48:52.232Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1507,11 +1508,11 @@
           ],
           "id": "921e070f285a8b470d11-134340ca959294695925",
           "file": "workbench.spec.ts",
-          "line": 744,
+          "line": 746,
           "column": 1
         },
         {
-          "title": "备用中转站：免费检查、主用/备用、结果未知自动重新生成与自动切换",
+          "title": "备用图片服务：免费检查、主用/备用、结果未知自动重新生成与自动切换",
           "ok": true,
           "tags": [],
           "tests": [
@@ -1535,12 +1536,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6928,
+                  "duration": 6760,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:48.693Z",
+                  "startTime": "2026-11-13T08:48:54.479Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1557,13 +1558,13 @@
               "status": "expected"
             }
           ],
-          "id": "921e070f285a8b470d11-d29124cdd63c1ff8b113",
+          "id": "921e070f285a8b470d11-f4be01d37b310bf3d044",
           "file": "workbench.spec.ts",
-          "line": 840,
+          "line": 842,
           "column": 1
         },
         {
-          "title": "中转站监控：按中转站统计、调用记录筛选与导出 CSV",
+          "title": "图片服务监控：按图片服务统计、调用记录筛选与导出 CSV",
           "ok": true,
           "tags": [],
           "tests": [
@@ -1587,12 +1588,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6057,
+                  "duration": 5827,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:01:55.632Z",
+                  "startTime": "2026-11-13T08:49:01.247Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1609,9 +1610,9 @@
               "status": "expected"
             }
           ],
-          "id": "921e070f285a8b470d11-f522bd0d8ff027433b7c",
+          "id": "921e070f285a8b470d11-a76fae2d1a9c2b200f3e",
           "file": "workbench.spec.ts",
-          "line": 967,
+          "line": 969,
           "column": 1
         },
         {
@@ -1639,12 +1640,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 9029,
+                  "duration": 13020,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T02:02:01.698Z",
+                  "startTime": "2026-11-13T08:49:07.085Z",
                   "annotations": [
                     {
                       "type": "serial",
@@ -1663,7 +1664,7 @@
           ],
           "id": "921e070f285a8b470d11-3e5bc01792e7c1fe8cbc",
           "file": "workbench.spec.ts",
-          "line": 1059,
+          "line": 1062,
           "column": 1
         }
       ]
@@ -1671,8 +1672,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-13T01:59:40.634Z",
-    "duration": 150621.43600000002,
+    "startTime": "2026-11-13T08:46:47.995Z",
+    "duration": 152494.881,
     "expected": 36,
     "skipped": 0,
     "unexpected": 0,

@@ -127,7 +127,7 @@ func readMessage(resp *http.Response, key string) (messageResponse, error) {
 		return messageResponse{}, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(raw, key))
 	}
 	if e != nil {
-		return messageResponse{}, errors.New("LLM 未返回完整的 Messages JSON 响应")
+		return messageResponse{}, errors.New("AI 模型未返回完整的 Messages JSON 响应")
 	}
 	var v messageResponse
 	e = json.Unmarshal(raw, &v)
@@ -183,7 +183,7 @@ func readSSE(ctx context.Context, r io.Reader, frame func([]byte) error) error {
 	if scan.Err() != nil {
 		return scan.Err()
 	}
-	return errors.New("LLM 流在 message_stop 之前中断")
+	return errors.New("AI 模型流在 message_stop 之前中断")
 }
 
 func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabilities, resultErr error) {
@@ -204,7 +204,7 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	c = normalizeConnection(c)
 	var key string
 	if e == nil && c.Kind != "llm" {
-		e = errors.New("请选择 LLM 供应商")
+		e = errors.New("请选择 AI 模型")
 	}
 	if e == nil && c.Model == "" {
 		e = errors.New("请先保存模型 ID")

@@ -77,7 +77,7 @@ export function LicenseNotice() {
           <>
             到期时间 {dateTime(l.expiresAt || "")}
             。到期后不能生成新图片，已有图片不受影响。请联系软件提供方续费，收到新的授权文件后在
-            <Link to="/settings#license">连接与设置 → 授权</Link>导入。
+            <Link to="/settings#license">系统 → 连接 → 授权</Link>导入。
           </>
         }
       />
@@ -91,7 +91,7 @@ export function LicenseNotice() {
         message="试用额度已用完"
         description={
           <>
-            {l.trialLimit} 张试用图片已用完，之前生成的图片都保留在素材库。
+            {l.trialLimit} 张试用图片已用完，之前生成的图片都保留在作品与素材。
             <Link to="/settings#license">输入激活码</Link>后继续使用。
           </>
         }
@@ -206,7 +206,7 @@ export function LicensePanel() {
       )}
       {l.mode === "active" && l.upstreamRemaining && (
         <p className="hint">
-          图片线路 1 剩余额度：{l.upstreamRemaining}（以中转站为准）
+          图片线路 1 剩余额度：{l.upstreamRemaining}（以图片服务为准）
         </p>
       )}
       {l.mode === "trial" && (
@@ -234,7 +234,7 @@ export function LicensePanel() {
             </small>
             {l.upstreamRemaining && (
               <small className="hint">
-                试用线路剩余额度：{l.upstreamRemaining}（以中转站为准）
+                试用线路剩余额度：{l.upstreamRemaining}（以图片服务为准）
               </small>
             )}
           </div>

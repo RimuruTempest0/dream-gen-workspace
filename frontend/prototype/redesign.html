@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>前端重设计样稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --wall: #16130f;        /* 暖黑墙面 */
+  --raised: #1f1b16;      /* 抬起的表面：输入框、面板 */
+  --raised-2: #29241d;    /* 悬停、选中 */
+  --line: #3a332b;
+  --ivory: #efe8da;       /* 文字与主按钮 */
+  --muted: #a69c8c;
+  --amber: #d9a441;       /* 进行中 */
+  --green: #86b98f;       /* 正常 */
+  --red: #e2765f;         /* 失败 */
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+  --sans: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --rail: 60px;
+  --rail-open: 212px;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--wall); color: var(--ivory); font: 14px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; }
+:focus-visible { outline: 2px solid var(--ivory); outline-offset: 2px; border-radius: 6px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* 外壳 */
+.shell { display: grid; grid-template-columns: var(--rail) 1fr; height: 100%; transition: grid-template-columns .2s ease; }
+.shell.open { grid-template-columns: var(--rail-open) 1fr; }
+.rail { display: flex; flex-direction: column; border-right: 1px solid var(--line); padding: 14px 10px; overflow: hidden; }
+.brand { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 6px; margin-bottom: 18px; white-space: nowrap; }
+.mark { flex: none; width: 28px; height: 28px; }
+.wordmark { font: 600 17px/1 var(--serif); letter-spacing: .04em; }
+.rail nav { display: flex; flex-direction: column; gap: 2px; }
+.group-gap { height: 1px; background: var(--line); margin: 10px 8px; }
+.item { display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 10px; border-radius: 8px; color: var(--muted); white-space: nowrap; width: 100%; text-align: left; }
+.item svg { flex: none; width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.item:hover { background: var(--raised); color: var(--ivory); }
+.item[aria-current="page"] { background: var(--raised-2); color: var(--ivory); }
+.item .label, .brand .wordmark, .foot .label { opacity: 0; transition: opacity .15s; }
+.shell.open .label, .shell.open .wordmark { opacity: 1; }
+.foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.ring { flex: none; width: 20px; height: 20px; border-radius: 50%; background: conic-gradient(var(--amber) 37.5%, var(--line) 0); -webkit-mask: radial-gradient(circle, transparent 6px, #000 6.5px); mask: radial-gradient(circle, transparent 6px, #000 6.5px); }
+.dot { flex: none; width: 20px; height: 20px; display: grid; place-items: center; }
+.dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.version { color: var(--muted); font-size: 12px; padding: 8px 10px 0; white-space: nowrap; }
+
+main { overflow: auto; }
+.page { display: none; }
+.page.on { display: block; animation: fade .2s ease; }
+@keyframes fade { from { opacity: 0; } }
+
+/* 创作首页 */
+.create { max-width: 1120px; margin: 0 auto; padding: 0 40px 72px; }
+.ask { min-height: 62vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding-top: 40px; }
+.ask h1 { font: 400 clamp(30px, 4.2vw, 46px)/1.25 var(--serif); letter-spacing: .02em; margin: 0 0 32px; text-align: center; }
+.composer { width: min(720px, 100%); background: var(--raised); border: 1px solid var(--line); border-radius: 18px; padding: 18px 18px 14px; transition: border-color .2s; }
+.composer:focus-within { border-color: var(--muted); }
+.composer textarea { display: block; width: 100%; min-height: 76px; resize: none; background: none; border: 0; outline: 0; font-size: 16px; line-height: 1.7; }
+.composer textarea::placeholder { color: var(--muted); }
+.controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.chip { height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 16px; color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.chip:hover { color: var(--ivory); border-color: var(--muted); }
+.chip b { font-weight: 400; color: var(--ivory); }
+.go { margin-left: auto; height: 36px; padding: 0 18px; border-radius: 18px; background: var(--ivory); color: var(--wall); font-weight: 600; }
+.go:hover { background: #fff; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 14px; }
+
+.recent-head { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 18px; }
+.recent-head h2 { font: 400 20px/1.3 var(--serif); margin: 0; }
+.link { color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--line); }
+.link:hover { color: var(--ivory); }
+.wall { columns: 4 220px; column-gap: 14px; }
+.work { break-inside: avoid; margin: 0 0 14px; position: relative; border-radius: 4px; overflow: hidden; display: block; width: 100%; padding: 0; }
+.work i { display: block; width: 100%; }
+.work figcaption, .work .cap { position: absolute; inset: auto 0 0 0; padding: 28px 12px 10px; font-size: 12px; text-align: left; background: linear-gradient(transparent, rgba(12, 10, 8, .82)); opacity: 0; transition: opacity .2s; }
+.work:hover .cap, .work:focus-visible .cap { opacity: 1; }
+/* 占位画面：正式版这里是用户的作品 */
+.p1 { aspect-ratio: 3/4; background: radial-gradient(60% 50% at 62% 38%, #e9c9a0 0, transparent 70%), radial-gradient(50% 60% at 30% 80%, #7d3b2a 0, transparent 70%), #3a2a22; }
+.p2 { aspect-ratio: 1/1; background: radial-gradient(40% 40% at 50% 45%, #f3efe4 0, transparent 72%), linear-gradient(160deg, #56624f, #1d2520); }
+.p3 { aspect-ratio: 4/5; background: radial-gradient(70% 40% at 50% 100%, #c8552f 0, transparent 70%), linear-gradient(#27364a, #101622); }
+.p4 { aspect-ratio: 16/10; background: radial-gradient(45% 70% at 25% 50%, #d8d2c4 0, transparent 70%), linear-gradient(120deg, #6b6156, #2c2823); }
+.p5 { aspect-ratio: 3/4; background: radial-gradient(50% 35% at 50% 30%, #f0b9a8 0, transparent 70%), linear-gradient(#5d3040, #1c1118); }
+.p6 { aspect-ratio: 1/1; background: radial-gradient(55% 55% at 70% 70%, #b9c7c9 0, transparent 70%), linear-gradient(200deg, #2d4a4f, #111c1e); }
+.p7 { aspect-ratio: 4/3; background: radial-gradient(40% 60% at 55% 50%, #e3c15a 0, transparent 70%), linear-gradient(#3c3418, #15130b); }
+.p8 { aspect-ratio: 3/4; background: radial-gradient(60% 40% at 40% 60%, #cfd6e6 0, transparent 70%), linear-gradient(140deg, #454c66, #14161f); }
+.pending { aspect-ratio: 3/4; border: 1px dashed var(--line); background: var(--raised); display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+
+/* 系统页 */
+.system { max-width: 820px; margin: 0 auto; padding: 48px 40px 72px; }
+.system h1 { font: 400 30px/1.3 var(--serif); margin: 0 0 24px; }
+.tabs { display: flex; gap: 28px; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+.tab { padding: 10px 0; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab:hover { color: var(--ivory); }
+.tab[aria-selected="true"] { color: var(--ivory); border-bottom-color: var(--ivory); }
+.pane { display: none; }
+.pane.on { display: block; }
+fieldset { border: 0; padding: 0; margin: 0 0 36px; }
+legend { font: 400 18px/1.4 var(--serif); padding: 0; margin-bottom: 4px; }
+.help { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.row { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 16px; margin-bottom: 14px; }
+.row label { color: var(--muted); }
+.field { height: 40px; width: 100%; padding: 0 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
+.field:hover { border-color: var(--muted); }
+.field:focus { outline: 0; border-color: var(--ivory); }
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--green); }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.actions { display: flex; gap: 10px; }
+.btn { height: 38px; padding: 0 18px; border-radius: 19px; border: 1px solid var(--line); }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--ivory); color: var(--wall); border-color: var(--ivory); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 400; color: var(--muted); font-size: 13px; }
+th, td { padding: 12px 8px 12px 0; border-bottom: 1px solid var(--line); }
+td.bad { color: var(--red); }
+td.busy { color: var(--amber); }
+
+.stub { max-width: 820px; margin: 0 auto; padding: 48px 40px; }
+.stub h1 { font: 400 30px/1.3 var(--serif); margin: 0 0 12px; }
+.stub p { color: var(--muted); max-width: 46em; }
+
+@media (max-width: 720px) {
+  .create, .system, .stub { padding-left: 20px; padding-right: 20px; }
+  .row { grid-template-columns: 1fr; gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell" id="shell">
+  <aside class="rail">
+    <button class="brand" id="toggle" aria-label="展开或收起导航" aria-expanded="false">
+      <svg class="mark" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="none" stroke="#efe8da" stroke-width="1.5"/><path d="M14 1.5a12.5 12.5 0 0 1 0 25c4-3.5 6-7.7 6-12.5s-2-9-6-12.5z" fill="#efe8da"/></svg>
+      <span class="wordmark">名称待定</span>
+    </button>
+    <nav aria-label="主导航">
+      <button class="item" data-page="create" aria-current="page"><svg viewBox="0 0 20 20"><path d="M10 2.5l1.8 4.7 4.7 1.8-4.7 1.8L10 15.5l-1.8-4.7L3.5 9l4.7-1.8z"/><path d="M15.5 14v3M14 15.5h3"/></svg><span class="label">创作</span></button>
+      <button class="item" data-page="pro"><svg viewBox="0 0 20 20"><path d="M3 6h8M15 6h2M3 14h2M9 14h8"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg><span class="label">专业模式</span></button>
+      <button class="item" data-page="templates"><svg viewBox="0 0 20 20"><rect x="3.5" y="3" width="13" height="14" rx="1.5"/><path d="M6.5 7h7M6.5 10h7M6.5 13h4"/></svg><span class="label">模板</span></button>
+      <div class="group-gap"></div>
+      <button class="item" data-page="records"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/></svg><span class="label">生成记录</span></button>
+      <button class="item" data-page="works"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="6" height="8" rx="1"/><rect x="11" y="3" width="6" height="5" rx="1"/><rect x="3" y="13" width="6" height="4" rx="1"/><rect x="11" y="10" width="6" height="7" rx="1"/></svg><span class="label">作品与素材</span></button>
+      <div class="group-gap"></div>
+      <button class="item" data-page="system"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg><span class="label">系统</span></button>
+    </nav>
+    <div class="foot">
+      <button class="item" data-page="records" title="正在生成，已完成 3 / 8 张"><span class="ring" aria-hidden="true"></span><span class="label">生成中 3 / 8</span></button>
+      <div class="item" title="授权有效"><span class="dot" aria-hidden="true"></span><span class="label">授权有效</span></div>
+      <div class="version"><span class="label">版本 0.8.0</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <section class="page on" id="create">
+      <div class="create">
+        <div class="ask">
+          <h1>想做一张什么样的图？</h1>
+          <form class="composer" onsubmit="return false">
+            <label class="sr" for="idea">描述你想要的画面</label>
+            <textarea id="idea" placeholder="描述画面，或把参考图拖到这里"></textarea>
+            <div class="controls">
+              <button type="button" class="chip">技能 <b>通用</b></button>
+              <button type="button" class="chip"><b>4</b> 张</button>
+              <button type="button" class="chip">比例 <b>3:4</b></button>
+              <button type="button" class="chip">更多</button>
+              <button class="go">开始创作</button>
+            </div>
+          </form>
+          <p class="hint">会先给出几个创意方向供你挑选，选定后再出图。</p>
+        </div>
+
+        <div class="recent-head">
+          <h2>最近的作品</h2>
+          <a class="link" href="#" data-go="works">查看全部</a>
+        </div>
+        <div class="wall">
+          <button class="work"><i class="p1"></i><span class="cap">晨光里的陶瓷茶具</span></button>
+          <div class="work pending">正在生成，第 4 张</div>
+          <button class="work"><i class="p2"></i><span class="cap">苔藓与白瓷</span></button>
+          <button class="work"><i class="p3"></i><span class="cap">夜色中的灯塔</span></button>
+          <button class="work"><i class="p4"></i><span class="cap">亚麻桌布静物</span></button>
+          <button class="work"><i class="p5"></i><span class="cap">玫瑰色丝绒</span></button>
+          <button class="work"><i class="p6"></i><span class="cap">雾中湖面</span></button>
+          <button class="work"><i class="p7"></i><span class="cap">金箔与黑漆</span></button>
+          <button class="work"><i class="p8"></i><span class="cap">冬日窗边</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="system">
+      <div class="system">
+        <h1>系统</h1>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true" data-pane="conn">连接</button>
+          <button class="tab" role="tab" aria-selected="false" data-pane="svc">服务状态</button>
+          <button class="tab" role="tab" aria-selected="false" data-pane="model">模型状态</button>
+          <button class="tab" role="tab" aria-selected="false" data-pane="logs">日志</button>
+        </div>
+
+        <div class="pane on" id="conn">
+          <fieldset>
+            <legend>图片服务</legend>
+            <p class="help">负责把你的描述变成图片。密钥只加密保存在这台电脑上。</p>
+            <div class="row"><label for="s1">名称</label><input class="field" id="s1" value="主线路"></div>
+            <div class="row"><label for="s2">服务地址</label><input class="field" id="s2" value="https://example.com/v1"></div>
+            <div class="row"><label for="s3">密钥</label><input class="field" id="s3" type="password" value="placeholder"></div>
+            <div class="row"><span></span><span class="status">上次测试连接正常</span></div>
+          </fieldset>
+          <fieldset>
+            <legend>AI 模型</legend>
+            <p class="help">负责理解你的想法、提出创意方向并撰写出图指令。</p>
+            <div class="row"><label for="m1">服务商</label><select class="field" id="m1"><option>示例服务商</option></select></div>
+            <div class="row"><label for="m2">模型</label><select class="field" id="m2"><option>示例模型</option></select></div>
+          </fieldset>
+          <div class="actions">
+            <button class="btn primary">保存连接</button>
+            <button class="btn">测试连接</button>
+          </div>
+        </div>
+
+        <div class="pane" id="svc">
+          <table>
+            <thead><tr><th>图片服务</th><th>状态</th><th>今日出图</th><th>平均用时</th></tr></thead>
+            <tbody>
+              <tr><td>主线路</td><td><span class="status">正常</span></td><td>128</td><td>41 秒</td></tr>
+              <tr><td>备用线路</td><td class="busy">排队较长</td><td>12</td><td>96 秒</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pane" id="model">
+          <table>
+            <thead><tr><th>AI 模型</th><th>状态</th><th>今日调用</th><th>失败</th></tr></thead>
+            <tbody>
+              <tr><td>示例模型</td><td><span class="status">正常</span></td><td>64</td><td>0</td></tr>
+              <tr><td>示例模型（备用）</td><td class="bad">连接失败，检查密钥</td><td>3</td><td>3</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pane" id="logs">
+          <table>
+            <thead><tr><th>时间</th><th>事件</th></tr></thead>
+            <tbody>
+              <tr><td>14:02:11</td><td>第 3 张图片生成完成</td></tr>
+              <tr><td>14:01:27</td><td>已选定创意方向，开始出图</td></tr>
+              <tr><td>14:00:52</td><td class="bad">备用模型连接失败，已改用主模型</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="page stub" id="pro"><h1>专业模式</h1><p>原“生图工作台”。自己写提示词、选模型和参数。样稿未绘制此页，第 3 批换皮。</p></section>
+    <section class="page stub" id="templates"><h1>模板</h1><p>原“提示词模板”。样稿未绘制此页，第 3 批换皮。</p></section>
+    <section class="page stub" id="records"><h1>生成记录</h1><p>原“任务中心”。样稿未绘制此页，第 4 批换皮。</p></section>
+    <section class="page stub" id="works"><h1>作品与素材</h1><p>原“素材库”。样稿未绘制此页，第 4 批换皮。</p></section>
+  </main>
+</div>
+<script>
+const shell = document.getElementById("shell");
+const toggle = document.getElementById("toggle");
+toggle.onclick = () => toggle.setAttribute("aria-expanded", shell.classList.toggle("open"));
+function show(id) {
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === id));
+  document.querySelectorAll("nav .item").forEach(b => b.dataset.page === id ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+}
+document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => show(b.dataset.page));
+document.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); show(a.dataset.go); });
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === t.dataset.pane));
+});
+</script>
+</body>
+</html>

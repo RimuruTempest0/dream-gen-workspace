@@ -187,7 +187,7 @@ func TestPolicyRefusalWithoutLLMStopsAfterResend(t *testing.T) {
 	s.stepNext()
 	s.stepNext()
 	p, _ := s.ListTasks("", 0, 10)
-	if len(p.Items) != 2 || hits.Load() != 2 || !strings.Contains(p.Items[0].Error, "没有可用的 LLM") {
+	if len(p.Items) != 2 || hits.Load() != 2 || !strings.Contains(p.Items[0].Error, "没有可用的 AI 模型") {
 		t.Fatal(len(p.Items), hits.Load(), p.Items[0].Error)
 	}
 }

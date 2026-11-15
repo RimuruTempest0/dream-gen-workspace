@@ -74,7 +74,7 @@ func (s *Service) saveConnectionLocked(in ConnectionInput) (Connection, error) {
 	if kind == "llm" {
 		maximum := LLMOutputLimit(in.MaxOutputTokens)
 		if maximum < 256 || maximum > 65536 {
-			return c, errors.New("LLM 输出上限应为 256–65536 tokens")
+			return c, errors.New("AI 模型输出上限应为 256–65536 tokens")
 		}
 		// Raising an old default (or keeping it) is not a change that needs a new check.
 		if LLMOutputLimit(c.MaxOutputTokens) != maximum {
@@ -91,7 +91,7 @@ func (s *Service) saveConnectionLocked(in ConnectionInput) (Connection, error) {
 			c.AuthMode = "api-key"
 		}
 		if c.Mode != "claude" && c.Mode != "compatible" {
-			return c, errors.New("LLM 兼容模式无效")
+			return c, errors.New("AI 模型兼容模式无效")
 		}
 		if c.AuthMode != "api-key" && c.AuthMode != "bearer" {
 			return c, errors.New("认证方式无效")
@@ -207,7 +207,7 @@ func (s *Service) TestConnection(in ConnectionInput) (result TestResult, resultE
 	}
 	if in.Kind == "llm" {
 		r.Models = fmt.Sprintf("已获取 %d 个模型；Agent 能力需另外验证", len(ids))
-		r.Generation = "仅查询模型，未调用 LLM"
+		r.Generation = "仅查询模型，未调用 AI 模型"
 	}
 	return r, nil
 }
@@ -228,7 +228,7 @@ func (s *Service) DeleteConnection(id string) error {
 	if s.agentRunID != "" {
 		var run AgentRun
 		if s.store.Get("agent_run", s.agentRunID, &run) == nil && (run.Input.LLMConnectionID == id || run.Input.ImageConnectionID == id) {
-			return errors.New("智能生图正在使用此连接，请先取消分析")
+			return errors.New("创作正在使用此连接，请先取消分析")
 		}
 	}
 	tasks, e := List[Task](s.store, "task")

@@ -1,0 +1,254 @@
+/* 创作 entry (0.7.21): before a request starts the page is one question and one
+   box. Once a run is open the two-column layout in agent.css takes over. */
+[hidden] {
+  display: none !important;
+}
+.page:has(.agent-layout.is-home) > .page-header {
+  position: relative;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  min-height: max(34vh, 230px);
+  justify-content: flex-end;
+  margin-bottom: 28px;
+  text-align: center;
+}
+.page:has(.agent-layout.is-home) > .page-header > div:first-child {
+  flex: 0 0 auto;
+}
+.page:has(.agent-layout.is-home) > .page-header h1 {
+  font-size: clamp(30px, 4.2vw, 44px);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+.page:has(.agent-layout.is-home) > .page-header p {
+  margin-top: 12px;
+  max-width: 46em;
+}
+/* Mode and "new request" are settings, not the task: they sit in the corner. */
+.page:has(.agent-layout.is-home) .smart-header-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  gap: 12px;
+}
+.agent-layout.is-home {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 56px;
+}
+.create-box {
+  width: min(760px, 100%);
+  padding: 18px 18px 14px;
+  border-radius: 18px;
+  transition: border-color 0.2s;
+}
+.create-box:focus-within {
+  border-color: var(--muted);
+}
+.create-box > .panel-heading {
+  display: none;
+}
+.create-box > .prompt-header {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.create-box > .ant-input {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.composer-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.composer-row .parameter-grid {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+.composer-row .parameter-grid > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.composer-row .field-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.composer-row .ant-input-number {
+  width: 68px;
+}
+.composer-row .parameter-grid .ant-select {
+  width: 84px;
+}
+.composer-row .agent-primary {
+  margin: 0 0 0 auto;
+  border-radius: 19px;
+  padding-inline: 20px;
+  font-weight: 600;
+}
+.composer-templates {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.create-box .agent-more {
+  margin-top: 14px;
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+}
+/* Cost and model line: still always shown, but quiet and not sticky. */
+.create-box .sticky-actions {
+  position: static;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+}
+.recent-works {
+  width: min(1120px, 100%);
+}
+.recent-works-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.recent-works-head h2 {
+  font: 400 20px/1.3 var(--serif);
+}
+.recent-works-head a {
+  color: var(--muted);
+  font-size: 13px;
+  text-underline-offset: 4px;
+}
+.recent-works-head a:hover {
+  color: var(--text);
+}
+.recent-works-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.recent-works-wall a {
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface);
+}
+.recent-works-wall .image-frame {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.recent-works-wall img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+.recent-works-wall a:hover img {
+  transform: scale(1.03);
+}
+.template-starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.template-starters button {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.template-starters button:hover {
+  border-color: var(--muted);
+  background: var(--surface);
+}
+.template-starters span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+}
+.is-home ~ .agent-history {
+  width: min(1120px, 100%);
+  margin-inline: auto;
+}
+@media (max-width: 900px) {
+  .page:has(.agent-layout.is-home) .smart-header-actions {
+    position: static;
+    order: -1;
+    margin-bottom: 20px;
+  }
+  .page:has(.agent-layout.is-home) > .page-header {
+    min-height: 0;
+  }
+}
+/* 模板 (0.7.22): cards on the wall instead of rows in one panel. */
+.panel:has(.template-list) {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.object-list.template-list {
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+.template-list .object-row,
+.template-list .object-row:first-child {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 18px;
+  padding: 20px 20px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.template-list .object-row > div:first-child {
+  flex: 1;
+}
+.template-list .object-row strong {
+  font: 400 18px/1.4 var(--serif);
+}
+.template-list .line-clamp {
+  -webkit-line-clamp: 3;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.template-list .template-actions {
+  max-width: none;
+  justify-content: flex-start;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+/* Use-actions on the left, edit and delete pushed to the right. */
+.template-list .template-actions > .ant-space-item:has(.template-edit) {
+  margin-left: auto;
+}

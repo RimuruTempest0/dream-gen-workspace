@@ -38,7 +38,7 @@ func TestDiagnosticPackageCarriesNoSecrets(t *testing.T) {
 		Error:      "upstream said Bearer " + key + " at https://" + host + "/v1/images?token=abc",
 		Diagnostic: GenerationDiagnostic{Stage: "提交", HTTPStatus: 502, UpstreamRequestID: "req-42"}}
 	s.store.Put("task", failed.ID, failed)
-	s.store.Put("agent_run", "run-1", AgentRun{ID: "run-1", UpdatedAt: Now(), Status: "failed", Stage: "分析", Error: "LLM 断开", Input: AgentInput{Instruction: prompt}})
+	s.store.Put("agent_run", "run-1", AgentRun{ID: "run-1", UpdatedAt: Now(), Status: "failed", Stage: "分析", Error: "AI 模型断开", Input: AgentInput{Instruction: prompt}})
 	s.store.appendLog("error", "image", failed.ID, "请求 https://"+host+"/v1/images 失败")
 	program := t.TempDir()
 	os.WriteFile(filepath.Join(program, "version.json"), []byte("\xef\xbb\xbf"+`{"version":"9.9.9","runtime":"130.0"}`), 0o600)
@@ -72,7 +72,7 @@ func TestDiagnosticPackageCarriesNoSecrets(t *testing.T) {
 	}
 	var failures []diagnosticFailure
 	json.Unmarshal(files["failures.json"], &failures)
-	if len(failures) != 2 || !strings.Contains(string(files["failures.json"]), "req-42") || !strings.Contains(string(files["failures.json"]), "LLM 断开") {
+	if len(failures) != 2 || !strings.Contains(string(files["failures.json"]), "req-42") || !strings.Contains(string(files["failures.json"]), "AI 模型断开") {
 		t.Fatalf("failures %s", files["failures.json"])
 	}
 	if !strings.Contains(string(files["logs.txt"]), "[线路地址]") {

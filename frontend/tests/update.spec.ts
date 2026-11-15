@@ -71,7 +71,10 @@ test("软件更新：未设置地址时提示完整包；检查、下载并校�
   const install = panel.getByRole("button", { name: "重启并更新" });
   await expect(install).toBeVisible({ timeout: 15000 });
   // Scan only after the button's colour transition has finished.
-  await expect(install).toHaveCSS("background-color", "rgb(36, 91, 219)");
+  await expect(install).toHaveCSS(
+    "background-color",
+    /^rgb\((239, 232, 218|255, 255, 255)\)$/,
+  );
   const a11y = await new AxeBuilder({ page })
     .include("#update")
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])

@@ -119,7 +119,7 @@ func TestOutputLimitIsReportedInsteadOfFollowUpError(t *testing.T) {
 	}
 	s.waitAgent()
 	r, _ = s.GetAgentRun(id)
-	if !strings.Contains(r.Error, "单次输出超过上限（65536 tokens）") || !strings.Contains(r.Error, "请联系软件提供方") || strings.Contains(r.Error, "连接与设置") {
+	if !strings.Contains(r.Error, "单次输出超过上限（65536 tokens）") || !strings.Contains(r.Error, "请联系软件提供方") || strings.Contains(r.Error, "系统 → 连接") {
 		t.Fatal("customer told to edit a locked line", r.Error)
 	}
 }

@@ -11,9 +11,11 @@ import {
   Select as UISelect,
   Space,
   Tag,
+  Tooltip,
 } from "antd";
 import {
   DownloadOutlined,
+  PaperClipOutlined,
   PlusOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -132,6 +134,9 @@ export function SmartImages() {
   const [answers, setAnswers] = useState<Record<string, string>>({}),
     [productText, setProductText] = useState("");
   const [advanced, setAdvanced] = useState<string[]>([]);
+  // null: follow what the request already holds; true/false: the user's choice.
+  const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
+  const templates = useData<Template[]>(["templates"], "ListTemplates");
   const history = useData<AgentPage>(
     ["agent-runs", page],
     "ListAgentRuns",
@@ -412,6 +417,7 @@ export function SmartImages() {
     setAnswers({});
     setProductText("");
     setError("");
+    setMoreChoice(null);
   }
   const references = (
     <>
@@ -426,7 +432,7 @@ export function SmartImages() {
         </Button>
       </Space>
       <UISelect
-        aria-label="从素材库选择参考图"
+        aria-label="从作品与素材选择参考图"
         className="full-width"
         mode="multiple"
         disabled={analyzing || submitted}
@@ -457,11 +463,88 @@ export function SmartImages() {
       />
     </>
   );
+  // The entry is one box: instruction, a row of controls, the rest under 更多选项.
+  const home = !runID;
+  const missingConnection = !input.llmConnectionID || !input.imageConnectionID;
+  const moreOpen =
+    !home ||
+    (moreChoice ??
+      (!!input.productURL ||
+        input.references.length > 0 ||
+        candidates.length > 1 ||
+        (ready && !!connections.data && missingConnection)));
+  const templateBar = (
+    <TemplateBar
+      text={input.instruction}
+      size={input.size}
+      quality={input.quality}
+      ready={ready && !run}
+      disabled={!!run || actions.busy}
+      onApply={applyTemplate}
+    />
+  );
+  const countRatio = (
+    <div className="parameter-grid">
+      <div>
+        <label htmlFor="agent-count" className="field-label">
+          目标张数
+        </label>
+        <InputNumber
+          id="agent-count"
+          className="full-width"
+          min={1}
+          max={200}
+          value={input.targetCount}
+          disabled={!!run || actions.busy}
+          onChange={(v) => change({ targetCount: v || 12 })}
+        />
+      </div>
+      <div>
+        <label htmlFor="agent-ratio" className="field-label">
+          画面比例
+        </label>
+        <UISelect
+          id="agent-ratio"
+          className="full-width"
+          disabled={!!run || actions.busy}
+          value={input.ratio}
+          options={["1:1", "3:2", "2:3", "16:9"].map((value) => ({
+            value,
+            label: value,
+          }))}
+          onChange={(ratio) =>
+            change({
+              ratio,
+              // Keep "auto"; otherwise follow the ratio with its matching size.
+              size:
+                input.size === "auto"
+                  ? "auto"
+                  : ratioSizes[ratio] || input.size,
+            })
+          }
+        />
+      </div>
+    </div>
+  );
+  const startButton = (
+    <Button
+      className="agent-primary"
+      type="primary"
+      block={!home}
+      loading={actions.busy}
+      disabled={!ready || runtime.data?.available === false}
+      onClick={start}
+    >
+      开始生成套图
+    </Button>
+  );
+  // Newest generated images; uploads used as references are not works.
+  const recent = (assets.data?.items || []).filter((a) => a.taskID).slice(0, 8);
   return (
     <>
       <LicenseNotice />
       <Header
-        title="智能生图"
+        title={home ? "想做一张什么样的图？" : "创作"}
         sub={
           autoMode
             ? "自动模式：给完指令直接得到一套图。缺少的资料由制作助手像你一样逐题判断，列出依据供你核对。"
@@ -501,8 +584,14 @@ export function SmartImages() {
         />
       )}
       {error && <Alert type="error" showIcon message={error} />}
-      <div className="agent-layout">
-        <section className="panel agent-input-panel">
+      <div className={home ? "agent-layout is-home" : "agent-layout"}>
+        <section
+          className={
+            home
+              ? "panel agent-input-panel create-box"
+              : "panel agent-input-panel"
+          }
+        >
           <div className="panel-heading">
             <h2>制作需求</h2>
             <Tag>{run ? "已保存需求" : "草稿"}</Tag>
@@ -511,260 +600,255 @@ export function SmartImages() {
             <label htmlFor="agent-instruction" className="field-label">
               完整制作指令
             </label>
-            <TemplateBar
-              text={input.instruction}
-              size={input.size}
-              quality={input.quality}
-              ready={ready && !run}
-              disabled={!!run || actions.busy}
-              onApply={applyTemplate}
-            />
+            {!home && templateBar}
           </div>
           <Input.TextArea
             id="agent-instruction"
             value={input.instruction}
             disabled={!!run || actions.busy}
-            autoSize={{ minRows: 6, maxRows: 12 }}
+            autoSize={{ minRows: home ? 3 : 6, maxRows: 12 }}
             style={{ resize: "none" }}
-            placeholder="粘贴商品链接和完整套图需求，上传参考图后开始制作。"
+            placeholder="描述想要的图，也可以粘贴商品链接和完整的套图需求"
             onChange={(e) => changeInstruction(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing)
                 start();
             }}
           />
-          <label htmlFor="agent-url" className="field-label">
-            商品链接
-          </label>
-          <Input
-            id="agent-url"
-            value={input.productURL}
-            disabled={!!run || actions.busy}
-            placeholder="可从指令自动提取，也可手动填写"
-            onChange={(e) => {
-              autoURL.current = "";
-              change({ productURL: e.target.value });
-            }}
-          />
-          {!run && candidates.length > 1 && (
-            <>
-              <label htmlFor="agent-link-choice" className="field-label">
-                选择本次商品链接
-              </label>
-              <UISelect
-                id="agent-link-choice"
-                className="full-width"
-                value={input.productURL || undefined}
-                options={candidates.map((value) => ({ value, label: value }))}
-                onChange={(v) => {
-                  autoURL.current = "";
-                  change({ productURL: v });
-                }}
-              />
-            </>
-          )}
-          <div className="parameter-grid">
-            <div>
-              <label htmlFor="agent-count" className="field-label">
-                目标张数
-              </label>
-              <InputNumber
-                id="agent-count"
-                className="full-width"
-                min={1}
-                max={200}
-                value={input.targetCount}
-                disabled={!!run || actions.busy}
-                onChange={(v) => change({ targetCount: v || 12 })}
-              />
+          {home && (
+            <div className="composer-row">
+              <Tooltip title="添加参考图">
+                <Button
+                  type="text"
+                  aria-label="添加参考图"
+                  icon={<PaperClipOutlined aria-hidden="true" />}
+                  disabled={actions.busy}
+                  onClick={addFiles}
+                />
+              </Tooltip>
+              {countRatio}
+              <Button
+                type="text"
+                aria-expanded={moreOpen}
+                aria-controls="agent-more"
+                onClick={() => setMoreChoice(!moreOpen)}
+              >
+                更多选项
+              </Button>
+              {startButton}
             </div>
-            <div>
-              <label htmlFor="agent-ratio" className="field-label">
-                画面比例
-              </label>
-              <UISelect
-                id="agent-ratio"
-                className="full-width"
-                disabled={!!run || actions.busy}
-                value={input.ratio}
-                options={["1:1", "3:2", "2:3", "16:9"].map((value) => ({
-                  value,
-                  label: value,
-                }))}
-                onChange={(ratio) =>
-                  change({
-                    ratio,
-                    // Keep "auto"; otherwise follow the ratio with its matching size.
-                    size:
-                      input.size === "auto"
-                        ? "auto"
-                        : ratioSizes[ratio] || input.size,
-                  })
-                }
-              />
-            </div>
-          </div>
-          <div className="agent-reference-heading">
-            <h3>参考素材</h3>
-            <p className="hint">
-              上传商品图、字体或色卡。每次需求最多20张参考图。
-            </p>
-            {references}
-          </div>
-          <Collapse
-            ghost
-            activeKey={advanced}
-            onChange={(keys) =>
-              setAdvanced(Array.isArray(keys) ? keys : [keys])
-            }
-            items={[
-              {
-                key: "settings",
-                label: "更多设置",
-                children: (
-                  <>
-                    {!!skillCategories.data?.length && (
-                      <>
-                        <label htmlFor="agent-category" className="field-label">
-                          商品品类（可选）
-                        </label>
-                        <UISelect
-                          id="agent-category"
-                          className="full-width"
-                          value={input.category || ""}
-                          disabled={!!run || actions.busy}
-                          options={[
-                            { value: "", label: "不指定（只用通用技能）" },
-                            ...skillCategories.data.map((value) => ({
-                              value,
-                              label: value,
-                            })),
-                          ]}
-                          onChange={(category) => change({ category })}
-                        />
-                        <p className="hint">
-                          选了品类时，加上设置里归在这个品类下的技能。
-                        </p>
-                      </>
-                    )}
-                    <label htmlFor="agent-llm" className="field-label">
-                      LLM 供应商
-                    </label>
-                    <UISelect
-                      id="agent-llm"
-                      className="full-width"
-                      value={input.llmConnectionID || undefined}
-                      disabled={!!run || actions.busy}
-                      options={llms.map((c) => ({
-                        value: c.id,
-                        label: c.name,
-                      }))}
-                      onChange={(llmConnectionID) =>
-                        change({ llmConnectionID })
-                      }
-                    />
-                    <label htmlFor="agent-image" className="field-label">
-                      生图中转站
-                    </label>
-                    <UISelect
-                      id="agent-image"
-                      className="full-width"
-                      value={input.imageConnectionID || undefined}
-                      disabled={!!run || actions.busy}
-                      options={images.map((c) => ({
-                        value: c.id,
-                        label: gatewayLabel(
-                          c,
-                          gateways.settings.data,
-                          gateways.byID.get(c.id),
-                        ),
-                      }))}
-                      onChange={(imageConnectionID) =>
-                        change({ imageConnectionID, imageModel: "" })
-                      }
-                    />
-                    <label htmlFor="agent-image-model" className="field-label">
-                      生图模型
-                    </label>
-                    <ModelSelect
-                      id="agent-image-model"
-                      connection={imageConnection}
-                      value={input.imageModel}
-                      disabled={!!run || actions.busy}
-                      load={advanced.includes("settings") && !run}
-                      onChange={(imageModel) => change({ imageModel })}
-                    />
-                    <div className="parameter-grid">
-                      <div>
-                        <label htmlFor="agent-size" className="field-label">
-                          图片尺寸
-                        </label>
-                        <UISelect
-                          id="agent-size"
-                          className="full-width"
-                          disabled={!!run || actions.busy}
-                          value={input.size}
-                          options={sizeOptions}
-                          onChange={(size) => change({ size })}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="agent-quality" className="field-label">
-                          图片质量
-                        </label>
-                        <UISelect
-                          id="agent-quality"
-                          className="full-width"
-                          disabled={!!run || actions.busy}
-                          value={input.quality}
-                          options={withCurrent(presetQualities, input.quality)}
-                          onChange={(quality) => change({ quality })}
-                        />
-                      </div>
-                    </div>
-                    <p className="hint">
-                      尺寸需由生图模型支持。比例同时写入图片制作要求。
-                    </p>
-                    <label htmlFor="agent-concurrency" className="field-label">
-                      同时生成张数
-                    </label>
-                    <UISelect
-                      id="agent-concurrency"
-                      className="full-width"
-                      value={concurrency.data}
-                      loading={concurrency.isLoading}
-                      options={[1, 2, 3, 4].map((value) => ({
-                        value,
-                        label: value === 1 ? "1 张（逐张生成）" : `${value} 张`,
-                      }))}
-                      onChange={(n) =>
-                        actions.run(async () => {
-                          await call("SetImageConcurrency", n);
-                          qc.setQueryData(["image-concurrency"], n);
-                        })
-                      }
-                    />
-                    <p className="hint">
-                      生成中也可调整，立即生效；调低时已在生成的图片会继续完成。对生图工作台同样生效。中转站可能限制并发，出现大量失败或
-                      429 时请调低。
-                    </p>
-                  </>
-                ),
-              },
-            ]}
-          />
-          {(!input.llmConnectionID || !input.imageConnectionID) && (
-            <p className="hint">
-              请在更多设置中选择连接，或前往
-              <Link to="/settings">连接与设置</Link>添加供应商。
-            </p>
           )}
+          <div id="agent-more" className="agent-more" hidden={!moreOpen}>
+            {home && <div className="composer-templates">{templateBar}</div>}
+            <label htmlFor="agent-url" className="field-label">
+              商品链接
+            </label>
+            <Input
+              id="agent-url"
+              value={input.productURL}
+              disabled={!!run || actions.busy}
+              placeholder="可从指令自动提取，也可手动填写"
+              onChange={(e) => {
+                autoURL.current = "";
+                change({ productURL: e.target.value });
+              }}
+            />
+            {!run && candidates.length > 1 && (
+              <>
+                <label htmlFor="agent-link-choice" className="field-label">
+                  选择本次商品链接
+                </label>
+                <UISelect
+                  id="agent-link-choice"
+                  className="full-width"
+                  value={input.productURL || undefined}
+                  options={candidates.map((value) => ({ value, label: value }))}
+                  onChange={(v) => {
+                    autoURL.current = "";
+                    change({ productURL: v });
+                  }}
+                />
+              </>
+            )}
+            {!home && countRatio}
+            <div className="agent-reference-heading">
+              <h3>参考素材</h3>
+              <p className="hint">
+                上传商品图、字体或色卡。每次需求最多20张参考图。
+              </p>
+              {references}
+            </div>
+            <Collapse
+              ghost
+              activeKey={advanced}
+              onChange={(keys) =>
+                setAdvanced(Array.isArray(keys) ? keys : [keys])
+              }
+              items={[
+                {
+                  key: "settings",
+                  label: "更多设置",
+                  children: (
+                    <>
+                      {!!skillCategories.data?.length && (
+                        <>
+                          <label
+                            htmlFor="agent-category"
+                            className="field-label"
+                          >
+                            商品品类（可选）
+                          </label>
+                          <UISelect
+                            id="agent-category"
+                            className="full-width"
+                            value={input.category || ""}
+                            disabled={!!run || actions.busy}
+                            options={[
+                              { value: "", label: "不指定（只用通用技能）" },
+                              ...skillCategories.data.map((value) => ({
+                                value,
+                                label: value,
+                              })),
+                            ]}
+                            onChange={(category) => change({ category })}
+                          />
+                          <p className="hint">
+                            选了品类时，加上设置里归在这个品类下的技能。
+                          </p>
+                        </>
+                      )}
+                      <label htmlFor="agent-llm" className="field-label">
+                        AI 模型
+                      </label>
+                      <UISelect
+                        id="agent-llm"
+                        className="full-width"
+                        value={input.llmConnectionID || undefined}
+                        disabled={!!run || actions.busy}
+                        options={llms.map((c) => ({
+                          value: c.id,
+                          label: c.name,
+                        }))}
+                        onChange={(llmConnectionID) =>
+                          change({ llmConnectionID })
+                        }
+                      />
+                      <label htmlFor="agent-image" className="field-label">
+                        图片服务
+                      </label>
+                      <UISelect
+                        id="agent-image"
+                        className="full-width"
+                        value={input.imageConnectionID || undefined}
+                        disabled={!!run || actions.busy}
+                        options={images.map((c) => ({
+                          value: c.id,
+                          label: gatewayLabel(
+                            c,
+                            gateways.settings.data,
+                            gateways.byID.get(c.id),
+                          ),
+                        }))}
+                        onChange={(imageConnectionID) =>
+                          change({ imageConnectionID, imageModel: "" })
+                        }
+                      />
+                      <label
+                        htmlFor="agent-image-model"
+                        className="field-label"
+                      >
+                        生图模型
+                      </label>
+                      <ModelSelect
+                        id="agent-image-model"
+                        connection={imageConnection}
+                        value={input.imageModel}
+                        disabled={!!run || actions.busy}
+                        load={advanced.includes("settings") && !run}
+                        onChange={(imageModel) => change({ imageModel })}
+                      />
+                      <div className="parameter-grid">
+                        <div>
+                          <label htmlFor="agent-size" className="field-label">
+                            图片尺寸
+                          </label>
+                          <UISelect
+                            id="agent-size"
+                            className="full-width"
+                            disabled={!!run || actions.busy}
+                            value={input.size}
+                            options={sizeOptions}
+                            onChange={(size) => change({ size })}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="agent-quality"
+                            className="field-label"
+                          >
+                            图片质量
+                          </label>
+                          <UISelect
+                            id="agent-quality"
+                            className="full-width"
+                            disabled={!!run || actions.busy}
+                            value={input.quality}
+                            options={withCurrent(
+                              presetQualities,
+                              input.quality,
+                            )}
+                            onChange={(quality) => change({ quality })}
+                          />
+                        </div>
+                      </div>
+                      <p className="hint">
+                        尺寸需由生图模型支持。比例同时写入图片制作要求。
+                      </p>
+                      <label
+                        htmlFor="agent-concurrency"
+                        className="field-label"
+                      >
+                        同时生成张数
+                      </label>
+                      <UISelect
+                        id="agent-concurrency"
+                        className="full-width"
+                        value={concurrency.data}
+                        loading={concurrency.isLoading}
+                        options={[1, 2, 3, 4].map((value) => ({
+                          value,
+                          label:
+                            value === 1 ? "1 张（逐张生成）" : `${value} 张`,
+                        }))}
+                        onChange={(n) =>
+                          actions.run(async () => {
+                            await call("SetImageConcurrency", n);
+                            qc.setQueryData(["image-concurrency"], n);
+                          })
+                        }
+                      />
+                      <p className="hint">
+                        生成中也可调整，立即生效；调低时已在生成的图片会继续完成。对专业模式同样生效。图片服务可能限制并发，出现大量失败或
+                        429 时请调低。
+                      </p>
+                    </>
+                  ),
+                },
+              ]}
+            />
+            {(!input.llmConnectionID || !input.imageConnectionID) && (
+              <p className="hint">
+                请在更多设置中选择连接，或前往
+                <Link to="/settings">系统 → 连接</Link>添加供应商。
+              </p>
+            )}
+          </div>
           <div className="sticky-actions">
             <p className="hint">
               本次 {input.targetCount} 张 · 生图模型：{model}
               <br />
-              LLM：{llmConnection?.model || "未设置"}
-              。将调用LLM与生图服务，可能产生费用。
+              AI 模型：{llmConnection?.model || "未设置"}
+              。将调用 AI 模型与图片服务，可能产生费用。
             </p>
             <SuiteEstimateHint
               connectionID={input.imageConnectionID}
@@ -772,21 +856,57 @@ export function SmartImages() {
               size={input.size}
               count={input.targetCount}
             />
-            {!run && (
-              <Button
-                className="agent-primary"
-                type="primary"
-                block
-                loading={actions.busy}
-                disabled={!ready || runtime.data?.available === false}
-                onClick={start}
-              >
-                开始生成套图
-              </Button>
-            )}
+            {!run && !home && startButton}
           </div>
         </section>
-        <div className="agent-content">
+        {home && (
+          <section
+            className="recent-works"
+            aria-labelledby="recent-works-title"
+          >
+            {recent.length ? (
+              <>
+                <div className="recent-works-head">
+                  <h2 id="recent-works-title">最近的作品</h2>
+                  <Link to="/assets">查看全部</Link>
+                </div>
+                <div className="recent-works-wall">
+                  {recent.map((a) => (
+                    <Link
+                      key={a.id}
+                      to="/assets"
+                      aria-label={`在作品与素材中查看 ${assetLabel(a)}`}
+                    >
+                      <AssetImage id={a.id} />
+                    </Link>
+                  ))}
+                </div>
+              </>
+            ) : (
+              !!templates.data?.length && (
+                <>
+                  <div className="recent-works-head">
+                    <h2 id="recent-works-title">从模板开始</h2>
+                    <Link to="/templates">管理模板</Link>
+                  </div>
+                  <div className="template-starters">
+                    {templates.data.slice(0, 6).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => applyTemplate(t, "replace")}
+                      >
+                        <strong>{t.name}</strong>
+                        <span>{t.prompt}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )
+            )}
+          </section>
+        )}
+        <div className="agent-content" hidden={home}>
           <section className="panel">
             <div className="panel-heading">
               <h2>制作进度与结果</h2>
@@ -861,7 +981,7 @@ export function SmartImages() {
                       className="hint llm-reconnect-note"
                       title={run.llmReconnectError}
                     >
-                      LLM 连接中断
+                      AI 模型连接中断
                       {run.llmReconnects > 1
                         ? ` ${run.llmReconnects} 次`
                         : "一次"}
@@ -998,10 +1118,10 @@ export function SmartImages() {
                 <Alert
                   type="error"
                   showIcon
-                  message="生图中转站账户余额不足"
+                  message="图片服务账户余额不足"
                   description={
                     <>
-                      这些图片没有生成，也不计费；同批未提交的图片已暂停（设置了备用中转站时会改用备用）。请到该中转站后台充值，再点“重新生成全部失败图片”。API
+                      这些图片没有生成，也不计费；同批未提交的图片已暂停（设置了备用图片服务时会改用备用）。请到该图片服务后台充值，再点“重新生成全部失败图片”。API
                       Key 不需要重新输入。
                     </>
                   }
@@ -1011,13 +1131,12 @@ export function SmartImages() {
                 <Alert
                   type="error"
                   showIcon
-                  message="生图中转站拒绝了 API Key"
+                  message="图片服务拒绝了 API Key"
                   description={
                     <>
                       这些图片没有生成，也不计费；同批未提交的图片已暂停。请到
-                      <Link to="/settings">连接与设置</Link>
-                      重新输入该生图中转站的 API
-                      Key，再点“重新生成全部失败图片”。
+                      <Link to="/settings">系统 → 连接</Link>
+                      重新输入该图片服务的 API Key，再点“重新生成全部失败图片”。
                     </>
                   }
                 />
@@ -1123,7 +1242,7 @@ export function SmartImages() {
                         onClick={() =>
                           actions.confirm(
                             "恢复生成这张图片？",
-                            "这张图片尚未提交。恢复后将调用生图服务，可能产生费用。",
+                            "这张图片尚未提交。恢复后将调用图片服务，可能产生费用。",
                             () => call("ResumeBlocked", task.id),
                             false,
                             "恢复生成",

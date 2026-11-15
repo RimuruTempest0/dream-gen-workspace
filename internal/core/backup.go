@@ -146,7 +146,7 @@ func sanitizeBackup(st *Store) error {
 			t.Error = "备份时正在提交，结果未知，请核对平台记录"
 		case "downloading", "download_failed":
 			t.Status = "download_failed"
-			t.Error = "备份不保留临时图片链接，已归档图片仍在素材库中"
+			t.Error = "备份不保留临时图片链接，已归档图片仍在作品与素材中"
 		}
 		if e = st.Put("task", t.ID, t); e != nil {
 			return e

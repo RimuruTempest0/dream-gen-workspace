@@ -36,12 +36,12 @@ func (s *Service) policyRetryLocked(t *Task) string {
 	reword := t.PolicyStep == 1
 	if reword {
 		if _, _, ok := s.rewordLLMLocked(*t); !ok {
-			return "原样重发后仍被拒绝；没有可用的 LLM 来自动改写措辞，请修改提示词后重新生成。"
+			return "原样重发后仍被拒绝；没有可用的 AI 模型来自动改写措辞，请修改提示词后重新生成。"
 		}
 	}
 	var live Connection
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
-		return "原生图中转站已删除，未自动重发。"
+		return "原图片服务已删除，未自动重发。"
 	}
 	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
 	if e != nil {
@@ -53,9 +53,9 @@ func (s *Service) policyRetryLocked(t *Task) string {
 	}
 	t.PolicyRetriedAs = next.ID
 	if reword {
-		_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("内容审核再次拒绝，用 LLM 改写措辞后自动重发：%s → %s", t.ID, next.ID))
+		_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("内容审核再次拒绝，用 AI 模型改写措辞后自动重发：%s → %s", t.ID, next.ID))
 		s.startRewordLocked(next.ID)
-		return "原样重发后仍被拒绝，正在用 LLM 改写这张图的措辞后再发一次（商品设计、画面文字和参考图不变）。"
+		return "原样重发后仍被拒绝，正在用 AI 模型改写这张图的措辞后再发一次（商品设计、画面文字和参考图不变）。"
 	}
 	_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("内容审核拒绝，自动原样重发一次：%s → %s", t.ID, next.ID))
 	return "已自动原样重发一次（内容审核有一定随机性，常常重发就能通过）。"
@@ -124,7 +124,7 @@ func (s *Service) reword(id string) {
 	}
 	c, key, ok := s.rewordLLMLocked(t)
 	s.mu.Unlock()
-	prompt, e := "", errors.New("没有可用的 LLM")
+	prompt, e := "", errors.New("没有可用的 AI 模型")
 	if ok {
 		ctx, cancel := context.WithTimeout(s.ctx, rewordTimeout)
 		if t.RewordFor == rewordRefine {
@@ -231,7 +231,7 @@ func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage str
 	}
 	resp, e := messagesRequest(ctx, llmHTTPClient(), c, key, req)
 	if e != nil {
-		return "", finish(errors.New("连接 LLM 失败：" + e.Error()))
+		return "", finish(errors.New("连接 AI 模型失败：" + e.Error()))
 	}
 	call.HTTPStatus = resp.StatusCode
 	call.RequestID = resp.Header.Get("request-id")
@@ -254,7 +254,7 @@ func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage str
 		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text[strings.Index(text+"\n", "\n"):]), "```"))
 	}
 	if text == "" {
-		return "", finish(errors.New("LLM 没有返回改写结果"))
+		return "", finish(errors.New("AI 模型没有返回改写结果"))
 	}
 	if e := check(text); e != nil {
 		return "", finish(e)

@@ -1,19 +1,19 @@
 ---
 version: alpha
 colors:
-  primary: "#245BDB"
-  surface: "#FFFFFF"
-  background: "#F5F6F8"
-  text: "#182230"
-  success: "#18794E"
-  danger: "#B42318"
-  ink: "#182230"
-  inkRaised: "#1F2B3B"
-  inkSelected: "#1E3054"
-  inkLine: "#3A4A60"
-  inkText: "#F2F4F7"
-  inkMuted: "#A7B2C2"
-  inkAccent: "#8FB0F5"
+  primary: "#EFE8DA"
+  surface: "#1F1B16"
+  background: "#16130F"
+  text: "#EFE8DA"
+  success: "#86B98F"
+  danger: "#E2765F"
+  ink: "#100E0B"
+  inkRaised: "#1F1B16"
+  inkSelected: "#2E2820"
+  inkLine: "#3A332B"
+  inkText: "#EFE8DA"
+  inkMuted: "#A69C8C"
+  inkAccent: "#EFE8DA"
 typography:
   body:
     fontFamily: '"Microsoft YaHei UI", "Segoe UI", sans-serif'
@@ -35,7 +35,7 @@ spacing:
   large: "24px"
 components:
   workspace:
-    backgroundColor: "#FFFFFF"
+    backgroundColor: "#1F1B16"
     textColor: "{colors.text}"
   success-tag:
     textColor: "{colors.success}"
@@ -44,6 +44,19 @@ components:
 ---
 
 ## Overview
+
+0.7.20 起的方向（本节优先于下文更早的描述）：这是给普通人用的创作工具，目标是做出高级、细节丰富的图片。全应用是一面暖调近黑的“展墙”，界面退后，图片是唯一的亮色。
+
+- 颜色：没有品牌色。`primary` 与 `text` 同为象牙白，主按钮是象牙白底、深色字；画在 primary 上的文字用 `background` 或 `surface`，不用白色。色相只用于状态（success、warning、danger）。不提供浅色模式。
+- 字体：标题和字标用 `--serif`（思源宋体栈，尚未内置，缺失时回落到正文字体，不回落到宋体）；正文和用户内容用微软雅黑 UI。
+- 外壳：左侧 60px 图标栏，悬停或键盘聚焦时浮在页面上展开到 216px；没有顶部条。导航三组：创作 / 专业模式 / 模板，生成记录 / 作品与素材，系统。系统内四个页面共用顶部标签。样式在 `styles/rail.css`；管理工具仍用 `shell.css` 的固定侧栏。
+- Ant Design 使用 darkAlgorithm，主题定义在 `tokens.ts` 的 `antdTheme`，应用和管理工具共用。开关的“开”为绿色。
+- 创作入口（0.7.21，`styles/create.css`）：没有打开需求时页面是一个衬线标题加一个居中输入框（最宽 760px、圆角 18px），控件排在输入框下沿，其余收进“更多选项”；费用与模型一行常显。下方是最近 8 张作品的方格墙，没有作品时是模板卡片。打开需求后回到双栏。
+- 空状态只有一行 muted 文字和可选的操作按钮，不用组件库插画。模板是卡片网格（最小 380px）。
+- 作品与素材、生成记录（0.7.23，`styles/works.css`）：没有外层面板；图片方格无边框，操作在悬停或键盘聚焦时浮在图片右上角；记录表格透明底、细线分隔、行内操作为无边框按钮。
+- 用词（0.7.24）：面向用户的文字用“图片服务”和“AI 模型”，不用“中转站”“LLM”；授权线路名“LLM 线路 N”是数据，保持原样。下文旧条目里的旧用词不再适用。
+- 动效克制，约 200 毫秒，遵守减少动态效果。
+- 下文“全应用唯一的深色面板”“工作台其余部分保持浅色”“只用系统字体”“primary 实底白字”等描述已不适用。
 
 这是电商运营日常使用的图片制作工具。采用产品界面语气，以接触表式图片工作区为视觉重点：参考图与生成结果同场展示，参数保持清晰。避免营销首页、装饰性指标、虚构图片和虚构任务。
 

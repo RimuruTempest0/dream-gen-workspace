@@ -63,7 +63,7 @@ func (s *Service) freezeGeneration(r *AgentRun) error {
 	}
 	var c Connection
 	if e = s.store.Get("connection", r.Input.ImageConnectionID, &c); e != nil {
-		return missing(e, "这次制作使用的生图中转站已删除，请新建需求并选择现有连接")
+		return missing(e, "这次制作使用的图片服务已删除，请新建需求并选择现有连接")
 	}
 	if _, e = s.key(c.Credential); e != nil {
 		return e
@@ -238,10 +238,10 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 	if r.AutoGeneration && (r.LLMConnection.Credential == "" || r.ImageConnection.Credential == "") {
 		var llm, image Connection
 		if e := s.store.Get("connection", r.Input.LLMConnectionID, &llm); e != nil {
-			return "", missing(e, "这次制作使用的 LLM 供应商已删除，请新建需求并选择现有连接")
+			return "", missing(e, "这次制作使用的 AI 模型已删除，请新建需求并选择现有连接")
 		}
 		if e := s.store.Get("connection", r.Input.ImageConnectionID, &image); e != nil {
-			return "", missing(e, "这次制作使用的生图中转站已删除，请新建需求并选择现有连接")
+			return "", missing(e, "这次制作使用的图片服务已删除，请新建需求并选择现有连接")
 		}
 		llm = normalizeConnection(llm)
 		image = normalizeConnection(image)

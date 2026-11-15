@@ -81,7 +81,7 @@
   gap: 8px;
 }
 .agent-judgments-verify {
-  color: var(--warning-text, #ad4e00);
+  color: var(--warning);
   font-weight: 600;
 }
 .agent-judgments ul {

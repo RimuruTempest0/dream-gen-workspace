@@ -84,7 +84,7 @@ const (
 	diagnosticFailureLimit = 50
 )
 
-const diagnosticReadme = "生图工作台诊断包\r\n\r\n请把这个 ZIP 发给软件提供方。\r\n- summary.json：软件版本、系统版本、授权模式、线路名称与健康状态、任务数量\r\n- logs.txt：最近的日志（已隐藏密钥和地址参数）\r\n- failures.json：最近失败的生图和智能生图的错误信息\r\n\r\n不包含 API Key、激活码、线路地址、提示词、图片、技能正文和授权文件。\r\n"
+const diagnosticReadme = "生图工作台诊断包\r\n\r\n请把这个 ZIP 发给软件提供方。\r\n- summary.json：软件版本、系统版本、授权模式、线路名称与健康状态、任务数量\r\n- logs.txt：最近的日志（已隐藏密钥和地址参数）\r\n- failures.json：最近失败的生图和创作的错误信息\r\n\r\n不包含 API Key、激活码、线路地址、提示词、图片、技能正文和授权文件。\r\n"
 
 // ExportDiagnostics writes the diagnostic package to destination. programDir is
 // the program's folder, for version.json.

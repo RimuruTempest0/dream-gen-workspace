@@ -83,10 +83,10 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 	image := func(id string) error {
 		var c Connection
 		if e := s.store.Get("connection", id, &c); e != nil {
-			return missing(e, "所选生图中转站已删除，请刷新")
+			return missing(e, "所选图片服务已删除，请刷新")
 		}
 		if normalizeConnection(c).Kind != "image" {
-			return errors.New("只能选择生图中转站")
+			return errors.New("只能选择图片服务")
 		}
 		return nil
 	}
@@ -98,7 +98,7 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 	}
 	if len(g.BackupIDs) > maxBackupGateways {
 		s.mu.Unlock()
-		return fmt.Errorf("最多设置 %d 个备用中转站", maxBackupGateways)
+		return fmt.Errorf("最多设置 %d 个备用图片服务", maxBackupGateways)
 	}
 	backups := []string{}
 	for _, id := range g.BackupIDs {
@@ -118,7 +118,7 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 		return e
 	}
 	if g.AutoReroute != old.AutoReroute {
-		_ = s.store.appendLog("info", "image", "", fmt.Sprintf("自动转到备用中转站：%v", g.AutoReroute))
+		_ = s.store.appendLog("info", "image", "", fmt.Sprintf("自动转到备用图片服务：%v", g.AutoReroute))
 	}
 	s.mu.Unlock()
 	s.signal()
@@ -179,9 +179,9 @@ func (s *Service) probe(id string) {
 		case status == 401 || status == 403:
 			r.down, r.reason = true, fmt.Sprintf("API Key 被拒绝（HTTP %d）", status)
 		case status >= 500:
-			r.down, r.reason = true, fmt.Sprintf("中转站异常（HTTP %d）", status)
+			r.down, r.reason = true, fmt.Sprintf("图片服务异常（HTTP %d）", status)
 		case status == 0:
-			r.down, r.reason = true, "无法连接中转站："+redact(e.Error(), key)
+			r.down, r.reason = true, "无法连接图片服务："+redact(e.Error(), key)
 		default:
 			// Some relays do not list models; generation may still work, but the
 			// exact model cannot be verified, so it is not used as a backup.
@@ -193,9 +193,9 @@ func (s *Service) probe(id string) {
 	s.probes[id] = r
 	delete(s.probing, id)
 	if r.down && (!had || !prev.down) {
-		_ = s.store.appendLog("warn", "image", id, fmt.Sprintf("免费检查：生图中转站「%s」暂时不可用（%s）", c.Name, r.reason))
+		_ = s.store.appendLog("warn", "image", id, fmt.Sprintf("免费检查：图片服务「%s」暂时不可用（%s）", c.Name, r.reason))
 	} else if !r.down && had && prev.down {
-		_ = s.store.appendLog("info", "image", id, fmt.Sprintf("免费检查：生图中转站「%s」已恢复可连接", c.Name))
+		_ = s.store.appendLog("info", "image", id, fmt.Sprintf("免费检查：图片服务「%s」已恢复可连接", c.Name))
 	}
 	s.mu.Unlock()
 	s.signal()
@@ -372,7 +372,7 @@ func (s *Service) healthLocked(c Connection, tasks []Task, now time.Time) Gatewa
 	case !lastRejected.IsZero() && now.Sub(lastRejected) < recoverQuiet && !lastSuccess.After(lastRejected):
 		h.State, h.Reason = "down", rejectionLabels[rejectedFor]
 	case !lastTimeout.IsZero() && (now.Sub(lastTimeout) < recoverQuiet || !lastFast.After(lastTimeout)):
-		h.State, h.Reason = "slow", fmt.Sprintf("最近有图片在约 %d 秒后被中转站断开", timeoutMS/1000)
+		h.State, h.Reason = "slow", fmt.Sprintf("最近有图片在约 %d 秒后被图片服务断开", timeoutMS/1000)
 	case slowCount >= 2:
 		h.State, h.Reason = "slow", fmt.Sprintf("最近图片生成偏慢（中位约 %d 秒）", h.MedianMS/1000)
 	case (probed && p.ok) || !lastSuccess.IsZero():
@@ -472,7 +472,7 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 			if s.store.Put("task", t.ID, *t) != nil {
 				return false
 			}
-			_ = s.store.appendLog("info", "image", t.BatchID, fmt.Sprintf("图片尚未提交，已从「%s」（%s）转到备用中转站「%s」，不额外计费", from.Name, stateLabels[h.State], b.Name))
+			_ = s.store.appendLog("info", "image", t.BatchID, fmt.Sprintf("图片尚未提交，已从「%s」（%s）转到备用图片服务「%s」，不额外计费", from.Name, stateLabels[h.State], b.Name))
 			return true
 		}
 	}
@@ -483,7 +483,7 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 	}
 	if h.State == "down" && !retry {
 		t.Status = "blocked"
-		t.Error = fmt.Sprintf("生图中转站「%s」暂时不可用（%s），也没有可用的同模型备用中转站。此图尚未提交、未计费，恢复后可点“恢复生成”。", t.Connection.Name, h.Reason)
+		t.Error = fmt.Sprintf("图片服务「%s」暂时不可用（%s），也没有可用的同模型备用图片服务。此图尚未提交、未计费，恢复后可点“恢复生成”。", t.Connection.Name, h.Reason)
 		t.UpdatedAt = Now()
 		_ = s.store.Put("task", t.ID, *t)
 		_ = s.store.appendLog("warn", "image", t.BatchID, t.Error)
@@ -499,10 +499,10 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 func (s *Service) autoRegenerateLocked(t *Task) string {
 	g := s.gatewaySettingsLocked()
 	if t.AutoRetryOf != "" {
-		return "这已是自动重新生成的图片，不会再次自动重发，请核对中转站记录。"
+		return "这已是自动重新生成的图片，不会再次自动重发，请核对图片服务记录。"
 	}
 	if t.Diagnostic.UpstreamJobID != "" {
-		return "异步任务 " + t.Diagnostic.UpstreamJobID + " 可能仍在生成，没有自动重新生成，以免重复计费；请核对中转站记录。"
+		return "异步任务 " + t.Diagnostic.UpstreamJobID + " 可能仍在生成，没有自动重新生成，以免重复计费；请核对图片服务记录。"
 	}
 	tasks, e := workingTasks(s.store, healthWindow)
 	if e != nil {
@@ -513,7 +513,7 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 	if !onBackup {
 		var live Connection
 		if s.store.Get("connection", t.Connection.ID, &live) != nil {
-			return "原中转站已删除，未自动重发。"
+			return "原图片服务已删除，未自动重发。"
 		}
 		target = normalizeConnection(live)
 	}
@@ -529,7 +529,7 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 	if !s.gatewaySetupLocked() {
 		return fmt.Sprintf("已在「%s」自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
 	}
-	return fmt.Sprintf("没有可用的同模型备用中转站，将在「%s」恢复正常后自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
+	return fmt.Sprintf("没有可用的同模型备用图片服务，将在「%s」恢复正常后自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
 }
 
 // ---- relay rejections -------------------------------------------------------

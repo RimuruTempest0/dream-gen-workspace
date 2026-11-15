@@ -569,11 +569,21 @@ test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
+// 创作's entry keeps the link, references and settings under 更多选项.
+async function openMore() {
+  const more = page.getByRole("button", { name: "更多选项", exact: true });
+  if (
+    (await more.count()) &&
+    (await more.getAttribute("aria-expanded")) === "false"
+  )
+    await more.click();
+}
+
 test("LLM settings use separate model lookup and validated agent capabilities", async () => {
-  await expect(page.getByRole("heading", { name: "生图中转站" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "LLM 供应商" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "图片服务" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI 模型" })).toBeVisible();
   await expect(page.getByText("内置运行时已就绪")).toBeVisible();
-  await page.getByRole("button", { name: "添加 LLM 供应商" }).click();
+  await page.getByRole("button", { name: "添加 AI 模型" }).click();
   const modal = page.getByRole("dialog");
   await modal.getByLabel("连接名称", { exact: true }).fill("Agent QA LLM");
   await modal.getByLabel("Base URL", { exact: true }).fill(baseURL);
@@ -587,7 +597,7 @@ test("LLM settings use separate model lookup and validated agent capabilities", 
   expect(modelRequests).toBe(1);
   expect(analysisRequests).toBe(0);
   expect(imageRequests).toBe(0);
-  await modal.getByLabel("LLM 模型 ID", { exact: true }).fill("mock-agent");
+  await modal.getByLabel("模型 ID", { exact: true }).fill("mock-agent");
   await modal
     .getByLabel("模型模式", { exact: true })
     .locator("..")
@@ -622,8 +632,8 @@ test("LLM settings use separate model lookup and validated agent capabilities", 
     .getByRole("button", { name: "保存连接", exact: true })
     .click();
   await expect(imageModal).not.toBeVisible();
-  await page.getByRole("link", { name: "生图工作台", exact: true }).click();
-  await page.getByLabel("中转站连接", { exact: true }).first().click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
+  await page.getByLabel("图片服务", { exact: true }).first().click();
   await expect(
     page.getByText("Agent QA LLM", { exact: true }),
   ).not.toBeVisible();
@@ -631,9 +641,10 @@ test("LLM settings use separate model lookup and validated agent capabilities", 
 });
 
 test("instruction links auto-fill once and multiple links require a choice", async () => {
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   const instruction = page.getByLabel("完整制作指令", { exact: true });
   const url = page.getByLabel("商品链接", { exact: true });
+  await openMore();
   await instruction.fill(
     "Etsy 套图 [(https://example.com/product-one)\\]，12张，1:1",
   );
@@ -657,21 +668,22 @@ test("instruction links auto-fill once and multiple links require a choice", asy
 
 test("native agent requests necessary materials and automatically generates twelve images", async () => {
   test.setTimeout(90000);
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   await page
     .getByLabel("完整制作指令", { exact: true })
     .fill(
       "Etsy 至少12张套图：小金毛刺绣卫衣，MM 字体锁定，执行 P004 真实客户机绣。第6张情侣卧室，1:1。",
     );
+  await openMore();
   await page.getByText("更多设置", { exact: true }).click();
   await page
-    .getByLabel("LLM 供应商", { exact: true })
+    .getByLabel("AI 模型", { exact: true })
     .locator("..")
     .locator("..")
     .click();
   await page.getByText("Agent QA LLM", { exact: true }).last().click();
   await page
-    .getByLabel("生图中转站", { exact: true })
+    .getByLabel("图片服务", { exact: true })
     .locator("..")
     .locator("..")
     .click();
@@ -735,7 +747,8 @@ test("native agent requests necessary materials and automatically generates twel
     /Etsy/,
   );
   // The asset picker shows a thumbnail beside each name; hovering it enlarges it.
-  await page.getByRole("combobox", { name: "从素材库选择参考图" }).click();
+  await openMore();
+  await page.getByRole("combobox", { name: "从作品与素材选择参考图" }).click();
   const pickerOption = page
     .locator(".asset-option")
     .filter({ hasText: "qa-product.png" });
@@ -812,7 +825,7 @@ test("native agent requests necessary materials and automatically generates twel
   ).toBeVisible();
   await expect(page.getByText("处理中", { exact: true })).toHaveCount(0);
   await expect(page.locator("#smart-progress-status")).toContainText(
-    "智能生图正在分析：分析资料和参考图",
+    "正在分析：分析资料和参考图",
   );
   // The activity feed shows what Claude Code and the LLM did, not the prompts.
   // It stays folded until opened.
@@ -824,10 +837,10 @@ test("native agent requests necessary materials and automatically generates twel
   await expect(feed).toBeVisible();
   await expect(feed).toContainText("读取制作需求");
   await expect(feed).toContainText("查看参考图");
-  await expect(feed).toContainText(/LLM 请求 #\d+ 完成/);
+  await expect(feed).toContainText(/AI 模型请求 #\d+ 完成/);
   await expect(feed).not.toContainText("P004：真实客户机绣");
   await expect(page.locator(".run-activity-facts")).toContainText(
-    "次 LLM 请求",
+    "次 AI 模型请求",
   );
   await page.screenshot({
     path: path.resolve("../docs/run-activity-0.6.24.png"),
@@ -860,17 +873,19 @@ test("native agent requests necessary materials and automatically generates twel
   // The LLM stream was cut once and retried: a note, not a failure warning.
   expect(cutStreamOnce).toBe(false);
   await expect(
-    page.getByText(/LLM 连接中断一次，已自动重试并继续完成/),
+    page.getByText(/AI 模型连接中断一次，已自动重试并继续完成/),
   ).toBeVisible();
   await expect(page.getByText(/制作未完成，资料已保留/)).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "下载整套图片", exact: true }),
   ).toBeEnabled();
   // Parallelism stays adjustable after the set is created; other fields are locked.
+  await openMore();
   await page.getByText("更多设置", { exact: true }).click();
   await expect(page.getByLabel("同时生成张数", { exact: true })).toBeEnabled();
   await expect(page.getByLabel("图片尺寸", { exact: true })).toBeDisabled();
   // Collapse again and let the animation finish so axe sees final colors.
+  await openMore();
   await page.getByText("更多设置", { exact: true }).click();
   await expect(page.getByLabel("同时生成张数", { exact: true })).toBeHidden();
   const a11y = await new AxeBuilder({ page })
@@ -895,14 +910,14 @@ test("native agent requests necessary materials and automatically generates twel
     path: "../docs/smart-images-0.3.0.png",
     fullPage: true,
   });
-  await page.getByRole("link", { name: "任务中心", exact: true }).click();
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "生成记录", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   // The finished set no longer pulls the user back: a new request page, no ring.
   await expect(
     page.getByRole("button", { name: "开始生成套图", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "套图结果" })).toHaveCount(0);
-  await expect(page.locator(".nav-progress")).toHaveCount(0);
+  await expect(page.locator(".rail-progress")).toHaveCount(0);
   await page
     .getByRole("button", { name: "打开记录", exact: true })
     .first()
@@ -945,9 +960,9 @@ test("refine a finished image keeps the previous version and stays off the workb
   await expect(
     page.getByText("已完成 12 / 12 个任务，可下载 12 张图片", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "生图工作台", exact: true }).click();
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
   await expect(page.getByText("第一张图片，从这里开始")).toBeVisible();
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
 });
 
 test("set images open in a large viewer with keyboard and button navigation", async () => {
@@ -1077,11 +1092,11 @@ test("rejected API key is explained and failed images regenerate in one action",
   const dialog = page.getByRole("dialog", { name: "优化这张图片" });
   await dialog.getByLabel("想怎么调整？").fill("背景更亮一些");
   await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
-  await expect(page.getByText("生图中转站拒绝了 API Key")).toBeVisible({
+  await expect(page.getByText("图片服务拒绝了 API Key")).toBeVisible({
     timeout: 20000,
   });
   await expect(
-    second.getByText("API Key 无效，中转站拒绝了请求，未生成也不计费。"),
+    second.getByText("API Key 无效，图片服务拒绝了请求，未生成也不计费。"),
   ).toBeVisible();
   const bulk = page.getByRole("button", {
     name: "重新生成全部失败图片（1 张）",
@@ -1093,13 +1108,13 @@ test("rejected API key is explained and failed images regenerate in one action",
   const confirm = page.getByRole("dialog", { name: "重新生成 1 张图片？" });
   await expect(confirm.getByText("可能产生费用")).toBeVisible();
   await confirm.getByRole("button", { name: "重新生成", exact: true }).click();
-  await expect(page.getByText("生图中转站拒绝了 API Key")).toHaveCount(0, {
+  await expect(page.getByText("图片服务拒绝了 API Key")).toHaveCount(0, {
     timeout: 20000,
   });
   await expect(bulk).toHaveCount(0);
   expect(imageRequests).toBe(before + 1);
   // The ring disappears once the regenerated image is saved and the set is finished.
-  await expect(page.locator(".nav-progress")).toHaveCount(0, {
+  await expect(page.locator(".rail-progress")).toHaveCount(0, {
     timeout: 20000,
   });
 });
@@ -1111,15 +1126,17 @@ test("an empty relay account is reported as low balance, not as a bad key", asyn
   const dialog = page.getByRole("dialog", { name: "优化这张图片" });
   await dialog.getByLabel("想怎么调整？").fill("颜色更暖一些");
   await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
-  await expect(page.getByText("生图中转站账户余额不足")).toBeVisible({
+  await expect(
+    page.getByText("图片服务账户余额不足", { exact: true }),
+  ).toBeVisible({
     timeout: 20000,
   });
   await expect(
     fourth.getByText(
-      "中转站账户余额不足，中转站拒绝了请求，未生成也不计费。请到中转站后台充值后重新生成。",
+      "图片服务账户余额不足，图片服务拒绝了请求，未生成也不计费。请到图片服务后台充值后重新生成。",
     ),
   ).toBeVisible();
-  await expect(page.getByText("生图中转站拒绝了 API Key")).toHaveCount(0);
+  await expect(page.getByText("图片服务拒绝了 API Key")).toHaveCount(0);
   await expect(page.getByText(/API Key 无效/)).toHaveCount(0);
   emptyImageAccount = false;
   const before = imageRequests;
@@ -1130,11 +1147,13 @@ test("an empty relay account is reported as low balance, not as a bad key", asyn
     .getByRole("dialog", { name: "重新生成 1 张图片？" })
     .getByRole("button", { name: "重新生成", exact: true })
     .click();
-  await expect(page.getByText("生图中转站账户余额不足")).toHaveCount(0, {
+  await expect(
+    page.getByText("图片服务账户余额不足", { exact: true }),
+  ).toHaveCount(0, {
     timeout: 20000,
   });
   expect(imageRequests).toBe(before + 1);
-  await expect(page.locator(".nav-progress")).toHaveCount(0, {
+  await expect(page.locator(".rail-progress")).toHaveCount(0, {
     timeout: 20000,
   });
 });
@@ -1167,7 +1186,7 @@ test("an image the content check refuses is resent, then reworded by the LLM, wi
   expect(done.prompt).toContain("改写后：");
   expect(refused.policyRetriedAs).toBe(done.id);
   expect(refused.error).toContain("生图模型的内容审核拒绝了这张图");
-  await expect(page.locator(".nav-progress")).toHaveCount(0, {
+  await expect(page.locator(".rail-progress")).toHaveCount(0, {
     timeout: 20000,
   });
 });
@@ -1175,7 +1194,7 @@ test("an image the content check refuses is resent, then reworded by the LLM, wi
 test("blocked product link waits for browser verification and continues", async () => {
   test.setTimeout(120000);
   const before = imageRequests;
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   const shopURL = baseURL.replace("/prefix/v1", "/qa-shop/product");
   await page.evaluate(async (productURL) => {
     const app = window.go!.main!.App!;
@@ -1201,13 +1220,13 @@ test("blocked product link waits for browser verification and continues", async 
   const waiting = page.getByText(/等待验证中（已 \d+ 秒）/);
   await expect(waiting).toBeVisible();
   await expect(page.locator("#smart-progress-status")).toContainText(
-    "智能生图正在分析",
+    "正在分析",
   );
   await expect(page.getByRole("list", { name: "制作步骤" })).toContainText(
     "网站拦截，改用浏览器读取",
   );
-  await page.getByRole("link", { name: "素材库", exact: true }).click();
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "作品与素材", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   await expect(waiting).toBeVisible();
   const first = Number(
     (await waiting.textContent())?.match(/已 (\d+) 秒/)?.[1],
@@ -1227,10 +1246,10 @@ test("blocked product link waits for browser verification and continues", async 
   await expect(waiting).toHaveCount(0);
   // An unfinished run (waiting for input) is kept when the user leaves and returns.
   await expect(page.locator("#smart-progress-status")).toContainText(
-    "智能生图等待补充资料",
+    "等待补充资料",
   );
-  await page.getByRole("link", { name: "任务中心", exact: true }).click();
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "生成记录", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   await expect(
     page.getByText("等待补充", { exact: true }).first(),
   ).toBeVisible();
@@ -1278,8 +1297,9 @@ test("blocked product link waits for browser verification and continues", async 
 test("automatic mode never asks and delivers the whole set", async () => {
   test.setTimeout(90000);
   const before = imageRequests;
-  await page.getByRole("link", { name: "智能生图", exact: true }).click();
+  await page.getByRole("link", { name: "创作", exact: true }).click();
   await page.getByRole("button", { name: "新建需求", exact: true }).click();
+  await openMore();
   await page.getByLabel("商品链接", { exact: true }).fill("");
   await page
     .getByLabel("完整制作指令", { exact: true })
@@ -1320,7 +1340,9 @@ test("automatic mode never asks and delivers the whole set", async () => {
   await expect(page.getByLabel("完整制作指令", { exact: true })).toHaveValue(
     /全自动 Etsy/,
   );
-  await page.getByRole("button", { name: "开始生成套图", exact: true }).click();
+  // Not an exact name: after the quick mode switches above, antd can leave the
+  // button's hidden loading icon (aria-label "loading") in the DOM.
+  await page.getByRole("button", { name: /开始生成套图$/ }).click();
   await expect(page.getByText("自动模式", { exact: true })).toBeVisible();
   await expect(
     page.getByText("已完成 12 / 12 个任务，可下载 12 张图片", { exact: true }),
@@ -1392,7 +1414,7 @@ test("automatic mode never asks and delivers the whole set", async () => {
 });
 
 test("settings clear product browser data after confirmation", async () => {
-  await page.getByRole("link", { name: "连接与设置", exact: true }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   const button = page.getByRole("button", {
     name: "清除商品页浏览器数据",
     exact: true,
@@ -1411,7 +1433,7 @@ test("settings clear product browser data after confirmation", async () => {
 });
 
 test("Skills creation, enable switch and editing preserve local rules", async () => {
-  await page.getByRole("link", { name: "连接与设置", exact: true }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
   await page.getByRole("button", { name: "新建 Skill", exact: true }).click();
   const modal = page.getByRole("dialog");
   await modal.getByLabel("技能名称", { exact: true }).fill("QA 定制规则");
@@ -1437,9 +1459,10 @@ test("Skills creation, enable switch and editing preserve local rules", async ()
   });
 });
 test("LLM monitor shows requests, tokens, the retried drop and capability tests", async () => {
-  await page.getByRole("link", { name: "LLM 监控", exact: true }).click();
+  await page.getByRole("link", { name: "系统", exact: true }).click();
+  await page.getByRole("link", { name: "模型状态", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "LLM 监控", level: 1 }),
+    page.getByRole("heading", { name: "模型状态", level: 1 }),
   ).toBeVisible();
   // The twelve-image run had one cut stream that Claude Code retried.
   const drops = page.locator(".drop-item");
@@ -1472,7 +1495,7 @@ test("LLM monitor shows requests, tokens, the retried drop and capability tests"
     'section[aria-labelledby="llm-log"] .ant-table-tbody tr.ant-table-row',
   );
   await expect(rows.first()).toContainText("能力验证");
-  await expect(page.getByText("这段时间没有智能生图分析")).toBeVisible();
+  await expect(page.getByText("这段时间没有创作分析")).toBeVisible();
   await page
     .getByRole("combobox", { name: "请求类型" })
     .locator("..")

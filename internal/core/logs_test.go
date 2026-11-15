@@ -39,10 +39,10 @@ func TestLogsRecordTransitionsAndRedactBeforePersistence(t *testing.T) {
 	}
 	run := AgentRun{ID: "agent-log", Status: "analyzing", Stage: "读取参考图"}
 	s.store.Put("agent_run", run.ID, run)
-	run.Stage = "等待 LLM 响应"
+	run.Stage = "等待 AI 模型响应"
 	s.store.Put("agent_run", run.ID, run)
 	page, e = s.ListLogs("info", "agent", "", 0, 1)
-	if e != nil || page.Total != 2 || len(page.Items) != 1 || !strings.Contains(page.Items[0].Message, "等待 LLM") {
+	if e != nil || page.Total != 2 || len(page.Items) != 1 || !strings.Contains(page.Items[0].Message, "等待 AI 模型") {
 		t.Fatal(page, e)
 	}
 	page, _ = s.ListLogs("", "agent", "' OR 1=1 --", 0, 50)

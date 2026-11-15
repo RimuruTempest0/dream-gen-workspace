@@ -20,7 +20,7 @@ const (
 	expiryWarning     = 7 * 24 * time.Hour
 	clockRollback     = time.Hour
 	lastSeenThrottle  = 10 * time.Minute
-	expiredMessageFmt = "软件授权已于 %s 到期，已停止生成新图片；已有图片、任务和导出不受影响。请联系软件提供方续费，收到新的授权文件后在“连接与设置 → 授权”导入。"
+	expiredMessageFmt = "软件授权已于 %s 到期，已停止生成新图片；已有图片、任务和导出不受影响。请联系软件提供方续费，收到新的授权文件后在“系统 → 连接 → 授权”导入。"
 	clockBackMessage  = "系统时间早于这台电脑上次使用本软件的时间，已暂停生成新图片。请把 Windows 时间改回正确的日期和时间后重新打开软件。"
 )
 
@@ -85,7 +85,7 @@ func (s *Service) ImportCustomerFile(source string) (LicenseStatus, error) {
 		return LicenseStatus{}, errors.New("此版本不是客户版，不需要导入授权文件")
 	}
 	if busy {
-		return LicenseStatus{}, errors.New("智能生图正在进行，请等它完成或取消后再导入")
+		return LicenseStatus{}, errors.New("创作正在进行，请等它完成或取消后再导入")
 	}
 	keys := []string{}
 	if licensePublicKey != "" {

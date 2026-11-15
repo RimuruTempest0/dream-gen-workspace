@@ -179,11 +179,11 @@ export function Settings() {
   return (
     <>
       <Header
-        title="连接与设置"
+        title="连接"
         sub={
           customer
             ? "授权、线路状态和本地数据。线路由软件提供方配置，无需填写地址或 Key。"
-            : "在应用里配置 Base URL 和 API Key，自由切换兼容的中转站。"
+            : "连接图片服务和 AI 模型，管理技能、数据位置和授权。密钥只加密保存在这台电脑上。"
         }
         action={
           customer ? undefined : (
@@ -202,14 +202,14 @@ export function Settings() {
       <section className="panel">
         <div className="panel-heading">
           <h2>
-            <ApiOutlined aria-hidden="true" /> 生图中转站
+            <ApiOutlined aria-hidden="true" /> 图片服务
           </h2>
           <span className="muted">Images 兼容协议</span>
         </div>
         <DataState
           query={q}
           empty={!q.data?.some((c) => c.kind !== "llm")}
-          emptyText="添加你的第一个中转站"
+          emptyText="添加你的第一个图片服务"
           action={
             <Button type="primary" onClick={() => open(null)}>
               填写 Base URL 与 API Key
@@ -358,7 +358,7 @@ export function Settings() {
           </Button>
         </Space>
         <p className="hint">
-          商品链接被网站拦截时，智能生图会用应用内浏览器读取页面，Cookie
+          商品链接被网站拦截时，创作会用应用内浏览器读取页面，Cookie
           保存在当前数据目录，不进入备份。清除后，下次读取可能需要重新完成验证。
         </p>
         <Space wrap>
@@ -388,7 +388,7 @@ export function Settings() {
         )}
       </section>
       <Modal
-        title={editing ? "编辑中转站连接" : "添加中转站连接"}
+        title={editing ? "编辑图片服务" : "添加图片服务"}
         open={editing !== undefined}
         onCancel={close}
         onOk={save}

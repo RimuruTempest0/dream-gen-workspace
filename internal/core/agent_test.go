@@ -22,7 +22,7 @@ import (
 
 func saveLLM(t *testing.T, s *Service, base string) Connection {
 	t.Helper()
-	c, e := s.SaveConnection(ConnectionInput{Kind: "llm", Name: "LLM 测试", BaseURL: base, Model: "mock-model", Key: "llm-secret-456", Mode: "compatible", AuthMode: "api-key"})
+	c, e := s.SaveConnection(ConnectionInput{Kind: "llm", Name: "AI 模型测试", BaseURL: base, Model: "mock-model", Key: "llm-secret-456", Mode: "compatible", AuthMode: "api-key"})
 	if e != nil {
 		t.Fatal(e)
 	}

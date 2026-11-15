@@ -150,7 +150,7 @@ type LLMMonitor = {
 };
 
 const pageSize = 20;
-const gatewayColors = ["#245BDB", "#C2410C", "#5B6B80", "#18794E", "#7C3AED"];
+const gatewayColors = ["#EFE8DA", "#E08A5B", "#8FA3BA", "#86B98F", "#B79AE8"];
 const stateText = {
   healthy: "正常",
   slow: "变慢",
@@ -387,7 +387,7 @@ export function GatewayMonitorPage() {
     [q],
     5000,
   );
-  const exporter = useCSVExport("ExportGatewayCallsToPath", "中转站调用记录");
+  const exporter = useCSVExport("ExportGatewayCallsToPath", "图片服务调用记录");
   const m = data.data;
   const colorOf = (id: string) =>
     gatewayColors[
@@ -404,19 +404,19 @@ export function GatewayMonitorPage() {
   return (
     <>
       <Header
-        title="中转站监控"
-        sub="每一次实际发出的生图请求都记在发往的中转站下。免费健康检查、未发送就暂停或取消的图片不计入。"
+        title="服务状态"
+        sub="每一次实际发出的生图请求都记在发往的图片服务下。免费健康检查、未发送就暂停或取消的图片不计入。"
       />
       <FilterBar
         q={q}
         change={change}
         connections={(connections.data || []).filter((c) => c.kind !== "llm")}
-        connectionLabel="中转站"
-        allLabel="全部中转站"
+        connectionLabel="图片服务"
+        allLabel="全部图片服务"
         sources={[
           { value: "", label: "全部来源" },
-          { value: "smart", label: "智能生图" },
-          { value: "workbench", label: "生图工作台" },
+          { value: "smart", label: "创作" },
+          { value: "workbench", label: "专业模式" },
         ]}
         onExport={() => exporter.run(q)}
         exporting={exporter.busy}
@@ -428,7 +428,7 @@ export function GatewayMonitorPage() {
               <Stat
                 label="实际发出的生图请求"
                 value={m.total}
-                note={`${m.gateways.filter((g) => g.requests).length} 个中转站${m.running ? ` · 进行中 ${m.running}` : ""}`}
+                note={`${m.gateways.filter((g) => g.requests).length} 个图片服务${m.running ? ` · 进行中 ${m.running}` : ""}`}
               />
               <Stat
                 label="成功"
@@ -452,7 +452,7 @@ export function GatewayMonitorPage() {
                     m.failedAuth ? `API Key 被拒绝 ${m.failedAuth}` : "",
                   ]
                     .filter(Boolean)
-                    .join(" · ") || "中转站拒绝或参数错误"
+                    .join(" · ") || "图片服务拒绝或参数错误"
                 }
               />
               <Stat
@@ -461,7 +461,7 @@ export function GatewayMonitorPage() {
                 note="重新生成可能重复计费"
               />
             </section>
-            <h2 className="monitor-heading">按中转站</h2>
+            <h2 className="monitor-heading">按图片服务</h2>
             <div className="monitor-cards">
               {m.gateways.map((g) => (
                 <article className="monitor-card" key={g.connectionID}>
@@ -607,7 +607,7 @@ export function GatewayMonitorPage() {
                   <h2 id="gw-log">调用记录</h2>
                   <p className="hint">
                     一行是一次实际发出的生图请求。请求 ID
-                    可用于在中转站后台核对计费。
+                    可用于在图片服务后台核对计费。
                   </p>
                 </div>
                 <UISelect
@@ -645,7 +645,7 @@ export function GatewayMonitorPage() {
                       render: clock,
                       width: 140,
                     },
-                    { title: "中转站", dataIndex: "name", width: 150 },
+                    { title: "图片服务", dataIndex: "name", width: 150 },
                     {
                       title: "来源",
                       width: 240,
@@ -692,7 +692,7 @@ export function GatewayMonitorPage() {
                       render: (_, c) => duration(c.downloadMS),
                     },
                     {
-                      title: "中转站请求 ID",
+                      title: "图片服务请求 ID",
                       width: 150,
                       render: (_, c) =>
                         c.requestID ? (
@@ -704,7 +704,9 @@ export function GatewayMonitorPage() {
                           </Tooltip>
                         ) : (
                           <span className="muted">
-                            {c.result === "failed" ? "未计费" : "中转站未返回"}
+                            {c.result === "failed"
+                              ? "未计费"
+                              : "图片服务未返回"}
                           </span>
                         ),
                     },
@@ -729,23 +731,23 @@ export function LLMMonitorPage() {
   const { q, setQ, change } = useMonitorQuery();
   const connections = useData<Connection[]>(["connections"], "ListConnections");
   const data = useData<LLMMonitor>(["llm-monitor", q], "LLMMonitor", [q], 5000);
-  const exporter = useCSVExport("ExportLLMCallsToPath", "LLM调用记录");
+  const exporter = useCSVExport("ExportLLMCallsToPath", "AI 模型调用记录");
   const m = data.data;
   return (
     <>
       <Header
-        title="LLM 监控"
-        sub="智能生图分析时发给 LLM 供应商的每一次请求：用量、耗时和连接中断。能力验证单独标注。"
+        title="模型状态"
+        sub="创作分析时发给 AI 模型的每一次请求：用量、耗时和连接中断。能力验证单独标注。"
       />
       <FilterBar
         q={q}
         change={change}
         connections={(connections.data || []).filter((c) => c.kind === "llm")}
-        connectionLabel="LLM 供应商"
+        connectionLabel="AI 模型"
         allLabel="全部供应商"
         sources={[
           { value: "", label: "全部" },
-          { value: "analysis", label: "智能生图分析" },
+          { value: "analysis", label: "创作分析" },
           { value: "test", label: "能力验证" },
           { value: "rewrite", label: "改写提示词" },
           { value: "check", label: "核对样板" },
@@ -758,9 +760,9 @@ export function LLMMonitorPage() {
           <>
             <section className="monitor-stats" aria-label="总览">
               <Stat
-                label="LLM 请求"
+                label="AI 模型请求"
                 value={m.requests}
-                note={`${m.analysisRuns} 次智能生图 · ${m.testRequests} 次验证`}
+                note={`${m.analysisRuns} 次创作 · ${m.testRequests} 次验证`}
               />
               <Stat
                 label="输入 / 输出 tokens"
@@ -791,7 +793,7 @@ export function LLMMonitorPage() {
                 note="一次需求从首个请求到最后回复"
               />
             </section>
-            <h2 className="monitor-heading">按 LLM 供应商</h2>
+            <h2 className="monitor-heading">按 AI 模型</h2>
             <div className="monitor-cards">
               {m.providers.map((p) => (
                 <article className="monitor-card" key={p.connectionID}>
@@ -801,7 +803,7 @@ export function LLMMonitorPage() {
                       <small className="monitor-sub">
                         模型 {p.model || "未设置"}
                         {p.analysisRuns
-                          ? ` · ${p.analysisRuns} 次智能生图`
+                          ? ` · ${p.analysisRuns} 次创作`
                           : p.requests
                             ? " · 仅验证"
                             : ""}
@@ -865,7 +867,7 @@ export function LLMMonitorPage() {
                 <div>
                   <h2 id="llm-drops">连接中断</h2>
                   <p className="hint">
-                    LLM
+                    AI 模型
                     回复途中连接被断开的记录。等待时长接近的多次中断，通常是代理或网络的超时设置所致。
                   </p>
                 </div>
@@ -885,7 +887,7 @@ export function LLMMonitorPage() {
                         </span>
                       </div>
                       <small>
-                        {d.runName || "智能生图"}
+                        {d.runName || "创作"}
                         {d.stage ? ` · ${d.stage}` : ""} · 等待约{" "}
                         {duration(d.waitedMS)} 后断开
                       </small>
@@ -902,8 +904,10 @@ export function LLMMonitorPage() {
             <section className="panel" aria-labelledby="llm-runs">
               <div className="panel-heading">
                 <div>
-                  <h2 id="llm-runs">按智能生图需求</h2>
-                  <p className="hint">每个需求用了多少 LLM 请求和 tokens。</p>
+                  <h2 id="llm-runs">按创作需求</h2>
+                  <p className="hint">
+                    每个需求用了多少 AI 模型请求和 tokens。
+                  </p>
                 </div>
               </div>
               <ScrollTable>
@@ -917,7 +921,7 @@ export function LLMMonitorPage() {
                       ? { pageSize: 10, showSizeChanger: false }
                       : false
                   }
-                  locale={{ emptyText: "这段时间没有智能生图分析" }}
+                  locale={{ emptyText: "这段时间没有创作分析" }}
                   columns={[
                     {
                       title: "开始时间",
@@ -975,8 +979,8 @@ export function LLMMonitorPage() {
                 <div>
                   <h2 id="llm-log">请求记录</h2>
                   <p className="hint">
-                    一行是一次发给 LLM 供应商的请求，不保存请求内容。供应商请求
-                    ID 可用于核对用量。
+                    一行是一次发给 AI 模型的请求，不保存请求内容。供应商请求 ID
+                    可用于核对用量。
                   </p>
                 </div>
                 <UISelect
@@ -998,7 +1002,7 @@ export function LLMMonitorPage() {
                   size="small"
                   style={{ minWidth: 1120 }}
                   dataSource={m.calls}
-                  locale={{ emptyText: "这段时间没有 LLM 请求" }}
+                  locale={{ emptyText: "这段时间没有 AI 模型请求" }}
                   pagination={{
                     current: Math.floor(q.offset / pageSize) + 1,
                     pageSize,
@@ -1024,7 +1028,7 @@ export function LLMMonitorPage() {
                             ? "改写提示词"
                             : c.kind === "check"
                               ? "核对样板"
-                              : m.runNames[c.runID || ""] || "智能生图",
+                              : m.runNames[c.runID || ""] || "创作",
                     },
                     {
                       title: "阶段",
