@@ -22,6 +22,9 @@ let modelMode = "normal",
   modelRequests = 0;
 const gatewayHits = { models: 0, gw524: 0, gwok: 0 };
 const conceptRequests: string[] = [];
+const moodRequests: string[] = [];
+const imagePrompts: string[] = [];
+let edits = 0;
 const png = fs
   .readFileSync(path.resolve(import.meta.dirname, "fixture.png"))
   .toString("base64");
@@ -60,6 +63,8 @@ test.beforeAll(async () => {
         const text = String(JSON.parse(raw).messages?.[0]?.content ?? "");
         if (text.startsWith("你要把一个“画面概念”融进"))
           conceptRequests.push(text);
+        if (text.startsWith("你要为一张图写一条生图提示词"))
+          moodRequests.push(text);
         const form = text.match(/形体：(\S+?)（/)?.[1] ?? "";
         const stance = text.match(/立场：(\S+?)（/)?.[1] ?? "";
         res.setHeader("content-type", "application/json");
@@ -70,7 +75,9 @@ test.beforeAll(async () => {
                 type: "text",
                 text: text.startsWith("你要把")
                   ? `概念改写 ${form} ${stance}：晨雾里的灰色巨墙下，一只白色陶瓷杯`
-                  : "OK",
+                  : text.startsWith("你要为一张图")
+                    ? `心境改写${form ? " " + form : ""}：细雨夜里远处的一只白色陶瓷杯`
+                    : "OK",
               },
             ],
             usage: { input_tokens: 10, output_tokens: 10 },
@@ -106,12 +113,24 @@ test.beforeAll(async () => {
       );
       return;
     }
+    // 再靠近一点 sends the chosen image as a reference (an edit).
+    if (req.url === "/custom/v1/images/edits") {
+      requests++;
+      edits++;
+      req.resume();
+      req.on("end", () => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ data: [{ b64_json: png }] }));
+      });
+      return;
+    }
     if (req.url === "/custom/v1/images/generations") {
       requests++;
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", () => {
         const v = JSON.parse(body);
+        imagePrompts.push(String(v.prompt));
         // Never answers, like a relay that keeps an image waiting.
         if (v.prompt.includes("hang")) return;
         if (v.prompt.includes("timeout")) {
@@ -1211,6 +1230,323 @@ test("概念台：精选组合、融入与撤销、对比提示词、键盘与�
   await page.getByRole("button", { name: "撤销改写" }).click();
   await expect(prompt).toHaveValue("白色陶瓷杯");
   await expect(batch).toHaveAttribute("aria-checked", "false");
+  await go("DeleteConnection", llm.id);
+  await prompt.fill("");
+});
+test("心境引导：引导模式、四步挑选、留空生成、概念合并、对比出图与再靠近一点", async () => {
+  test.setTimeout(120000);
+  const go = (name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window.go!.main!.App as any)[n as string](...(a as [])),
+      [name, args] as const,
+    );
+  const closeNotices = async () => {
+    const closes = page.locator(".ant-notification-notice-close");
+    while (await closes.count())
+      await closes
+        .first()
+        .click({ timeout: 2000 })
+        .catch(() => {});
+  };
+  const generate = async (name: string, expectText: RegExp) => {
+    await page.getByRole("button", { name, exact: true }).click();
+    const confirm = page.getByRole("dialog").filter({ hasText: expectText });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole("button", { name: "继续", exact: true }).click();
+    await expect(confirm).toBeHidden();
+  };
+  const latestTasks = () =>
+    page.evaluate(async () => {
+      const r = (await window.go!.main!.App!.ListTasks("", 0, 10)) as {
+        items: {
+          status: string;
+          mood?: string;
+          rendering?: string;
+          nudge?: string;
+          prompt: string;
+          basePrompt?: string;
+          batchID: string;
+        }[];
+      };
+      return r.items;
+    });
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
+  // The local gateway of the first test (earlier tests may have picked another).
+  if (
+    !(await page
+      .locator('.ant-select-selection-item[title^="QA 图片服务"]')
+      .count())
+  ) {
+    await page
+      .getByRole("combobox", { name: "图片服务" })
+      .click({ force: true });
+    await page
+      .locator(".ant-select-item-option")
+      .filter({ hasText: /^QA 图片服务/ })
+      .first()
+      .click();
+  }
+  const prompt = page.getByLabel(/^提示词/);
+  const guide = page.getByRole("switch", { name: "引导模式" });
+  const batch = page.getByRole("switch", { name: "批量提示词" });
+  const entry = page.getByRole("button", {
+    name: /挑几样东西，让图更像此刻的你/,
+  });
+  const compare = page.getByRole("switch", { name: "对比出图" });
+
+  // Off by default: the page is as before.
+  await expect(guide).toHaveAttribute("aria-checked", "false");
+  await expect(entry).toHaveCount(0);
+  await expect(compare).toHaveCount(0);
+  await guide.click();
+  await expect(entry).toBeVisible();
+  // 对比出图 needs a mood first.
+  await expect(compare).toBeDisabled();
+  // Remembered: still on after leaving and coming back.
+  await page.reload();
+  await page.waitForFunction(() => !!window.go?.main?.App);
+  await page.getByRole("link", { name: "专业模式", exact: true }).click();
+  await expect(guide).toHaveAttribute("aria-checked", "true");
+  await expect(entry).toBeVisible();
+  // Earlier tests leave ten images per prompt.
+  await page.getByRole("spinbutton", { name: "每条生成张数" }).fill("1");
+  await page.keyboard.press("Tab");
+  // The reload may bring back an earlier test's batch draft.
+  await prompt.fill("");
+  if ((await batch.getAttribute("aria-checked")) === "true")
+    await batch.click();
+  await expect(batch).toHaveAttribute("aria-checked", "false");
+
+  // The whole guide by keyboard: Enter opens it, each pick goes to the next step.
+  const dialog = page.getByRole("dialog", { name: "心境引导" });
+  await entry.focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeVisible();
+  const question = dialog.locator(".mood-question");
+  await expect(question).toHaveText("此刻更像哪种天气？");
+  await expect(dialog.getByRole("button", { name: "细雨" })).toBeVisible();
+  // The guide passes the same accessibility scan as the rest of the app.
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(400);
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  fs.writeFileSync(
+    path.join(docs, "accessibility-mood-guide.json"),
+    JSON.stringify(a11y.violations, null, 2),
+  );
+  expect(a11y.violations).toEqual([]);
+  await closeNotices();
+  await expect(page.locator(".ant-notification-notice")).toHaveCount(0);
+  await page.screenshot({ path: path.join(docs, "mood-guide-0.7.26.png") });
+
+  const choose = async (name: string, next: string) => {
+    await dialog.getByRole("button", { name, exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(question.or(dialog.locator(".mood-sentence"))).toHaveText(
+      next,
+    );
+  };
+  await choose("细雨", "更像一天里的什么时候？");
+  // Back goes to the previous step with the pick kept.
+  await dialog.getByRole("button", { name: "上一步" }).click();
+  await expect(question).toHaveText("此刻更像哪种天气？");
+  await expect(dialog.getByRole("button", { name: "细雨" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await choose("细雨", "更像一天里的什么时候？");
+  await choose("深夜", "你想离它多远？");
+  await choose("很远地看", "你希望这张图怎样？");
+  await choose(
+    "让我缓一缓",
+    "此刻像一个深夜，下着细雨。你想远远地看着它，让这张图帮你缓一缓。",
+  );
+  // A pick on the confirmation screen opens its step and comes back.
+  await dialog.getByRole("button", { name: /^期待：让我缓一缓/ }).click();
+  await expect(question).toHaveText("你希望这张图怎样？");
+  await choose(
+    "拉我一把",
+    "此刻像一个深夜，下着细雨。你想远远地看着它，让这张图拉你一把。",
+  );
+  await dialog.getByRole("button", { name: "就用这个心境" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  const bar = page.locator(".mood-current");
+  await expect(bar).toContainText("细雨 · 深夜 · 很远 · 拉一把");
+  // Opened again it starts on the confirmation screen.
+  await page.getByRole("button", { name: "更换" }).first().click();
+  await expect(dialog.locator(".mood-sentence")).toContainText("拉你一把");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  // An empty prompt is fine with a mood. Without an AI 模型 the points are appended.
+  await prompt.fill("");
+  await expect(compare).toBeEnabled();
+  const before = requests;
+  await generate("生成图片", /按心境改写提示词后生成 1 张/);
+  await expect
+    .poll(async () => (await latestTasks())[0]?.status)
+    .toBe("succeeded");
+  expect(requests).toBe(before + 1);
+  expect(imagePrompts.at(-1)).toMatch(/^一处与下面气氛相符的风景/);
+  const first = page.locator(".result-item").first();
+  await expect(first.locator(".mood-tag").first()).toHaveText(
+    "细雨 · 深夜 · 很远 · 拉一把",
+  );
+
+  // With an AI 模型, a concept picked with the mood joins the same one rewrite.
+  const root = baseURL.replace("/custom/v1", "");
+  const llm = (await go("SaveConnection", {
+    kind: "llm",
+    name: "QA 心境 AI 模型",
+    baseURL: `${root}/llm/v1`,
+    model: "qa-llm",
+    key: "qa-llm-key",
+  })) as { id: string };
+  const stage = page.getByRole("dialog", { name: "概念台" });
+  await page.getByRole("button", { name: /给画面一个形体和立场/ }).click();
+  await stage.getByRole("button", { name: /^崇高/ }).click();
+  await stage.getByRole("button", { name: /^极简主义/ }).click();
+  // One stance only: the new one replaces the old.
+  await expect(
+    stage.getByRole("button", { name: /^浪漫主义/ }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await stage.getByRole("button", { name: /^浪漫主义/ }).click();
+  await stage
+    .getByRole("button", { name: "选用这个概念", exact: true })
+    .click();
+  await expect(stage).toBeHidden();
+  await expect(prompt).toHaveValue("");
+  await expect(page.locator(".concept-current")).toContainText(
+    "巨物 × 浪漫主义",
+  );
+  await prompt.fill("白色陶瓷杯");
+  const conceptsBefore = conceptRequests.length;
+  const moodsBefore = moodRequests.length;
+  await generate("生成图片", /按心境改写提示词后生成 1 张/);
+  await expect
+    .poll(async () => (await latestTasks())[0]?.status)
+    .toBe("succeeded");
+  expect(moodRequests.length).toBe(moodsBefore + 1);
+  expect(conceptRequests.length).toBe(conceptsBefore);
+  expect(moodRequests.at(-1)).toContain("白色陶瓷杯");
+  expect(moodRequests.at(-1)).toContain("形体：巨物");
+  // The expectation goes to the AI model as what it looks like, never as the
+  // button label: "拉我一把" was drawn as a reaching hand.
+  expect(moodRequests.at(-1)).toContain("期待：同样的天气里给一个出口");
+  expect(moodRequests.at(-1)).not.toContain("拉我一把");
+  expect(imagePrompts.at(-1)).toBe(
+    "心境改写 巨物：细雨夜里远处的一只白色陶瓷杯",
+  );
+  await expect(first.locator(".concept-tag")).toHaveText("巨物 × 浪漫主义");
+  await page
+    .locator(".concept-bar-set")
+    .getByRole("button", { name: "清除" })
+    .click();
+
+  // 对比出图: double cost said twice, no batch, two images, one per rendering.
+  await expect(async () => {
+    if ((await batch.getAttribute("aria-checked")) !== "true")
+      await batch.click();
+    await expect(batch).toHaveAttribute("aria-checked", "true", {
+      timeout: 1000,
+    });
+  }).toPass();
+  await compare.click();
+  await expect(batch).toHaveAttribute("aria-checked", "false");
+  await expect(batch).toBeDisabled();
+  await expect(page.locator(".mood-compare")).toContainText("会产生双倍费用");
+  await expect(page.locator("#count")).toBeDisabled();
+  const sent = requests;
+  await generate("生成 2 张图片", /双倍费用/);
+  await expect
+    .poll(async () =>
+      (await latestTasks())
+        .slice(0, 2)
+        .map((t) => `${t.status}:${t.rendering}`)
+        .sort()
+        .join(","),
+    )
+    .toBe("succeeded:painterly,succeeded:realistic");
+  expect(requests).toBe(sent + 2);
+  const pair = page.locator(".recent-batch").first();
+  await expect(pair.locator(".mood-tag", { hasText: "写实" })).toHaveCount(1);
+  await expect(pair.locator(".mood-tag", { hasText: "写意" })).toHaveCount(1);
+  await compare.click();
+  await expect(batch).toBeEnabled();
+
+  // 再靠近一点: one more image from the chosen one, same mood, one direction.
+  const editsBefore = edits;
+  await pair
+    .locator(".result-item")
+    .first()
+    .getByRole("button", { name: "更安静", exact: true })
+    .click();
+  const nudge = page
+    .getByRole("dialog")
+    .filter({ hasText: "再出 1 张（更安静）？" });
+  await nudge.getByRole("button", { name: "再出 1 张", exact: true }).click();
+  await expect
+    .poll(async () => {
+      const t = (await latestTasks())[0];
+      return `${t?.status}:${t?.nudge}:${t?.mood}`;
+    })
+    .toBe("succeeded:更安静:细雨 · 深夜 · 很远 · 拉一把");
+  expect(edits).toBe(editsBefore + 1);
+  await expect(
+    page
+      .locator(".recent-batch")
+      .first()
+      .locator(".mood-tag", { hasText: "更安静" }),
+  ).toHaveCount(1);
+
+  // 复用提示词 brings back the user's own words and the mood.
+  await prompt.fill("别的内容");
+  await page
+    .locator(".mood-bar-set")
+    .getByRole("button", { name: "清除" })
+    .click();
+  await expect(entry).toBeVisible();
+  await page
+    .locator(".result-item")
+    .filter({
+      has: page.locator(".concept-tag", { hasText: "巨物 × 浪漫主义" }),
+    })
+    .first()
+    .getByRole("button", { name: "复用提示词" })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "替换", exact: true })
+    .click();
+  await expect(prompt).toHaveValue("白色陶瓷杯");
+  await expect(bar).toContainText("细雨 · 深夜 · 很远 · 拉一把");
+  // The confirm closes with a fade; the screenshot waits for it.
+  await expect(page.locator(".ant-modal-confirm")).toHaveCount(0);
+  await expect(page.locator(".concept-current")).toContainText(
+    "巨物 × 浪漫主义",
+  );
+
+  await page.mouse.move(0, 0);
+  await closeNotices();
+  await expect(page.locator(".ant-notification-notice")).toHaveCount(0);
+  await page.screenshot({ path: path.join(docs, "mood-bar-0.7.26.png") });
+
+  // Off again: no mood bar, and the concept stage rewrites as before.
+  await page
+    .locator(".mood-bar-set")
+    .getByRole("button", { name: "清除" })
+    .click();
+  await guide.click();
+  await expect(entry).toHaveCount(0);
+  await expect(page.locator(".mood-current")).toHaveCount(0);
+  await page.getByRole("button", { name: /给画面一个形体和立场/ }).click();
+  await expect(
+    stage.getByRole("button", { name: "融入提示词", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(stage).toBeHidden();
   await go("DeleteConnection", llm.id);
   await prompt.fill("");
 });

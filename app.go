@@ -162,10 +162,10 @@ func (a *App) ExportAssetsToPath(ids []string, path string) (int, error) {
 func (a *App) UpdateAssets(ids []string, project string, hidden bool) (int, error) {
 	return a.service.UpdateAssets(ids, project, hidden)
 }
-func (a *App) ListProjects() ([]core.Project, error)               { return a.service.ListProjects() }
-func (a *App) SaveProject(v core.Project) (core.Project, error)    { return a.service.SaveProject(v) }
-func (a *App) DeleteProject(id string) error                       { return a.service.DeleteProject(id) }
-func (a *App) ListTemplates() ([]core.Template, error)             { return a.service.ListTemplates() }
+func (a *App) ListProjects() ([]core.Project, error)            { return a.service.ListProjects() }
+func (a *App) SaveProject(v core.Project) (core.Project, error) { return a.service.SaveProject(v) }
+func (a *App) DeleteProject(id string) error                    { return a.service.DeleteProject(id) }
+func (a *App) ListTemplates() ([]core.Template, error)          { return a.service.ListTemplates() }
 
 // ListConcepts and ComposeConcept serve the workbench concept stage (0.7.18).
 func (a *App) ListConcepts() core.ConceptLibrary {
@@ -174,6 +174,12 @@ func (a *App) ListConcepts() core.ConceptLibrary {
 func (a *App) ComposeConcept(v core.ConceptInput) (core.ConceptResult, error) {
 	return a.service.ComposeConcept(v)
 }
+
+// The pro mode's mood guide (0.7.26).
+func (a *App) ListMoods() core.MoodLibrary                         { return a.service.ListMoods() }
+func (a *App) NudgeMoodImage(v core.NudgeInput) (string, error)    { return a.service.NudgeMoodImage(v) }
+func (a *App) GetGuideMode() bool                                  { return a.service.GetGuideMode() }
+func (a *App) SetGuideMode(on bool) error                          { return a.service.SetGuideMode(on) }
 func (a *App) SaveTemplate(v core.Template) (core.Template, error) { return a.service.SaveTemplate(v) }
 func (a *App) DeleteTemplate(id string) error                      { return a.service.DeleteTemplate(id) }
 func (a *App) Backup() (bool, error) {
@@ -183,6 +189,7 @@ func (a *App) Backup() (bool, error) {
 	}
 	return true, a.service.CreateBackup(path)
 }
+
 // ChooseCustomerFile asks for a renewed customer.dat from the provider.
 func (a *App) ChooseCustomerFile() (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择软件提供方发来的授权文件", Filters: []runtime.FileFilter{{DisplayName: "授权文件 customer.dat", Pattern: "*.dat"}}})

@@ -8,6 +8,7 @@ import {
   type ConceptLibrary,
   type ConceptInput,
   type ConceptResult,
+  type ConceptChoice,
 } from "./api";
 import { useData } from "./ui";
 import { ConceptGlyph } from "./ConceptGlyphs";
@@ -153,6 +154,7 @@ export function ConceptStage({
   onAfterClose,
   prepare,
   onComposed,
+  onPick,
 }: {
   open: boolean;
   hasReferences: boolean;
@@ -162,6 +164,9 @@ export function ConceptStage({
   // Returns the prompt to rewrite for n stances, or null when the user backs out.
   prepare: (n: number) => Promise<string | null>;
   onComposed: (result: ConceptResult) => void;
+  // With a mood set (0.7.26) the concept is only picked: one stance, no rewrite
+  // now; it joins the mood's rewrite at generation time.
+  onPick?: (choice: ConceptChoice) => void;
 }) {
   const library = useData<ConceptLibrary>(["concepts"], "ListConcepts");
   const [form, setForm] = useState("");
@@ -176,6 +181,7 @@ export function ConceptStage({
     if (open) {
       applied.current = false;
       setError("");
+      if (onPick) setStances((v) => v.slice(-1));
     }
   }, [open]);
   const lib = library.data;
@@ -187,6 +193,7 @@ export function ConceptStage({
   function pickStance(id: string) {
     setError("");
     setStances((v) => {
+      if (onPick) return [id];
       if (v.includes(id)) return v.length > 1 ? v.filter((x) => x !== id) : v;
       // A fourth choice replaces the earliest one.
       return [...(v.length >= 3 ? v.slice(1) : v), id];
@@ -203,6 +210,11 @@ export function ConceptStage({
   async function compose() {
     if (!ready || busy) return;
     setError("");
+    if (onPick) {
+      applied.current = true;
+      onPick({ form, stance: stances[0], strength: level });
+      return;
+    }
     const prompt = await prepare(stanceCards.length);
     if (prompt === null) return;
     setBusy(true);
@@ -292,17 +304,25 @@ export function ConceptStage({
           disabled={!ready || busy}
           onClick={compose}
         >
-          {busy
-            ? "正在改写…"
-            : stanceCards.length > 1
-              ? `生成 ${stanceCards.length} 条对比提示词`
-              : "融入提示词"}
+          {onPick
+            ? "选用这个概念"
+            : busy
+              ? "正在改写…"
+              : stanceCards.length > 1
+                ? `生成 ${stanceCards.length} 条对比提示词`
+                : "融入提示词"}
         </Button>
       </div>
-      <p className="concept-note">
-        由 AI 模型改写提示词，不生成图片、不产生生图费用；未配置 AI 模型
-        时直接附加概念要点。
-      </p>
+      {onPick ? (
+        <p className="concept-note">
+          选用后提示词不变：生成时由 AI 模型把概念和心境一起写进提示词。
+        </p>
+      ) : (
+        <p className="concept-note">
+          由 AI 模型改写提示词，不生成图片、不产生生图费用；未配置 AI 模型
+          时直接附加概念要点。
+        </p>
+      )}
     </div>
   );
   return (
@@ -320,7 +340,9 @@ export function ConceptStage({
         <div className="concept-stage-heading">
           <span className="concept-stage-title">概念台</span>
           <span className="concept-stage-sub">
-            Concept stage · 选一个形体，配一到三个立场
+            {onPick
+              ? "Concept stage · 选一个形体，配一个立场"
+              : "Concept stage · 选一个形体，配一到三个立场"}
           </span>
         </div>
       }
@@ -416,7 +438,7 @@ export function ConceptStage({
               aria-labelledby="concept-stances"
             >
               <h3 id="concept-stances" className="concept-section-title">
-                立场 <span>最多 3 个</span>
+                立场 <span>{onPick ? "选 1 个" : "最多 3 个"}</span>
               </h3>
               {groupsOf(lib.stances).map((g) => (
                 <div

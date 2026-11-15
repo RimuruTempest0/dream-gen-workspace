@@ -29,8 +29,8 @@ type ConnectionInput struct {
 	Key             string `json:"key"`
 	ClearKey        bool   `json:"clearKey"`
 	// Protocol of an image connection: openai-images (default) or async-jobs.
-	Protocol string `json:"protocol,omitempty"`
-	TestRequestID   string `json:"testRequestID,omitempty"`
+	Protocol      string `json:"protocol,omitempty"`
+	TestRequestID string `json:"testRequestID,omitempty"`
 }
 type GenerateInput struct {
 	RequestID    string   `json:"requestID"`
@@ -45,12 +45,30 @@ type GenerateInput struct {
 	// ConceptLabels names the concept of each prompt (same index as Prompts),
 	// e.g. "巨物 × 浪漫主义"; optional (0.7.18).
 	ConceptLabels []string `json:"conceptLabels,omitempty"`
+	// Mood is the mood guide's choice (0.7.26): each image is held while the AI
+	// 模型 writes prompt, mood and the optional Concept into one prompt. The prompt
+	// may then be empty. Compare draws one realistic and one painterly image.
+	Mood    *MoodChoice    `json:"mood,omitempty"`
+	Concept *ConceptChoice `json:"concept,omitempty"`
+	Compare bool           `json:"compare,omitempty"`
 }
 type Task struct {
 	// Concept is the concept stage label the prompt was written with (0.7.18).
-	Concept    string `json:"concept,omitempty"`
-	AgentRunID string `json:"agentRunID,omitempty"`
-	PlanItemID string `json:"planItemID,omitempty"`
+	Concept string `json:"concept,omitempty"`
+	// Mood is the label of the mood the image was made with ("细雨 · 深夜 · 很远 ·
+	// 缓一缓"), MoodChoice and ConceptChoice what was picked, Rendering 写实 or 写意
+	// (realistic/painterly, empty when not chosen) and BasePrompt the user's own
+	// prompt before the rewrite (0.7.26). NudgeOf is the image a 再靠近一点 attempt
+	// starts from, Nudge its direction.
+	Mood          string         `json:"mood,omitempty"`
+	MoodChoice    *MoodChoice    `json:"moodChoice,omitempty"`
+	ConceptChoice *ConceptChoice `json:"conceptChoice,omitempty"`
+	Rendering     string         `json:"rendering,omitempty"`
+	BasePrompt    string         `json:"basePrompt,omitempty"`
+	NudgeOf       string         `json:"nudgeOf,omitempty"`
+	Nudge         string         `json:"nudge,omitempty"`
+	AgentRunID    string         `json:"agentRunID,omitempty"`
+	PlanItemID    string         `json:"planItemID,omitempty"`
 	// RefinedFrom is the task whose image this attempt adjusts; RefineInstruction is the user's request.
 	RefinedFrom       string `json:"refinedFrom,omitempty"`
 	RefineInstruction string `json:"refineInstruction,omitempty"`
@@ -75,7 +93,8 @@ type Task struct {
 	PolicyStep      int    `json:"policyStep,omitempty"`
 	Rewording       bool   `json:"rewording,omitempty"`
 	// RewordFor is what the held rewrite is for: "" a refused prompt, "refine" a
-	// refinement whose original requirements must first agree with the change.
+	// refinement whose original requirements must first agree with the change,
+	// "mood" a mood guide image whose prompt is written before it is first sent.
 	RewordFor string `json:"rewordFor,omitempty"`
 	// Trial marks an image requested before activation; it counts toward the trial.
 	Trial bool `json:"trial,omitempty"`
@@ -134,9 +153,9 @@ type GenerationDiagnostic struct {
 	// UpstreamJobID is the job of an async-jobs connection; with it a restarted
 	// app polls the same job instead of submitting again.
 	UpstreamJobID string `json:"upstreamJobID,omitempty"`
-	ElapsedMS         int64  `json:"elapsedMS"`
-	BytesReceived     int    `json:"bytesReceived"`
-	NetworkError      string `json:"networkError"`
+	ElapsedMS     int64  `json:"elapsedMS"`
+	BytesReceived int    `json:"bytesReceived"`
+	NetworkError  string `json:"networkError"`
 	// Download of a returned result runs after generation, in its own pool.
 	DownloadStartedAt string `json:"downloadStartedAt,omitempty"`
 	DownloadMS        int64  `json:"downloadMS,omitempty"`

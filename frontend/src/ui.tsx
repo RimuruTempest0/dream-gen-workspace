@@ -385,7 +385,9 @@ export function Status({ state, task }: { state: string; task?: Task }) {
   return (
     <Tag color={color}>
       {rewording
-        ? "改写提示词"
+        ? task?.rewordFor === "mood"
+          ? "正在按心境改写"
+          : "改写提示词"
         : waitingForSample
           ? "等待样板图"
           : phase || stateNames[state] || state}

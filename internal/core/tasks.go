@@ -37,6 +37,34 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 	if in.RequestID == "" || len(in.RequestID) > 128 {
 		return "", errors.New("请求标识无效")
 	}
+	// Mood guide (0.7.26): the prompt may be empty, and a comparison is one prompt
+	// drawn once in each rendering.
+	var mood moodParts
+	var concept *conceptParts
+	renderings := []string{""}
+	if in.Mood != nil {
+		var e error
+		if mood, e = resolveMood(*in.Mood); e != nil {
+			return "", e
+		}
+		if concept, e = resolveConceptChoice(in.Concept); e != nil {
+			return "", e
+		}
+		if len(in.Prompts) == 0 {
+			in.Prompts = []string{""}
+		}
+		if in.Compare {
+			if len(in.Prompts) != 1 {
+				return "", errors.New("对比出图只能用一条提示词，请关闭批量提示词")
+			}
+			in.Count = 1
+			renderings = []string{renderingRealistic, renderingPainterly}
+		}
+	} else if in.Compare {
+		return "", errors.New("对比出图需要先选好心境")
+	} else if in.Concept != nil {
+		return "", errors.New("选用的概念需要和心境一起使用")
+	}
 	if in.Count < 1 || in.Count > 20 {
 		return "", errors.New("每条提示词张数应为 1–20")
 	}
@@ -84,7 +112,7 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 	batch := NewID()
 	tasks := []Task{}
 	labels := in.ConceptLabels
-	if len(labels) != len(in.Prompts) {
+	if len(labels) != len(in.Prompts) || in.Mood != nil {
 		labels = nil // edited after the concept was applied: the labels no longer match
 	}
 	for i, prompt := range in.Prompts {
@@ -93,21 +121,50 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 		if labels != nil && utf8.RuneCountInString(labels[i]) <= 64 {
 			concept = strings.TrimSpace(labels[i])
 		}
-		if prompt == "" || len(prompt) > 32000 {
+		if (prompt == "" && in.Mood == nil) || len(prompt) > 32000 {
 			return "", errors.New("提示词为空或过长")
 		}
-		for n := 0; n < in.Count; n++ {
-			tasks = append(tasks, Task{ID: NewID(), BatchID: batch, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: in.Size, Quality: in.Quality, References: append([]string{}, in.References...), ProjectID: in.ProjectID, Connection: c, AssetIDs: []string{}, Concept: concept})
+		for _, rendering := range renderings {
+			for n := 0; n < in.Count; n++ {
+				tasks = append(tasks, Task{ID: NewID(), BatchID: batch, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: in.Size, Quality: in.Quality, References: append([]string{}, in.References...), ProjectID: in.ProjectID, Connection: c, AssetIDs: []string{}, Concept: concept, Rendering: rendering})
+			}
 		}
 	}
 	if e := s.ensureCanGenerateLocked(len(tasks), c.ID); e != nil {
 		return "", e
+	}
+	llm := false
+	if in.Mood != nil {
+		// Same licence rule as the concept stage: an expired or invalid licence
+		// blocks the AI 模型; a trial only uses the main line, else the points are appended.
+		if msg := s.licenseBlockMessageLocked(); msg != "" {
+			return "", errors.New(msg)
+		}
+		_, _, llm = s.moodLLMLocked(Task{})
+		for i := range tasks {
+			choice := *in.Mood
+			tasks[i].MoodChoice = &choice
+			if in.Concept != nil {
+				cc := *in.Concept
+				tasks[i].ConceptChoice = &cc
+			}
+			s.prepareMoodTask(&tasks[i], mood, concept, llm)
+		}
 	}
 	for i := range tasks {
 		tasks[i].Trial = s.trialLocked()
 	}
 	result, e := s.store.Submit(in.RequestID, batch, tasks)
 	if e == nil {
+		if in.Mood != nil && result == batch {
+			if llm {
+				for _, t := range tasks {
+					s.startRewordLocked(t.ID)
+				}
+			} else {
+				_ = s.store.appendLog("info", "image", batch, "未配置 AI 模型，已直接附加心境要点")
+			}
+		}
 		s.signal()
 	}
 	return result, e
@@ -223,6 +280,9 @@ func (s *Service) Retry(id string) (string, error) {
 		}
 		s.signal()
 		return t.BatchID, nil
+	}
+	if t.MoodChoice != nil {
+		return s.retryMoodLocked(t)
 	}
 	return s.submit(GenerateInput{RequestID: NewID(), ConnectionID: t.Connection.ID, Model: t.Model, Prompts: []string{t.Prompt}, Count: 1, References: t.References, Size: t.Size, Quality: t.Quality, ProjectID: t.ProjectID})
 }

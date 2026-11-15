@@ -16,7 +16,7 @@ import (
 // its prompt reworded by the LLM. A refused request generates nothing, so these
 // resends normally cost nothing; only an image that is generated is billed.
 
-var policyWords = regexp.MustCompile(`(?i)moderation|content[ _-]?(policy|filter|management)|safety[ _-]?(system|policy|check|filter)|policy[ _-]?violation|内容政策|内容安全|内容审核|安全审核|安全系统|敏感内容|违反.{0,12}(政策|规定|策略|规范)`)
+var policyWords = regexp.MustCompile(`(?i)moderation|content[ _-]?(policy|filter|management)|safety[ _-]?(system|policy|check|filter)|policy[ _-]?violation|内容政策|内容安全|内容审核|安全审核|安全系统|安全政策|安全策略|敏感内容|违反.{0,12}(政策|规定|策略|规范)`)
 
 // policyRejected recognises a request the image model's content check refused
 // before generating. Relays answer it with a 4xx (usually 400) and the model's
@@ -123,11 +123,16 @@ func (s *Service) reword(id string) {
 		return
 	}
 	c, key, ok := s.rewordLLMLocked(t)
+	if t.RewordFor == rewordMood {
+		c, key, ok = s.moodLLMLocked(t)
+	}
 	s.mu.Unlock()
 	prompt, e := "", errors.New("没有可用的 AI 模型")
 	if ok {
 		ctx, cancel := context.WithTimeout(s.ctx, rewordTimeout)
-		if t.RewordFor == rewordRefine {
+		if t.RewordFor == rewordMood {
+			prompt, e = s.moodRewrite(ctx, c, key, t)
+		} else if t.RewordFor == rewordRefine {
 			prompt, e = s.refineRequirements(ctx, c, key, t)
 		} else {
 			prompt, e = s.rewordPrompt(ctx, c, key, t.Prompt)
@@ -143,6 +148,20 @@ func (s *Service) reword(id string) {
 		return
 	}
 	t.Rewording, t.UpdatedAt = false, Now()
+	if t.RewordFor == rewordMood {
+		if e != nil {
+			t.Status = "failed"
+			t.Error = fmt.Sprintf("按心境改写提示词没有成功（%s）。这次没有发送、不计费，请重新生成。", redact(e.Error(), key))
+			// The reason may quote in-image text of the prompt, so it stays on the task.
+			_ = s.store.appendLog("warn", "image", t.BatchID, "按心境改写提示词失败，图片未发送："+t.ID)
+		} else {
+			t.Prompt = prompt
+			// The prompt itself is not logged.
+			_ = s.store.appendLog("info", "image", t.BatchID, "已按心境改写提示词")
+		}
+		_ = s.store.Put("task", t.ID, t)
+		return
+	}
 	if t.RewordFor == rewordRefine {
 		if e != nil {
 			t.Status = "failed"

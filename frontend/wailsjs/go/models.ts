@@ -691,6 +691,22 @@ export namespace core {
 	        this.look = source["look"];
 	    }
 	}
+	export class ConceptChoice {
+	    form: string;
+	    stance: string;
+	    strength: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConceptChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.form = source["form"];
+	        this.stance = source["stance"];
+	        this.strength = source["strength"];
+	    }
+	}
 	export class ConceptInput {
 	    prompt: string;
 	    form: string;
@@ -1022,6 +1038,24 @@ export namespace core {
 	    }
 	}
 	
+	export class MoodChoice {
+	    weather: string;
+	    time: string;
+	    distance: string;
+	    expectation: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoodChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.weather = source["weather"];
+	        this.time = source["time"];
+	        this.distance = source["distance"];
+	        this.expectation = source["expectation"];
+	    }
+	}
 	export class GenerateInput {
 	    requestID: string;
 	    connectionID: string;
@@ -1033,6 +1067,9 @@ export namespace core {
 	    quality: string;
 	    projectID: string;
 	    conceptLabels?: string[];
+	    mood?: MoodChoice;
+	    concept?: ConceptChoice;
+	    compare?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new GenerateInput(source);
@@ -1050,7 +1087,28 @@ export namespace core {
 	        this.quality = source["quality"];
 	        this.projectID = source["projectID"];
 	        this.conceptLabels = source["conceptLabels"];
+	        this.mood = this.convertValues(source["mood"], MoodChoice);
+	        this.concept = this.convertValues(source["concept"], ConceptChoice);
+	        this.compare = source["compare"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class GenerationDiagnostic {
 	    stage: string;
@@ -1419,6 +1477,84 @@ export namespace core {
 	        this.limit = source["limit"];
 	    }
 	}
+	
+	export class MoodOption {
+	    id: string;
+	    name: string;
+	    short: string;
+	    phrase: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoodOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.short = source["short"];
+	        this.phrase = source["phrase"];
+	    }
+	}
+	export class MoodLibrary {
+	    weather: MoodOption[];
+	    time: MoodOption[];
+	    distance: MoodOption[];
+	    expectation: MoodOption[];
+	    renderings: MoodOption[];
+	    nudges: MoodOption[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MoodLibrary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.weather = this.convertValues(source["weather"], MoodOption);
+	        this.time = this.convertValues(source["time"], MoodOption);
+	        this.distance = this.convertValues(source["distance"], MoodOption);
+	        this.expectation = this.convertValues(source["expectation"], MoodOption);
+	        this.renderings = this.convertValues(source["renderings"], MoodOption);
+	        this.nudges = this.convertValues(source["nudges"], MoodOption);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class NudgeInput {
+	    requestID: string;
+	    taskID: string;
+	    assetID: string;
+	    direction: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NudgeInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requestID = source["requestID"];
+	        this.taskID = source["taskID"];
+	        this.assetID = source["assetID"];
+	        this.direction = source["direction"];
+	    }
+	}
 	export class Output {
 	    url?: string;
 	    b64_json?: string;
@@ -1435,6 +1571,13 @@ export namespace core {
 	}
 	export class Task {
 	    concept?: string;
+	    mood?: string;
+	    moodChoice?: MoodChoice;
+	    conceptChoice?: ConceptChoice;
+	    rendering?: string;
+	    basePrompt?: string;
+	    nudgeOf?: string;
+	    nudge?: string;
 	    agentRunID?: string;
 	    planItemID?: string;
 	    refinedFrom?: string;
@@ -1487,6 +1630,13 @@ export namespace core {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.concept = source["concept"];
+	        this.mood = source["mood"];
+	        this.moodChoice = this.convertValues(source["moodChoice"], MoodChoice);
+	        this.conceptChoice = this.convertValues(source["conceptChoice"], ConceptChoice);
+	        this.rendering = source["rendering"];
+	        this.basePrompt = source["basePrompt"];
+	        this.nudgeOf = source["nudgeOf"];
+	        this.nudge = source["nudge"];
 	        this.agentRunID = source["agentRunID"];
 	        this.planItemID = source["planItemID"];
 	        this.refinedFrom = source["refinedFrom"];

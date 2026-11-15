@@ -30,6 +30,10 @@ import {
   type Template,
   type RecentBatch,
   type ConceptResult,
+  type ConceptChoice,
+  type ConceptLibrary,
+  type MoodChoice,
+  type MoodOption,
   type Task,
 } from "../api";
 import {
@@ -54,6 +58,7 @@ import { TemplateBar, type TemplateMode } from "../Templates";
 import { LicenseNotice } from "../License";
 import { gatewayLabel, useGateways } from "../Gateways";
 import { ConceptBar, ConceptStage } from "../Concepts";
+import { MoodBar, MoodGuide, MoodNudges, MoodTags } from "../Mood";
 
 // What the prompt box held before a concept rewrite, and what the rewrite put there.
 type ConceptUndo = {
@@ -98,6 +103,13 @@ export function Workbench() {
   const conceptEntry = useRef<HTMLButtonElement>(null);
   const [dragging, setDragging] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  // Mood guide (0.7.26): the guide mode is remembered; with it off the page is
+  // exactly as before and a saved mood simply does not apply.
+  const guideMode = useData<boolean>(["guide-mode"], "GetGuideMode");
+  const guideOn = !!guideMode.data;
+  const [guideOpen, setGuideOpen] = useState(false);
+  const moodEntry = useRef<HTMLButtonElement>(null);
+  const conceptLib = useData<ConceptLibrary>(["concepts"], "ListConcepts");
   useEffect(() => {
     if (ready)
       latestDraft.current = {
@@ -158,7 +170,66 @@ export function Workbench() {
   const prompts = (batch ? prompt.split("\n") : [prompt])
     .map((s) => s.trim())
     .filter(Boolean);
-  const total = prompts.length * input.count;
+  const moodActive = guideOn && !!input.mood;
+  const compare = moodActive && !!input.compare;
+  // With a mood the prompt may be empty; a comparison is one image per rendering.
+  const total = compare
+    ? 2
+    : (moodActive ? Math.max(prompts.length, 1) : prompts.length) * input.count;
+  const pickedConcept = (() => {
+    const c = input.concept;
+    const f = conceptLib.data?.forms.find((x) => x.id === c?.form);
+    const st = conceptLib.data?.stances.find((x) => x.id === c?.stance);
+    return f && st ? `${f.name} × ${st.name}` : "";
+  })();
+  function setGuide(on: boolean) {
+    qc.setQueryData(["guide-mode"], on);
+    call("SetGuideMode", on).catch((e) => {
+      qc.invalidateQueries({ queryKey: ["guide-mode"] });
+      notification.error({
+        message: "引导模式未保存",
+        description: errorText(e),
+      });
+    });
+  }
+  function applyMood(mood: MoodChoice) {
+    change({ mood });
+    setGuideOpen(false);
+  }
+  function clearMood() {
+    change({ mood: undefined, concept: undefined, compare: false });
+  }
+  function pickConcept(concept: ConceptChoice) {
+    change({ concept });
+    setStageOpen(false);
+  }
+  function setCompare(on: boolean) {
+    if (on) setBatch(false);
+    change({ compare: on });
+  }
+  // 再靠近一点: one more image from this one, one direction changed.
+  function nudge(t: Task, assetID: string, n: MoodOption) {
+    const requestID = crypto.randomUUID();
+    actions.confirm(
+      `再出 1 张（${n.name}）？`,
+      <>
+        以这张图为底图，只往“{n.name}
+        ”改一点，其余保持。这是新的生图请求，费用以图片服务实际计费为准。
+      </>,
+      async () => {
+        await call("NudgeMoodImage", {
+          requestID,
+          taskID: t.id,
+          assetID,
+          direction: n.id,
+        });
+        setViewerIndex(null);
+        await qc.invalidateQueries({ queryKey: ["tasks"] });
+      },
+      false,
+      "再出 1 张",
+    );
+  }
   // Labels count per prompt line; once the lines no longer match they are dropped.
   const conceptLabels =
     input.conceptLabels?.length === prompts.length
@@ -253,15 +324,21 @@ export function Workbench() {
   // Puts a past prompt and its size and quality back in the form. The current text
   // is replaced only after a confirm, so nothing typed is lost by a stray click.
   function reusePrompt(t: Task) {
+    // A mood image brings back the user's own prompt, its mood and concept.
+    const text = t.moodChoice ? t.basePrompt || "" : t.prompt;
     const apply = () => {
-      setPrompt(t.prompt);
+      setPrompt(text);
       setBatch(false);
       setConceptUndo(null);
       change({
         conceptLabels: undefined,
+        ...(t.moodChoice
+          ? { mood: t.moodChoice, concept: t.conceptChoice, compare: false }
+          : {}),
         ...(t.size ? { size: t.size } : {}),
         ...(t.quality ? { quality: t.quality } : {}),
       });
+      if (t.moodChoice && !guideOn) setGuide(true);
       setViewerIndex(null);
       requestAnimationFrame(() => {
         promptRef.current?.focus();
@@ -271,10 +348,12 @@ export function Workbench() {
       });
     };
     const current = prompt.trim();
-    if (!current || current === t.prompt.trim()) return apply();
+    if (!current || current === text.trim()) return apply();
     modal.confirm({
       title: "用这条提示词替换当前内容？",
-      content: "同时套用它的尺寸和质量。",
+      content: t.moodChoice
+        ? "同时套用它的心境、尺寸和质量。"
+        : "同时套用它的尺寸和质量。",
       okText: "替换",
       cancelText: "取消",
       autoFocusButton: "cancel",
@@ -302,7 +381,7 @@ export function Workbench() {
       setFormError("请选择模型。");
       return;
     }
-    if (!prompts.length) {
+    if (!prompts.length && !moodActive) {
       setFormError("请填写提示词。");
       promptRef.current?.focus();
       return;
@@ -311,15 +390,29 @@ export function Workbench() {
     const requestID = crypto.randomUUID();
     actions.confirm(
       `生成 ${total} 张图片？`,
-      <>
-        将使用“{selected.name}”提交 {total}{" "}
-        个子任务。费用以图片服务实际计费为准。
-      </>,
+      moodActive ? (
+        <>
+          将使用“{selected.name}”按心境改写提示词后生成 {total} 张
+          {compare ? "（写实、写意各 1 张，会产生双倍费用）" : ""}
+          。改写由 AI
+          模型完成，改写没有成功的图片不发送、不计费。费用以图片服务实际计费为准。
+        </>
+      ) : (
+        <>
+          将使用“{selected.name}”提交 {total}{" "}
+          个子任务。费用以图片服务实际计费为准。
+        </>
+      ),
       async () => {
         await call("Submit", {
           ...input,
           prompts,
-          conceptLabels,
+          conceptLabels: moodActive ? undefined : conceptLabels,
+          // A mood (and the concept picked with it) only applies in the guide mode.
+          mood: moodActive ? input.mood : undefined,
+          concept: moodActive ? input.concept : undefined,
+          compare: compare || undefined,
+          count: compare ? 1 : input.count,
           model: input.model || selected.model,
           requestID,
         });
@@ -401,13 +494,25 @@ export function Workbench() {
         <section className="panel composer">
           <div className="panel-heading">
             <h2>生成内容</h2>
-            <Space>
-              <span>批量提示词</span>
-              <Switch
-                checked={batch}
-                onChange={setBatch}
-                aria-label="批量提示词"
-              />
+            <Space size={18}>
+              <Space>
+                <span>引导模式</span>
+                <Switch
+                  checked={guideOn}
+                  onChange={setGuide}
+                  disabled={guideMode.isPending}
+                  aria-label="引导模式"
+                />
+              </Space>
+              <Space>
+                <span>批量提示词</span>
+                <Switch
+                  checked={batch}
+                  onChange={setBatch}
+                  disabled={compare}
+                  aria-label="批量提示词"
+                />
+              </Space>
             </Space>
           </div>
           <div className="field-header prompt-header">
@@ -438,26 +543,63 @@ export function Workbench() {
             }}
             autoSize={{ minRows: 7, maxRows: 16 }}
             style={{ resize: "none" }}
-            placeholder="例如：白色背景上的陶瓷咖啡杯，柔和自然光，突出釉面质感，电商产品摄影"
+            placeholder={
+              moodActive
+                ? "写下想画什么，气氛交给心境；也可以留空，按心境自定画面"
+                : "例如：白色背景上的陶瓷咖啡杯，柔和自然光，突出釉面质感，电商产品摄影"
+            }
             aria-invalid={!!formError}
             aria-describedby="generate-error"
           />
           <div className="prompt-meta">
             <span>
               {prompt.length} 字 ·{" "}
-              {batch
-                ? `${prompts.length} 条提示词，每行独立生成`
-                : input.references.length
-                  ? `图生图 · ${input.references.length} 张参考图`
-                  : "文生图 / 添加参考图后转为图生图"}
+              {moodActive && !prompts.length
+                ? "提示词留空：按心境自定画面"
+                : batch
+                  ? `${prompts.length} 条提示词，每行独立生成`
+                  : input.references.length
+                    ? `图生图 · ${input.references.length} 张参考图`
+                    : "文生图 / 添加参考图后转为图生图"}
             </span>
           </div>
+          {guideOn && (
+            <>
+              <MoodBar
+                mood={input.mood}
+                disabled={!ready}
+                onOpen={() => setGuideOpen(true)}
+                onClear={clearMood}
+                openRef={moodEntry}
+              />
+              <MoodGuide
+                open={guideOpen}
+                value={input.mood}
+                onClose={() => setGuideOpen(false)}
+                onAfterClose={(applied) =>
+                  applied
+                    ? promptRef.current?.focus()
+                    : moodEntry.current?.focus()
+                }
+                onApply={applyMood}
+              />
+            </>
+          )}
           <ConceptBar
-            labels={conceptLabels || []}
-            canUndo={!!conceptUndo && conceptUndo.after === prompt}
+            labels={
+              moodActive
+                ? pickedConcept
+                  ? [pickedConcept]
+                  : []
+                : conceptLabels || []
+            }
+            canUndo={
+              !moodActive && !!conceptUndo && conceptUndo.after === prompt
+            }
             disabled={!ready}
             onOpen={() => setStageOpen(true)}
             onClear={() => {
+              if (moodActive) return change({ concept: undefined });
               change({ conceptLabels: undefined });
               setConceptUndo(null);
             }}
@@ -475,6 +617,7 @@ export function Workbench() {
             }
             prepare={prepareConcept}
             onComposed={applyConcept}
+            onPick={moodActive ? pickConcept : undefined}
           />
           <div className="field-header">
             <label className="field-label">
@@ -600,9 +743,10 @@ export function Workbench() {
               </label>
               <InputNumber
                 id="count"
-                value={input.count}
+                value={compare ? 1 : input.count}
                 min={1}
                 max={20}
+                disabled={compare}
                 onChange={(v) => change({ count: v || 1 })}
               />
             </div>
@@ -616,6 +760,25 @@ export function Workbench() {
               message={formError}
             />
           )}
+          {guideOn && (
+            <div className="mood-compare" data-on={compare}>
+              <Switch
+                id="mood-compare"
+                checked={compare}
+                disabled={!input.mood}
+                onChange={setCompare}
+                aria-describedby="mood-compare-note"
+              />
+              <label htmlFor="mood-compare" className="mood-compare-label">
+                对比出图
+              </label>
+              <span id="mood-compare-note" className="mood-compare-note">
+                {input.mood
+                  ? "写实、写意各出 1 张，挑更像的一张 · 会产生双倍费用"
+                  : "先选好心境才能对比出图"}
+              </span>
+            </div>
+          )}
           <div className="generate-footer">
             <span
               className={blocked ? "footer-blocked" : "muted"}
@@ -626,9 +789,11 @@ export function Workbench() {
                 : draftError
                   ? "草稿未保存：" + draftError
                   : ready
-                    ? batch && prompts.length > 1
-                      ? `${prompts.length} 条 × 每条 ${input.count} 张 · Ctrl + Enter 生成`
-                      : "草稿保存在本机 · Ctrl + Enter 生成"
+                    ? compare
+                      ? "对比出图：写实、写意各 1 张 · 会产生双倍费用"
+                      : batch && prompts.length > 1
+                        ? `${prompts.length} 条 × 每条 ${input.count} 张 · Ctrl + Enter 生成`
+                        : "草稿保存在本机 · Ctrl + Enter 生成"
                     : "正在读取草稿"}
             </span>
             <Button
@@ -746,10 +911,21 @@ export function Workbench() {
                             {t.concept && (
                               <span className="concept-tag">{t.concept}</span>
                             )}
+                            <MoodTags task={t} />
                           </div>
                           <p className="result-prompt" title={t.prompt}>
-                            {t.prompt}
+                            {t.prompt ||
+                              (t.rewording
+                                ? "按心境自定画面，正在写提示词"
+                                : "")}
                           </p>
+                          {t.mood &&
+                            t.status === "succeeded" &&
+                            t.assetIDs[0] && (
+                              <MoodNudges
+                                onNudge={(n) => nudge(t, t.assetIDs[0], n)}
+                              />
+                            )}
                           <Button
                             type="link"
                             size="small"
@@ -821,6 +997,9 @@ export function Workbench() {
                 >
                   复用提示词
                 </Button>
+              )}
+              {t?.mood && t.status === "succeeded" && (
+                <MoodNudges onNudge={(n) => nudge(t, item.assetID, n)} />
               )}
             </>
           );

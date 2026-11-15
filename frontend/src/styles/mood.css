@@ -1,0 +1,455 @@
+/* Mood guide (0.7.26). Same gallery-wall family as the concept stage (ink*
+   colours, thin lines, no fills, gradients or shadows), but lighter: one
+   question per screen, few large choices, a serif question and wide margins.
+   Colours come from tokens.ts only. */
+
+/* ---- entry on the workbench ---- */
+.mood-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.mood-entry {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 14px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+.mood-entry:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+.mood-entry:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.mood-entry > .anticon {
+  color: var(--muted);
+  font-size: 12px;
+}
+.mood-entry:hover:not(:disabled) > .anticon {
+  color: var(--primary);
+}
+.mood-entry-mark {
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--inkText);
+}
+.mood-entry-mark .mood-glyph {
+  width: 24px;
+  height: 24px;
+}
+.mood-entry-copy,
+.mood-current {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.mood-entry-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.mood-entry-copy span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.mood-bar-set {
+  min-height: 48px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+.mood-current {
+  padding-left: 4px;
+}
+.mood-current-kicker {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.mood-current strong {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+.mood-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 对比出图 sits by the generate button and states its cost in words. */
+.mood-compare {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 14px;
+}
+.mood-compare-label {
+  font-size: 14px;
+  cursor: pointer;
+}
+.mood-compare-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+.mood-compare[data-on="true"] .mood-compare-note {
+  color: var(--warning);
+}
+
+/* ---- tags and 再靠近一点 on results ---- */
+.mood-tag {
+  display: inline-block;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.mood-nudges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+.mood-nudges-title {
+  margin-right: 2px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.mood-nudge-pair {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mood-nudge {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+.mood-nudge + .mood-nudge {
+  border-left: 1px solid var(--border);
+}
+.mood-nudge:hover:not(:disabled) {
+  background: var(--soft);
+}
+.mood-nudge:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.mood-nudge:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.viewer-footer .mood-nudges {
+  margin: 0;
+}
+
+/* ---- the guide ---- */
+.mood-guide .ant-drawer-content {
+  background: var(--ink);
+  color: var(--inkText);
+}
+.mood-guide .ant-drawer-content-wrapper {
+  max-width: 100vw;
+}
+.mood-guide .ant-drawer-header {
+  padding: 18px 28px 14px;
+  border-bottom: 0;
+}
+.mood-guide .ant-drawer-close {
+  color: var(--inkMuted);
+}
+.mood-guide .ant-drawer-close:hover {
+  color: var(--inkText);
+  background: var(--inkRaised);
+}
+.mood-guide .ant-drawer-body {
+  padding: 36px 36px 28px;
+}
+.mood-guide .ant-drawer-footer {
+  padding: 16px 28px;
+  border-top: 1px solid var(--inkLine);
+}
+.mood-guide :focus-visible {
+  outline-color: var(--inkAccent);
+}
+.mood-guide .ant-btn-text {
+  color: var(--inkMuted);
+}
+.mood-guide .ant-btn-text:hover {
+  color: var(--inkText);
+  background: var(--inkRaised);
+}
+
+/* Step indicator: five short lines, the current one in ivory. */
+.mood-progress {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mood-progress-step {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--inkMuted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-align: left;
+  cursor: pointer;
+}
+.mood-progress-step:disabled {
+  cursor: default;
+}
+.mood-progress-line {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--inkLine);
+  transition: background-color 200ms ease-out;
+}
+.mood-progress-step[data-done="true"] .mood-progress-line {
+  background: var(--inkMuted);
+}
+.mood-progress-step[aria-current="step"] {
+  color: var(--inkText);
+}
+.mood-progress-step[aria-current="step"] .mood-progress-line {
+  background: var(--inkAccent);
+}
+.mood-progress-step:hover:not(:disabled) {
+  color: var(--inkText);
+}
+
+.mood-loading {
+  color: var(--inkMuted);
+}
+.mood-step {
+  animation: mood-step-in 220ms ease-out;
+}
+@keyframes mood-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.mood-kicker {
+  margin: 0;
+  font-family: Consolas, "Microsoft YaHei UI", monospace;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--inkMuted);
+}
+.mood-question,
+.mood-sentence {
+  margin: 10px 0 30px;
+  font-family: var(--serif);
+  font-weight: 300;
+  color: var(--inkText);
+  text-wrap: balance;
+}
+.mood-question {
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+}
+.mood-sentence {
+  max-width: 22em;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+  line-height: 1.75;
+}
+.mood-question:focus,
+.mood-sentence:focus {
+  outline: none;
+}
+.mood-question:focus-visible,
+.mood-sentence:focus-visible {
+  outline: 2px solid var(--inkAccent);
+  outline-offset: 6px;
+}
+
+.mood-options {
+  display: grid;
+  gap: 10px;
+}
+.mood-options-7 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.mood-options-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.mood-options-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mood-option {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 118px;
+  padding: 18px 8px 16px;
+  border: 1px solid var(--inkLine);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--inkMuted);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+.mood-options-4 .mood-option {
+  min-height: 128px;
+}
+.mood-options-3 .mood-option {
+  min-height: 148px;
+}
+.mood-option .mood-glyph {
+  width: 52px;
+  height: 52px;
+}
+.mood-option-name {
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  color: var(--inkText);
+}
+.mood-option:hover {
+  border-color: var(--inkMuted);
+  background: var(--inkRaised);
+  color: var(--inkText);
+}
+.mood-option[aria-pressed="true"] {
+  border-color: var(--inkAccent);
+  background: var(--inkSelected);
+  color: var(--inkText);
+}
+
+/* Confirmation: the sentence, then the four picks, each one click from its step. */
+.mood-picks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mood-pick {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 12px 11px;
+  border: 1px solid var(--inkLine);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--inkMuted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+.mood-pick .mood-glyph {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 6px;
+  color: var(--inkText);
+}
+.mood-pick-step {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+}
+.mood-pick-name {
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--inkText);
+}
+.mood-pick:hover {
+  border-color: var(--inkMuted);
+  background: var(--inkRaised);
+}
+
+.mood-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+}
+.mood-footer-note {
+  font-size: 12px;
+  color: var(--inkMuted);
+}
+.mood-footer .ant-btn-primary {
+  min-width: 168px;
+}
+
+@media (max-width: 640px) {
+  .mood-options-7 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mood-picks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mood-guide .ant-drawer-body {
+    padding: 28px 20px 20px;
+  }
+}
+@media (forced-colors: active) {
+  .mood-option[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+  }
+  .mood-progress-step[aria-current="step"] .mood-progress-line {
+    background: Highlight;
+  }
+}

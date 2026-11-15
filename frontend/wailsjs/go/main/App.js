@@ -182,6 +182,10 @@ export function GetGatewaySettings() {
   return window['go']['main']['App']['GetGatewaySettings']();
 }
 
+export function GetGuideMode() {
+  return window['go']['main']['App']['GetGuideMode']();
+}
+
 export function GetTask(arg1) {
   return window['go']['main']['App']['GetTask'](arg1);
 }
@@ -246,6 +250,10 @@ export function ListLogs(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['ListLogs'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function ListMoods() {
+  return window['go']['main']['App']['ListMoods']();
+}
+
 export function ListProjects() {
   return window['go']['main']['App']['ListProjects']();
 }
@@ -268,6 +276,10 @@ export function ListTasks(arg1, arg2, arg3) {
 
 export function ListTemplates() {
   return window['go']['main']['App']['ListTemplates']();
+}
+
+export function NudgeMoodImage(arg1) {
+  return window['go']['main']['App']['NudgeMoodImage'](arg1);
 }
 
 export function OpenDataDirectory() {
@@ -344,6 +356,10 @@ export function SetDraft(arg1) {
 
 export function SetGatewaySettings(arg1) {
   return window['go']['main']['App']['SetGatewaySettings'](arg1);
+}
+
+export function SetGuideMode(arg1) {
+  return window['go']['main']['App']['SetGuideMode'](arg1);
 }
 
 export function SetImageConcurrency(arg1) {

@@ -92,6 +92,8 @@ export function GetExportAsset(arg1:string):Promise<core.Asset>;
 
 export function GetGatewaySettings():Promise<core.GatewaySettings>;
 
+export function GetGuideMode():Promise<boolean>;
+
 export function GetTask(arg1:string):Promise<core.Task>;
 
 export function ImageConcurrency():Promise<number>;
@@ -124,6 +126,8 @@ export function ListConnections():Promise<Array<core.Connection>>;
 
 export function ListLogs(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<core.LogPage>;
 
+export function ListMoods():Promise<core.MoodLibrary>;
+
 export function ListProjects():Promise<Array<core.Project>>;
 
 export function ListRecentBatches(arg1:number):Promise<Array<core.RecentBatch>>;
@@ -135,6 +139,8 @@ export function ListSkills():Promise<Array<core.SkillRecord>>;
 export function ListTasks(arg1:string,arg2:number,arg3:number):Promise<core.Page>;
 
 export function ListTemplates():Promise<Array<core.Template>>;
+
+export function NudgeMoodImage(arg1:core.NudgeInput):Promise<string>;
 
 export function OpenDataDirectory():Promise<void>;
 
@@ -173,6 +179,8 @@ export function SetAgentDraft(arg1:core.AgentInput):Promise<void>;
 export function SetDraft(arg1:core.GenerateInput):Promise<void>;
 
 export function SetGatewaySettings(arg1:core.GatewaySettings):Promise<void>;
+
+export function SetGuideMode(arg1:boolean):Promise<void>;
 
 export function SetImageConcurrency(arg1:number):Promise<void>;
 

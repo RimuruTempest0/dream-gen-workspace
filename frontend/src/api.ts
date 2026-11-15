@@ -39,9 +39,50 @@ export type GenerateInput = {
   projectID: string;
   // Concept stage label of each prompt (same index as prompts), 0.7.18.
   conceptLabels?: string[];
+  // Mood guide (0.7.26): the mood, a concept picked with it, and 对比出图.
+  mood?: MoodChoice;
+  concept?: ConceptChoice;
+  compare?: boolean;
+};
+export type MoodChoice = {
+  weather: string;
+  time: string;
+  distance: string;
+  expectation: string;
+};
+export type ConceptChoice = { form: string; stance: string; strength: number };
+export type MoodOption = {
+  id: string;
+  name: string;
+  short: string;
+  phrase: string;
+};
+export type MoodLibrary = {
+  weather: MoodOption[];
+  time: MoodOption[];
+  distance: MoodOption[];
+  expectation: MoodOption[];
+  renderings: MoodOption[];
+  nudges: MoodOption[];
+};
+export type NudgeInput = {
+  requestID: string;
+  taskID: string;
+  assetID: string;
+  direction: string;
 };
 export type Task = {
   concept?: string;
+  // Mood guide (0.7.26): label, choice, rendering (realistic/painterly), the
+  // user's own prompt before the rewrite, and the 再靠近一点 source and direction.
+  mood?: string;
+  moodChoice?: MoodChoice;
+  conceptChoice?: ConceptChoice;
+  rendering?: string;
+  basePrompt?: string;
+  nudgeOf?: string;
+  nudge?: string;
+  rewordFor?: string;
   agentRunID?: string;
   planItemID?: string;
   refinedFrom?: string;
