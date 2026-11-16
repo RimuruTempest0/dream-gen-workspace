@@ -212,7 +212,7 @@ func Extract(pkg, dir string) error {
 	var total uint64
 	for _, f := range z.File {
 		name := strings.ReplaceAll(f.Name, `\`, "/")
-		if f.FileInfo().IsDir() {
+		if isDirEntry(f, name) {
 			continue
 		}
 		if !AllowedEntry(name) || f.Mode()&os.ModeSymlink != 0 {
@@ -232,7 +232,7 @@ func Extract(pkg, dir string) error {
 	}
 	for _, f := range z.File {
 		name := strings.ReplaceAll(f.Name, `\`, "/")
-		if f.FileInfo().IsDir() {
+		if isDirEntry(f, name) {
 			continue
 		}
 		dest := filepath.Join(dir, filepath.FromSlash(name))
@@ -256,6 +256,13 @@ func Extract(pkg, dir string) error {
 		}
 	}
 	return nil
+}
+
+// isDirEntry reports whether a package entry is a folder. Packages made by
+// PowerShell name folders with a trailing backslash, which archive/zip does not
+// recognise as a folder; name is the entry's name with forward slashes.
+func isDirEntry(f *zip.File, name string) bool {
+	return f.FileInfo().IsDir() || strings.HasSuffix(name, "/")
 }
 
 // Info is the part of version.json an update is checked against.

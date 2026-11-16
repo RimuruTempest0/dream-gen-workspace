@@ -90,6 +90,34 @@ func writeZip(t *testing.T, files map[string]string) string {
 	return path
 }
 
+// build.ps1 packs with PowerShell, which writes backslash paths and names each
+// folder with a trailing backslash. Such a folder entry must not become a file
+// that then blocks the folder (packages that carry the browser runtime have them).
+func TestExtractPowerShellFolderEntries(t *testing.T) {
+	pkg := filepath.Join(t.TempDir(), "u.zip")
+	f, _ := os.Create(pkg)
+	w := zip.NewWriter(f)
+	for _, entry := range []struct{ name, body string }{
+		{"ImageWorkbench.exe", "new"},
+		{"version.json", `{"version":"0.7.32"}`},
+		{`runtime\EBWebView\`, ""},
+		{`runtime\EBWebView\x64\EmbeddedBrowserWebView.dll`, "dll"},
+		{`runtime\Dictionaries\`, ""},
+	} {
+		x, _ := w.Create(entry.name)
+		x.Write([]byte(entry.body))
+	}
+	w.Close()
+	f.Close()
+	stage := filepath.Join(t.TempDir(), "s")
+	if e := Extract(pkg, stage); e != nil {
+		t.Fatal(e)
+	}
+	if b, e := os.ReadFile(filepath.Join(stage, "runtime", "EBWebView", "x64", "EmbeddedBrowserWebView.dll")); e != nil || string(b) != "dll" {
+		t.Fatal("file below a folder entry not extracted", e)
+	}
+}
+
 func TestExtractRefusesForeignFiles(t *testing.T) {
 	good := writeZip(t, map[string]string{"ImageWorkbench.exe": "new", "version.json": `{"version":"0.7.13"}`})
 	if e := Extract(good, filepath.Join(t.TempDir(), "s")); e != nil {

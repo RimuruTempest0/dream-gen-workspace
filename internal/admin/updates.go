@@ -81,7 +81,8 @@ func packageVersion(path string) (string, error) {
 	version := ""
 	for _, f := range z.File {
 		name := strings.ReplaceAll(f.Name, string(os.PathSeparator), "/")
-		if f.FileInfo().IsDir() {
+		// PowerShell names folders with a trailing backslash.
+		if f.FileInfo().IsDir() || strings.HasSuffix(name, "/") {
 			continue
 		}
 		if !update.AllowedEntry(name) {
