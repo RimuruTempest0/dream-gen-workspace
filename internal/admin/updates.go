@@ -67,7 +67,7 @@ func (a *Admin) PublishUpdate(r UpdateRelease, dest string) (update.Manifest, er
 	if e = os.WriteFile(dest, data, 0o644); e != nil {
 		return update.Manifest{}, e
 	}
-	return update.Verify(data, []string{a.d.SigningPublicKey})
+	return update.Verify(data, []string{a.d.SigningPublicKey}, "")
 }
 
 // packageVersion reads version.json from an update package and checks that the

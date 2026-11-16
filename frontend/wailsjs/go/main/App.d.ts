@@ -18,6 +18,8 @@ export function CancelConnectionTest(arg1:string):Promise<void>;
 
 export function CancelTask(arg1:string):Promise<void>;
 
+export function CancelUpdateWait():Promise<void>;
+
 export function ChangeDataDirectory(arg1:string):Promise<core.Summary>;
 
 export function CheckForUpdate():Promise<core.UpdateStatus>;
@@ -55,8 +57,6 @@ export function DeleteShopRule(arg1:string):Promise<void>;
 export function DeleteSkill(arg1:string):Promise<void>;
 
 export function DeleteTemplate(arg1:string):Promise<void>;
-
-export function DownloadUpdate():Promise<core.UpdateStatus>;
 
 export function EstimateSuite(arg1:string,arg2:string,arg3:string,arg4:number):Promise<core.SuiteEstimate>;
 

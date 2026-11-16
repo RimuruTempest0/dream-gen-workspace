@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Alert, App as AntApp, Button, Progress, Space, Switch } from "antd";
+import { Alert, Button, Modal, Progress, Space, Switch } from "antd";
 import { CloudDownloadOutlined } from "@ant-design/icons";
 import { call } from "./api";
 import { time, useActions, useData } from "./ui";
@@ -17,6 +17,10 @@ export type UpdateStatus = {
   size?: number;
   stage?: "" | "downloading" | "ready";
   downloaded?: number;
+  /** The one-click update is under way (downloading, or waiting to restart). */
+  installing?: boolean;
+  /** Why the restart is put off; it follows by itself once this is over. */
+  waiting?: string;
   error?: string;
 };
 
@@ -27,14 +31,107 @@ export function useUpdateStatus() {
 
 const mb = (n?: number) => `${((n || 0) / 1048576).toFixed(1)} MB`;
 
-// Sidebar line when a newer version is waiting.
+// What a waiting version offers: its notes and the one button. One click
+// downloads, checks and restarts; while images are being generated the restart
+// waits for them.
+function UpdateOffer({ u }: { u: UpdateStatus }) {
+  const actions = useActions();
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["update-status"] });
+  // Between the click and the first progress report the stage is still empty.
+  const downloading =
+    u.stage === "downloading" || (!!u.installing && u.stage !== "ready");
+  return (
+    <div className="update-available">
+      <strong>
+        新版本 {u.version}（{mb(u.size)}）
+      </strong>
+      {u.notes && <p className="update-notes">{u.notes}</p>}
+      {u.stage === "downloading" && (
+        <Progress
+          percent={Math.min(
+            99,
+            Math.round(((u.downloaded || 0) / (u.size || 1)) * 100),
+          )}
+          aria-label="更新下载进度"
+        />
+      )}
+      {u.installing && u.stage === "ready" ? (
+        <Alert
+          type="info"
+          showIcon
+          role="status"
+          message={
+            u.waiting
+              ? "已下载并校验，等当前图片完成后自动重启"
+              : "已下载并校验，正在重启…"
+          }
+          description={u.waiting || undefined}
+          action={
+            u.waiting ? (
+              <Button
+                size="small"
+                onClick={() =>
+                  actions.run(async () => {
+                    await call("CancelUpdateWait");
+                    await refresh();
+                  })
+                }
+              >
+                暂不重启
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <Button
+          type="primary"
+          icon={<CloudDownloadOutlined aria-hidden="true" />}
+          loading={downloading}
+          disabled={actions.busy}
+          onClick={() =>
+            actions.run(async () => {
+              await call("InstallUpdate");
+              await refresh();
+            })
+          }
+        >
+          {downloading ? "正在下载" : "立即更新"}
+        </Button>
+      )}
+      <p className="hint">
+        点一次即可：下载、校验文件完整性，然后自动重启。图片、任务和设置都保留，更新失败会自动恢复原来的程序。
+      </p>
+    </div>
+  );
+}
+
+// Rail line when a newer version is waiting; opens the offer.
 export function UpdateBadge() {
   const u = useUpdateStatus().data;
+  const [open, setOpen] = useState(false);
   if (!u?.available || !u.version) return null;
   return (
-    <Link to="/settings#update" className="update-badge">
-      <CloudDownloadOutlined aria-hidden="true" /> 有新版本 {u.version}
-    </Link>
+    <>
+      <button
+        type="button"
+        className="update-badge"
+        onClick={() => setOpen(true)}
+      >
+        <CloudDownloadOutlined aria-hidden="true" /> 有新版本 {u.version}
+      </button>
+      <Modal
+        open={open}
+        title="软件更新"
+        footer={null}
+        onCancel={() => setOpen(false)}
+        destroyOnHidden
+      >
+        <p className="hint">当前版本 {u.current}</p>
+        {u.error && <Alert type="warning" showIcon message={u.error} />}
+        <UpdateOffer u={u} />
+      </Modal>
+    </>
   );
 }
 
@@ -42,7 +139,6 @@ export function UpdatePanel() {
   const q = useUpdateStatus();
   const actions = useActions();
   const qc = useQueryClient();
-  const { modal } = AntApp.useApp();
   const u = q.data;
   if (!u) return null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["update-status"] });
@@ -59,7 +155,7 @@ export function UpdatePanel() {
       {!u.supported ? (
         <p className="hint">
           此版本没有设置在线更新。升级时请向软件提供方获取完整包，解压覆盖程序目录并保留
-          data、data-location.txt 和 customer.dat。
+          data 和 data-location.txt。
         </p>
       ) : (
         <>
@@ -77,7 +173,7 @@ export function UpdatePanel() {
             <span>自动检查更新（启动后和每 24 小时，只读取更新信息）</span>
             <Button
               loading={u.checking}
-              disabled={actions.busy || u.stage === "downloading"}
+              disabled={actions.busy || u.installing}
               onClick={() =>
                 actions.run(async () => {
                   await call("CheckForUpdate");
@@ -91,54 +187,7 @@ export function UpdatePanel() {
           {u.checkedAt && <p className="hint">上次检查：{time(u.checkedAt)}</p>}
           {u.error && <Alert type="warning" showIcon message={u.error} />}
           {u.available && u.version ? (
-            <div className="update-available">
-              <strong>
-                新版本 {u.version}（{mb(u.size)}）
-              </strong>
-              {u.notes && <p className="update-notes">{u.notes}</p>}
-              {u.stage === "downloading" && (
-                <Progress
-                  percent={Math.min(
-                    99,
-                    Math.round(((u.downloaded || 0) / (u.size || 1)) * 100),
-                  )}
-                  aria-label="更新下载进度"
-                />
-              )}
-              {u.stage === "ready" ? (
-                <Button
-                  type="primary"
-                  onClick={() =>
-                    modal.confirm({
-                      title: `重启并更新到 ${u.version}？`,
-                      content:
-                        "软件会关闭，替换程序文件后自动重新打开。图片、任务、设置和授权都保留；更新失败会自动恢复原来的程序。正在生成的图片需要先完成。",
-                      okText: "重启并更新",
-                      cancelText: "稍后",
-                      onOk: () => actions.run(() => call("InstallUpdate")),
-                    })
-                  }
-                >
-                  重启并更新
-                </Button>
-              ) : (
-                <Button
-                  type="primary"
-                  icon={<CloudDownloadOutlined aria-hidden="true" />}
-                  loading={u.stage === "downloading"}
-                  disabled={actions.busy}
-                  onClick={() =>
-                    actions.run(async () => {
-                      await call("DownloadUpdate");
-                      await refresh();
-                    })
-                  }
-                >
-                  下载更新
-                </Button>
-              )}
-              <p className="hint">下载后会校验文件完整性，校验通过才能安装。</p>
-            </div>
+            <UpdateOffer u={u} />
           ) : (
             u.checkedAt && !u.error && <p className="hint">已是最新版本。</p>
           )}

@@ -1934,6 +1934,8 @@ export namespace core {
 	    notes?: string;
 	    size?: number;
 	    stage?: string;
+	    installing?: boolean;
+	    waiting?: string;
 	    downloaded?: number;
 	    error?: string;
 	
@@ -1953,6 +1955,8 @@ export namespace core {
 	        this.notes = source["notes"];
 	        this.size = source["size"];
 	        this.stage = source["stage"];
+	        this.installing = source["installing"];
+	        this.waiting = source["waiting"];
 	        this.downloaded = source["downloaded"];
 	        this.error = source["error"];
 	    }

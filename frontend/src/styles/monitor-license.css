@@ -315,8 +315,12 @@
   border-radius: 8px;
   background: var(--soft);
   color: var(--primary);
+  font: inherit;
   font-size: 13px;
   text-decoration: underline;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
 }
 .update-available {
   display: flex;

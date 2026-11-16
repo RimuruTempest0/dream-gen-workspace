@@ -44,6 +44,9 @@ async function settle() {
   await expect(page.locator(".ant-notification-notice")).toHaveCount(0, {
     timeout: 15000,
   });
+  // Buttons fade between disabled and enabled; a scan mid-fade reads a colour
+  // that is on screen for a few frames only.
+  await page.waitForFunction(() => document.getAnimations().length === 0);
 }
 
 test.describe.configure({ mode: "serial" });
@@ -490,4 +493,81 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await expect(
     page.locator(".ant-table-row").filter({ hasText: "曾交付" }),
   ).toHaveCount(1);
+});
+
+test("发布大众版：分支和未提交改动的检查、构建签名、只留两个要上传的文件", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" });
+  const build = page.getByRole("button", { name: /^构建大众版/ });
+  try {
+    // On the e-commerce branch the build is refused, with the reason.
+    await page.getByRole("link", { name: "发布大众版" }).click();
+    await expect(page.getByText(/要从 creative-concepts 分支构建/)).toBeVisible(
+      { timeout: 15000 },
+    );
+    await expect(build).toBeDisabled();
+
+    // On the right branch with an uncommitted change it names the file.
+    git("checkout", "-q", "-b", "creative-concepts");
+    fs.writeFileSync(
+      path.join(repo, "wails.json"),
+      '{ "info": { "productVersion": "0.6.2" } }\n// edited',
+    );
+    await expect(page.getByText(/有未提交的改动（wails\.json）/)).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(build).toBeDisabled();
+    git("checkout", "-q", "--", "wails.json");
+
+    // Clean: the notes come from the changelog, without its verification part.
+    await expect(build).toBeEnabled({ timeout: 15000 });
+    await expect(build).toHaveText(/0\.6\.2/);
+    const notes = page.getByRole("textbox", { name: /更新说明/ });
+    await expect(notes).toHaveValue(/QA update notes, first paragraph\./);
+    await expect(notes).not.toHaveValue(/not for people using the app/);
+    await build.click();
+    await expect(page.getByText("大众版已构建并签名。")).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByText("0.6.2 已准备好，还没有上传")).toBeVisible();
+
+    const out = path.join(repo, "release", "creative", "0.6.2");
+    expect(fs.readdirSync(path.join(out, "upload")).sort()).toEqual([
+      "ImageWorkbench-update-0.6.2.zip",
+      "update.json",
+    ]);
+    expect(fs.existsSync(path.join(out, "ImageWorkbench-0.6.2.zip"))).toBe(
+      true,
+    );
+    // Format 2 with the line: delivered e-commerce apps (format 1) refuse it.
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(out, "upload", "update.json"), "utf8"),
+    );
+    expect(manifest.format).toBe(2);
+    const payload = JSON.parse(
+      Buffer.from(manifest.payload, "base64").toString("utf8"),
+    );
+    expect(payload).toMatchObject({
+      format: 2,
+      line: "creative",
+      version: "0.6.2",
+      url: "https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/ImageWorkbench-update-0.6.2.zip",
+    });
+    await expect(
+      page.locator(".ant-table-row").filter({ hasText: "0.6.2" }),
+    ).toBeVisible();
+
+    await settle();
+    const a11y = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+      .analyze();
+    expect(a11y.violations).toEqual([]);
+    await page.screenshot({
+      path: "../docs/admin-creative-1.6.0.png",
+      fullPage: true,
+    });
+  } finally {
+    git("checkout", "-q", "-f", "main");
+  }
 });

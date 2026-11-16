@@ -59,10 +59,28 @@ export type Customer = {
   deliveries: Delivery[];
   events: AdminEvent[];
 };
+export type CreativeRelease = {
+  version: string;
+  at: string;
+  fullZip: string;
+  uploadDir: string;
+  updateZip: string;
+  manifest: string;
+  notes: string;
+};
+export type CreativeSource = {
+  version: string;
+  branch: string;
+  changed: string[];
+  blocked: string;
+  releasePage: string;
+  releaseURL: string;
+};
 export type AdminState = {
   signingPublicKey: string;
   repoRoot: string;
   updateURL?: string;
+  creative: CreativeRelease[];
   builtinSkills: { id: string; name: string; description: string }[];
   dataDir: string;
   upstreams: Upstream[];

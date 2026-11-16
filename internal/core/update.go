@@ -27,6 +27,30 @@ import (
 // builds never check for updates.
 var updateManifestURL = ""
 
+// productLine and updatePublicKey are set at build time for a product line that
+// has no licence (scripts/build.ps1 -ProductLine creative -UpdatePublicKey …).
+// Such a build runs without customer.dat, is configured by its user and takes
+// updates announced for its own line only. Empty: the e-commerce line, whose
+// updates are checked with the licence key.
+var (
+	productLine     = ""
+	updatePublicKey = ""
+)
+
+// startUpdater launches the downloaded program to apply the update; tests replace it.
+var startUpdater = realStartUpdater
+
+func realStartUpdater(exe string, args ...string) error { return exec.Command(exe, args...).Start() }
+
+// updateIdlePoll is how often a one-click update that is waiting for images
+// looks again.
+var updateIdlePoll = 2 * time.Second
+
+// updateBusy is why an update cannot restart the program right now.
+type updateBusy string
+
+func (e updateBusy) Error() string { return string(e) }
+
 const (
 	updateCheckEvery   = 24 * time.Hour
 	updateFirstCheck   = time.Minute
@@ -49,6 +73,8 @@ type UpdateStatus struct {
 	Notes      string `json:"notes,omitempty"`
 	Size       int64  `json:"size,omitempty"`
 	Stage      string `json:"stage,omitempty"` // downloading, ready
+	Installing bool   `json:"installing,omitempty"` // one-click update under way
+	Waiting    string `json:"waiting,omitempty"`    // why the restart is put off
 	Downloaded int64  `json:"downloaded,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
@@ -57,6 +83,8 @@ type updateState struct {
 	status   UpdateStatus
 	manifest update.Manifest
 	staged   string // folder with the checked new files
+	auto     bool   // UpdateNow is running
+	cancel   bool   // the user called off the wait for a restart
 }
 
 type updatePrefs struct {
@@ -64,14 +92,18 @@ type updatePrefs struct {
 }
 
 func (s *Service) updateKeysLocked() []string {
-	if licensePublicKey == "" {
+	key := licensePublicKey
+	if productLine != "" {
+		key = updatePublicKey
+	}
+	if key == "" {
 		return nil
 	}
-	return []string{licensePublicKey}
+	return []string{key}
 }
 
 func (s *Service) updateSupportedLocked() bool {
-	return updateManifestURL != "" && licensePublicKey != "" && s.programDir != ""
+	return updateManifestURL != "" && len(s.updateKeysLocked()) > 0 && s.programDir != ""
 }
 
 // updateBlockedLocked explains why no update is offered with this licence, or "".
@@ -86,7 +118,7 @@ func (s *Service) UpdateStatus() UpdateStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.upd.status
-	st.Supported, st.Current = s.updateSupportedLocked(), AppVersion
+	st.Supported, st.Current, st.Installing = s.updateSupportedLocked(), AppVersion, s.upd.auto
 	var p updatePrefs
 	_ = s.store.Get("preferences", updatePrefKey, &p)
 	st.AutoCheck = !p.Off
@@ -132,14 +164,15 @@ func (s *Service) CheckForUpdate() (UpdateStatus, error) {
 		s.mu.Unlock()
 		return s.UpdateStatus(), errors.New(blocked)
 	}
-	if s.upd.status.Checking || s.upd.status.Stage == "downloading" {
+	// A one-click update under way keeps the version it was started for.
+	if s.upd.status.Checking || s.upd.status.Stage == "downloading" || s.upd.auto {
 		s.mu.Unlock()
 		return s.UpdateStatus(), nil
 	}
 	s.upd.status.Checking = true
 	keys, url := s.updateKeysLocked(), updateManifestURL
 	s.mu.Unlock()
-	m, e := fetchManifest(s.ctx, url, keys)
+	m, e := fetchManifest(s.ctx, url, keys, productLine)
 	s.mu.Lock()
 	s.upd.status.Checking = false
 	s.upd.status.CheckedAt = Now()
@@ -165,7 +198,7 @@ func (s *Service) CheckForUpdate() (UpdateStatus, error) {
 	return s.UpdateStatus(), e
 }
 
-func fetchManifest(ctx context.Context, url string, keys []string) (update.Manifest, error) {
+func fetchManifest(ctx context.Context, url string, keys []string, line string) (update.Manifest, error) {
 	ctx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
 	defer cancel()
 	req, e := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -174,7 +207,7 @@ func fetchManifest(ctx context.Context, url string, keys []string) (update.Manif
 	}
 	resp, e := updateClient().Do(req)
 	if e != nil {
-		return update.Manifest{}, fmt.Errorf("无法连接更新服务器：%w", e)
+		return update.Manifest{}, fmt.Errorf("暂时连不上更新服务器，可以稍后再试，或向软件提供方获取完整包（%w）", e)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -184,7 +217,7 @@ func fetchManifest(ctx context.Context, url string, keys []string) (update.Manif
 	if e != nil {
 		return update.Manifest{}, e
 	}
-	return update.Verify(b, keys)
+	return update.Verify(b, keys, line)
 }
 
 // DownloadUpdate fetches and checks the package announced by the last check.
@@ -280,6 +313,10 @@ func (s *Service) fetchAndStage(m update.Manifest, program string) (string, erro
 		os.RemoveAll(stage)
 		return "", errors.New("更新包的版本与清单不一致")
 	}
+	if info.Line != productLine {
+		os.RemoveAll(stage)
+		return "", errors.New("更新包不属于这条产品线，已删除")
+	}
 	if e = update.CheckComponents(stage, program); e != nil {
 		os.RemoveAll(stage)
 		return "", e
@@ -317,7 +354,7 @@ func (s *Service) StartUpdate() error {
 		return errors.New("新版本还没有下载完成")
 	}
 	if e := s.agentBusy(); e != nil {
-		return errors.New("创作正在进行，请等它完成后再更新")
+		return updateBusy("创作正在进行，完成后才能重启更新")
 	}
 	counts, e := s.store.taskStatusCounts(false)
 	if e != nil {
@@ -325,17 +362,106 @@ func (s *Service) StartUpdate() error {
 	}
 	for status, n := range counts {
 		if n > 0 && active(status) {
-			return errors.New("还有图片在生成或下载，请等它们完成后再更新")
+			return updateBusy("还有图片在生成或下载，完成后才能重启更新")
 		}
 	}
 	exe := filepath.Join(s.upd.staged, "ImageWorkbench.exe")
-	cmd := exec.Command(exe, updateFlag, "-pid", fmt.Sprint(os.Getpid()), "-program", s.programDir, "-stage", s.upd.staged)
-	if e = cmd.Start(); e != nil {
+	if e = startUpdater(exe, updateFlag, "-pid", fmt.Sprint(os.Getpid()), "-program", s.programDir, "-stage", s.upd.staged); e != nil {
 		return fmt.Errorf("无法启动更新程序：%w", e)
 	}
 	_ = s.store.appendLog("info", "app", "", "开始更新到 "+s.upd.manifest.Version+"，软件将重新启动")
 	s.paused = true
 	return nil
+}
+
+// UpdateNow is the one-click update: download and check the announced version,
+// then hand over to it and call restart (which quits the app). While images are
+// being generated or a creation is being analysed it waits, says so in the
+// status, and restarts by itself once they are done. A click while it is
+// already under way changes nothing.
+func (s *Service) UpdateNow(restart func()) error {
+	s.mu.Lock()
+	if s.upd.auto {
+		s.mu.Unlock()
+		return nil
+	}
+	if blocked := s.updateBlockedLocked(); blocked != "" {
+		s.mu.Unlock()
+		return errors.New(blocked)
+	}
+	if !s.upd.status.Available || s.programDir == "" {
+		s.mu.Unlock()
+		return errors.New("没有可下载的新版本，请先检查更新")
+	}
+	s.upd.auto, s.upd.cancel = true, false
+	s.mu.Unlock()
+	s.signal()
+	go s.runUpdate(restart)
+	return nil
+}
+
+func (s *Service) runUpdate(restart func()) {
+	stop := func(msg string) {
+		s.mu.Lock()
+		s.upd.auto, s.upd.status.Waiting = false, ""
+		if msg != "" {
+			s.upd.status.Error = msg
+		}
+		s.mu.Unlock()
+		s.signal()
+	}
+	s.mu.Lock()
+	ready := s.upd.status.Stage == "ready" && s.upd.staged != ""
+	s.mu.Unlock()
+	if !ready {
+		if _, e := s.DownloadUpdate(); e != nil {
+			stop("") // DownloadUpdate has recorded the reason
+			return
+		}
+	}
+	for {
+		s.mu.Lock()
+		called := s.upd.cancel
+		s.mu.Unlock()
+		if called {
+			stop("") // the download stays staged; the next click restarts at once
+			return
+		}
+		e := s.StartUpdate()
+		if e == nil {
+			restart()
+			return
+		}
+		var busy updateBusy
+		if !errors.As(e, &busy) {
+			_ = s.store.appendLog("error", "app", "", "更新失败："+e.Error())
+			stop(e.Error())
+			return
+		}
+		s.mu.Lock()
+		changed := s.upd.status.Waiting != string(busy)
+		s.upd.status.Waiting = string(busy)
+		s.mu.Unlock()
+		if changed {
+			s.signal()
+		}
+		select {
+		case <-s.ctx.Done():
+			stop("")
+			return
+		case <-time.After(updateIdlePoll):
+		}
+	}
+}
+
+// CancelUpdateWait calls off a one-click update that is waiting for images to
+// finish. The checked download is kept, so a later click only has to restart.
+func (s *Service) CancelUpdateWait() {
+	s.mu.Lock()
+	if s.upd.auto && s.upd.status.Waiting != "" {
+		s.upd.cancel = true
+	}
+	s.mu.Unlock()
 }
 
 // IsUpdateCommand reports whether the program was started to apply an update.

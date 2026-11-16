@@ -550,6 +550,8 @@ type State struct {
 	SigningPublicKey string `json:"signingPublicKey"`
 	RepoRoot         string `json:"repoRoot"`
 	UpdateURL        string `json:"updateURL"`
+	// Creative: built versions of the mass-market line, newest last.
+	Creative []CreativeRelease `json:"creative"`
 	// BuiltinSkills are the app's shipped skills, for the per-customer selection.
 	BuiltinSkills []core.BuiltinSkill `json:"builtinSkills"`
 	DataDir       string              `json:"dataDir"`
@@ -593,7 +595,7 @@ func (a *Admin) State() State {
 	if upstreams == nil {
 		upstreams = []Upstream{}
 	}
-	return State{SigningPublicKey: a.d.SigningPublicKey, RepoRoot: a.d.RepoRoot, UpdateURL: a.d.UpdateURL, BuiltinSkills: core.BuiltinSkills(), DataDir: a.root, Upstreams: upstreams, Keys: keys, Customers: customers}
+	return State{SigningPublicKey: a.d.SigningPublicKey, RepoRoot: a.d.RepoRoot, UpdateURL: a.d.UpdateURL, Creative: append([]CreativeRelease{}, a.d.Creative...), BuiltinSkills: core.BuiltinSkills(), DataDir: a.root, Upstreams: upstreams, Keys: keys, Customers: customers}
 }
 
 // MarkPaid records that the customer paid and that the provider raised every

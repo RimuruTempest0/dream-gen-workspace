@@ -31,6 +31,17 @@ $repo = Join-Path $projectRoot ".tools\admin-qa-repo-$id"
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'scripts') | Out-Null
 Set-Content -LiteralPath (Join-Path $repo 'scripts\build.ps1') -Value '# stand-in: the QA admin build uses a fake builder' -Encoding utf8
 Set-Content -LiteralPath (Join-Path $repo 'wails.json') -Value '{ "info": { "productVersion": "0.6.2" } }' -Encoding utf8
+# A real Git repository on the e-commerce branch with nothing uncommitted: the
+# admin tool refuses to build from the wrong branch or a dirty tree. release/ is
+# ignored, as in the real repository.
+New-Item -ItemType Directory -Force -Path (Join-Path $repo 'docs') | Out-Null
+[IO.File]::WriteAllText((Join-Path $repo 'docs\CHANGELOG.md'), "# Changelog`n`n## 0.6.2 - QA build`n`nQA update notes, first paragraph.`n`n- first item`n`n### Verification`n- not for people using the app`n")
+[IO.File]::WriteAllText((Join-Path $repo '.gitignore'), "release/`n")
+git -C $repo init -q -b main
+if ($LASTEXITCODE -ne 0) { throw 'git init failed for the admin QA source folder' }
+git -C $repo add -A
+git -C $repo -c user.name=qa -c user.email=qa@example.invalid commit -q -m 'QA source'
+if ($LASTEXITCODE -ne 0) { throw 'git commit failed for the admin QA source folder' }
 $env:IMAGEWORKBENCH_ADMIN_DATA = Join-Path $projectRoot ".tools\admin-qa-data-$id"
 $env:IMAGEWORKBENCH_ADMIN_REPO = $repo
 $runtime = Get-ChildItem (Join-Path $projectRoot '.tools\webview-expanded') -Filter 'msedgewebview2.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1

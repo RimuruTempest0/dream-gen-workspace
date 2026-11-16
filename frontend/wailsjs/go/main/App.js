@@ -34,6 +34,10 @@ export function CancelTask(arg1) {
   return window['go']['main']['App']['CancelTask'](arg1);
 }
 
+export function CancelUpdateWait() {
+  return window['go']['main']['App']['CancelUpdateWait']();
+}
+
 export function ChangeDataDirectory(arg1) {
   return window['go']['main']['App']['ChangeDataDirectory'](arg1);
 }
@@ -108,10 +112,6 @@ export function DeleteSkill(arg1) {
 
 export function DeleteTemplate(arg1) {
   return window['go']['main']['App']['DeleteTemplate'](arg1);
-}
-
-export function DownloadUpdate() {
-  return window['go']['main']['App']['DownloadUpdate']();
 }
 
 export function EstimateSuite(arg1, arg2, arg3, arg4) {

@@ -34,10 +34,15 @@ type BuildRequest struct {
 	ZipPath    string // relative to RepoRoot; the build's own (temporary) ZIP
 	PublicKey  string
 	UpdateURL  string // update.json address built into the app; "" = none
+	// ProductLine and UpdateKey make a build of a line without a licence (the
+	// mass-market line): no PublicKey, updates signed with UpdateKey.
+	ProductLine string
+	UpdateKey   string
 }
 
 // Shipping entries of a package, as in scripts/build.ps1, plus customer.dat.
-var shippingEntries = []string{"ImageWorkbench.exe", "product-browser.exe", "runtime", "agent", "使用说明.txt", "version.json", license.FileName}
+var programEntries = []string{"ImageWorkbench.exe", "product-browser.exe", "runtime", "agent", "使用说明.txt", "version.json"}
+var shippingEntries = append(append([]string{}, programEntries...), license.FileName)
 
 // CustomerProfile assembles and signs customer.dat for a customer: image line 1,
 // LLM line 1 and whichever optional lines have a key (keys obfuscated; each
@@ -282,6 +287,10 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 	if repo == "" {
 		return Delivery{}, errors.New("请先在“设置”中选择软件源码目录")
 	}
+	// Customer packages are the e-commerce line.
+	if e = a.requireBranch(repo, EcommerceBranch, "客户交付包"); e != nil {
+		return Delivery{}, e
+	}
 	rel := filepath.Join("release", "customers", softwareID, version)
 	releaseDir := filepath.Join(repo, rel)
 	baseZip := filepath.Join(rel, "build-check.zip")
@@ -347,7 +356,10 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 	return d, a.saveLocked()
 }
 
-func writeZip(dir, path string) error {
+func writeZip(dir, path string) error { return writeZipOf(dir, path, shippingEntries) }
+
+// writeZipOf zips the named entries of a built program folder.
+func writeZipOf(dir, path string, entries []string) error {
 	tmp := path + ".partial"
 	f, e := os.Create(tmp)
 	if e != nil {
@@ -355,7 +367,7 @@ func writeZip(dir, path string) error {
 	}
 	defer os.Remove(tmp)
 	zw := zip.NewWriter(f)
-	for _, entry := range shippingEntries {
+	for _, entry := range entries {
 		root := filepath.Join(dir, entry)
 		if _, e := os.Stat(root); e != nil {
 			zw.Close()
@@ -412,7 +424,12 @@ func fileSHA256(path string) (string, error) {
 type ScriptBuilder struct{}
 
 func (ScriptBuilder) Build(ctx context.Context, b BuildRequest, log func(string)) error {
-	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(b.RepoRoot, "scripts", "build.ps1"), "-Version", b.Version, "-NoLocalProfile", "-ReleaseDirectory", b.ReleaseDir, "-LicensePublicKey", b.PublicKey, "-ZipPath", b.ZipPath}
+	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(b.RepoRoot, "scripts", "build.ps1"), "-Version", b.Version, "-NoLocalProfile", "-ReleaseDirectory", b.ReleaseDir, "-ZipPath", b.ZipPath}
+	if b.ProductLine != "" {
+		args = append(args, "-ProductLine", b.ProductLine, "-UpdatePublicKey", b.UpdateKey)
+	} else {
+		args = append(args, "-LicensePublicKey", b.PublicKey)
+	}
 	if b.UpdateURL != "" {
 		args = append(args, "-UpdateURL", b.UpdateURL)
 	}

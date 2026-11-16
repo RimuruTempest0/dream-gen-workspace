@@ -255,4 +255,7 @@ h1 {
 /* Delete buttons keep the red glyph but not a red frame until hovered. */
 .ant-btn-dangerous.ant-btn-variant-outlined:not(:hover):not(:disabled) {
   border-color: var(--border);
+  /* The dark algorithm darkens the error colour to 4.39:1 on a surface; the
+     token itself is 5.7:1. */
+  color: var(--danger);
 }

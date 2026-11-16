@@ -23,16 +23,16 @@ func TestManifestSignature(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	m, e := Verify(data, keys)
+	m, e := Verify(data, keys, "")
 	if e != nil || m.Version != "0.7.13" || m.PublishedAt == "" {
 		t.Fatal(m, e)
 	}
 	other, _, _ := ed25519.GenerateKey(nil)
-	if _, e = Verify(data, []string{base64.StdEncoding.EncodeToString(other)}); e != ErrSignature {
+	if _, e = Verify(data, []string{base64.StdEncoding.EncodeToString(other)}, ""); e != ErrSignature {
 		t.Fatal("foreign key accepted")
 	}
 	tampered := strings.Replace(string(data), `"payload": "`, `"payload": "e`, 1)
-	if _, e = Verify([]byte(tampered), keys); e != ErrSignature {
+	if _, e = Verify([]byte(tampered), keys, ""); e != ErrSignature {
 		t.Fatal("tampered manifest accepted")
 	}
 	bad := manifest()
@@ -173,5 +173,46 @@ func TestApplyRollsBackWhenAFileIsLocked(t *testing.T) {
 	}
 	if read(filepath.Join(program, "ImageWorkbench.exe")) != "old" || read(filepath.Join(program, "product-browser.exe")) != "old-browser" {
 		t.Fatal("not rolled back:", e)
+	}
+}
+
+// A manifest of one product line must never be accepted by the other: delivered
+// e-commerce apps read format 1 only, and a product-line app reads format 2 for
+// its own line only, even though both are signed with the same key.
+func TestProductLinesDoNotAcceptEachOther(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	keys := []string{base64.StdEncoding.EncodeToString(pub)}
+	m := Manifest{Version: "0.7.32", URL: "https://example.com/u.zip", SHA256: strings.Repeat("a", 64), Size: 10}
+	plain, e := Sign(m, priv)
+	if e != nil {
+		t.Fatal(e)
+	}
+	m.Line = "creative"
+	creative, e := Sign(m, priv)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(string(plain), `"format": 1`) || !strings.Contains(string(creative), `"format": 2`) {
+		t.Fatal("formats", string(plain), string(creative))
+	}
+	if got, e := Verify(creative, keys, "creative"); e != nil || got.Line != "creative" || got.Version != "0.7.32" {
+		t.Fatal("own line refused", got, e)
+	}
+	if _, e := Verify(creative, keys, ""); e == nil {
+		t.Fatal("e-commerce app accepted a creative manifest")
+	}
+	if _, e := Verify(plain, keys, "creative"); e == nil {
+		t.Fatal("creative app accepted an e-commerce manifest")
+	}
+	if _, e := Verify(creative, keys, "other"); e == nil {
+		t.Fatal("another line accepted a creative manifest")
+	}
+	// Relabelling the outer format does not help: the signed payload names it too.
+	if _, e := Verify([]byte(strings.Replace(string(creative), `"format": 2`, `"format": 1`, 1)), keys, ""); e == nil {
+		t.Fatal("relabelled manifest accepted")
+	}
+	m.Line = "Creative Line"
+	if _, e := Sign(m, priv); e == nil {
+		t.Fatal("malformed line name signed")
 	}
 }

@@ -35,6 +35,8 @@ func TestRealCustomerPackage(t *testing.T) {
 	if missing, e := a.AutoAssign(c.ID); e != nil || len(missing) != 0 {
 		t.Fatal(missing, e)
 	}
+	// This manual test builds whatever is checked out.
+	a.repoState = func(string) (string, []string, error) { return EcommerceBranch, nil, nil }
 	if e = a.SetRepoRoot(repo); e != nil {
 		t.Fatal(e)
 	}

@@ -4,6 +4,7 @@ import {
   SettingOutlined,
   TeamOutlined,
   SafetyCertificateOutlined,
+  CloudUploadOutlined,
 } from "@ant-design/icons";
 import { useEffect } from "react";
 import { useData } from "../ui";
@@ -11,6 +12,7 @@ import type { AdminState } from "./types";
 import { CustomerDetail, Customers } from "./Customers";
 import { KeyPool } from "./Keys";
 import { AdminSettings } from "./AdminSettings";
+import { Creative } from "./Creative";
 
 export function useAdminState() {
   return useData<AdminState>(["admin-state"], "State");
@@ -19,6 +21,7 @@ export function useAdminState() {
 const links = [
   ["/", "客户", <TeamOutlined aria-hidden="true" />],
   ["/keys", "Key 池", <KeyOutlined aria-hidden="true" />],
+  ["/creative", "发布大众版", <CloudUploadOutlined aria-hidden="true" />],
   ["/settings", "设置与签名密钥", <SettingOutlined aria-hidden="true" />],
 ] as const;
 
@@ -76,6 +79,7 @@ export default function AdminApp() {
             <Route path="/" element={<Customers />} />
             <Route path="/customer/:id" element={<CustomerDetail />} />
             <Route path="/keys" element={<KeyPool />} />
+            <Route path="/creative" element={<Creative />} />
             <Route path="/settings" element={<AdminSettings />} />
           </Routes>
         </div>

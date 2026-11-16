@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"imageworkbench/internal/update"
 )
@@ -177,7 +178,7 @@ func TestUpdateFollowsReleaseRedirects(t *testing.T) {
 	t.Cleanup(releases.Close)
 	updateManifestURL = releases.URL + "/owner/repo/releases/latest/download/update.json"
 	// The signed manifest names the package on the releases host as well.
-	m, _ := update.Verify(srv.manifest, []string{licensePublicKey})
+	m, _ := update.Verify(srv.manifest, []string{licensePublicKey}, "")
 	m.URL = releases.URL + "/owner/repo/releases/download/v9.9.9/ImageWorkbench-update-9.9.9.zip"
 	var e error
 	if srv.manifest, e = update.Sign(m, srv.priv); e != nil {
@@ -192,5 +193,178 @@ func TestUpdateFollowsReleaseRedirects(t *testing.T) {
 	}
 	if _, e = os.Stat(filepath.Join(program, updateDir, "9.9.9", "ImageWorkbench.exe")); e != nil {
 		t.Fatal("not staged", e)
+	}
+}
+
+// creativeUpdate turns s into a product-line build ("creative": no licence, its
+// own update key) and serves an update signed for line.
+func creativeUpdate(t *testing.T, s *Service, signedFor, packageLine string) (program string, srv *updateServer) {
+	t.Helper()
+	program, srv = prepareUpdate(t, s, "9.9.9", "", false)
+	oldLine, oldKey, oldLicence := productLine, updatePublicKey, licensePublicKey
+	productLine, updatePublicKey, licensePublicKey = "creative", licensePublicKey, ""
+	t.Cleanup(func() { productLine, updatePublicKey, licensePublicKey = oldLine, oldKey, oldLicence })
+	m, e := update.Verify(srv.manifest, []string{updatePublicKey}, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	rt := sha256.Sum256([]byte("runtime-1"))
+	srv.pkg = zipBytes(t, map[string]string{
+		"ImageWorkbench.exe": "new program",
+		"version.json":       `{"version":"9.9.9","productLine":"` + packageLine + `","runtimeSHA256":"` + hex.EncodeToString(rt[:]) + `"}`,
+	})
+	sum := sha256.Sum256(srv.pkg)
+	m.Line, m.SHA256, m.Size = signedFor, hex.EncodeToString(sum[:]), int64(len(srv.pkg))
+	if srv.manifest, e = update.Sign(m, srv.priv); e != nil {
+		t.Fatal(e)
+	}
+	return program, srv
+}
+
+// The mass-market line has no licence file and still updates, from manifests of
+// its own line only.
+func TestProductLineUpdatesWithoutLicence(t *testing.T) {
+	s := testService(t)
+	creativeUpdate(t, s, "creative", "creative")
+	if st := s.UpdateStatus(); !st.Supported {
+		t.Fatal("product-line build without a licence key cannot update")
+	}
+	if s.LicenseStatus().Mode != "developer" {
+		t.Fatal("product-line build asks for a licence:", s.LicenseStatus().Mode)
+	}
+	st, e := s.CheckForUpdate()
+	if e != nil || !st.Available {
+		t.Fatalf("own line: %+v %v", st, e)
+	}
+	if st, e = s.DownloadUpdate(); e != nil || st.Stage != "ready" {
+		t.Fatalf("download: %+v %v", st, e)
+	}
+
+	// An e-commerce manifest (format 1), same key, is not this line's update.
+	s2 := testService(t)
+	creativeUpdate(t, s2, "", "creative")
+	if st, e := s2.CheckForUpdate(); e == nil || st.Available {
+		t.Fatalf("e-commerce manifest offered to the creative line: %+v", st)
+	}
+
+	// Nor is a package built for another line, whatever the manifest says.
+	s3 := testService(t)
+	program, _ := creativeUpdate(t, s3, "creative", "")
+	s3.CheckForUpdate()
+	if _, e := s3.DownloadUpdate(); e == nil || !strings.Contains(e.Error(), "产品线") {
+		t.Fatal("package of another line staged", e)
+	}
+	if _, e := os.Stat(filepath.Join(program, updateDir, "9.9.9")); e == nil {
+		t.Fatal("foreign package left staged")
+	}
+}
+
+// One click: download, check, restart. While an image is being generated the
+// update waits and says so, then restarts by itself once the image is done.
+func TestUpdateNowWaitsForRunningImagesThenRestarts(t *testing.T) {
+	s := testService(t)
+	prepareUpdate(t, s, "9.9.9", "", false)
+	started := make(chan []string, 1)
+	oldStart, oldPoll := startUpdater, updateIdlePoll
+	startUpdater = func(exe string, args ...string) error { started <- append([]string{exe}, args...); return nil }
+	updateIdlePoll = 10 * time.Millisecond
+	t.Cleanup(func() { startUpdater, updateIdlePoll = oldStart, oldPoll })
+	busy := Task{ID: NewID(), Status: "running", CreatedAt: Now(), UpdatedAt: Now()}
+	s.store.Put("task", busy.ID, busy)
+	if _, e := s.CheckForUpdate(); e != nil {
+		t.Fatal(e)
+	}
+	restarted := make(chan struct{})
+	if e := s.UpdateNow(func() { close(restarted) }); e != nil {
+		t.Fatal(e)
+	}
+	// A second click while it is under way changes nothing.
+	if e := s.UpdateNow(func() { t.Error("second restart") }); e != nil {
+		t.Fatal(e)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		st := s.UpdateStatus()
+		if st.Stage == "ready" && st.Installing && strings.Contains(st.Waiting, "图片") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("not waiting for the image: %+v", st)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	select {
+	case <-restarted:
+		t.Fatal("restarted while an image was running")
+	default:
+	}
+	busy.Status = "succeeded"
+	s.store.Put("task", busy.ID, busy)
+	select {
+	case <-restarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not restart after the image finished")
+	}
+	args := <-started
+	if !strings.HasSuffix(args[0], "ImageWorkbench.exe") || args[1] != updateFlag {
+		t.Fatal("updater not started", args)
+	}
+}
+
+// While the update waits for images, a routine check leaves it alone, and the
+// user can call the wait off; the checked download is kept for the next click.
+func TestWaitingUpdateSurvivesChecksAndCanBeCalledOff(t *testing.T) {
+	s := testService(t)
+	prepareUpdate(t, s, "9.9.9", "", false)
+	oldStart, oldPoll := startUpdater, updateIdlePoll
+	startUpdater = func(string, ...string) error { t.Error("restarted"); return nil }
+	updateIdlePoll = 10 * time.Millisecond
+	t.Cleanup(func() { startUpdater, updateIdlePoll = oldStart, oldPoll })
+	busy := Task{ID: NewID(), Status: "running", CreatedAt: Now(), UpdatedAt: Now()}
+	s.store.Put("task", busy.ID, busy)
+	s.CheckForUpdate()
+	if e := s.UpdateNow(func() { t.Error("restart called") }); e != nil {
+		t.Fatal(e)
+	}
+	wait := func(what string, ok func(UpdateStatus) bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !ok(s.UpdateStatus()) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: %+v", what, s.UpdateStatus())
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	wait("not waiting", func(st UpdateStatus) bool { return st.Installing && st.Waiting != "" })
+	if st, e := s.CheckForUpdate(); e != nil || st.Stage != "ready" || !st.Installing {
+		t.Fatalf("a check disturbed the waiting update: %+v %v", st, e)
+	}
+	s.CancelUpdateWait()
+	wait("still waiting after cancel", func(st UpdateStatus) bool { return !st.Installing })
+	if st := s.UpdateStatus(); st.Stage != "ready" || st.Waiting != "" || st.Error != "" || !st.Available {
+		t.Fatalf("after calling it off: %+v", st)
+	}
+}
+
+// A failed download ends the one-click update with the reason; it does not
+// restart and can be tried again.
+func TestUpdateNowStopsOnBadDownload(t *testing.T) {
+	s := testService(t)
+	prepareUpdate(t, s, "9.9.9", "", true)
+	s.CheckForUpdate()
+	if e := s.UpdateNow(func() { t.Error("restarted after a bad download") }); e != nil {
+		t.Fatal(e)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		st := s.UpdateStatus()
+		if !st.Installing && strings.Contains(st.Error, "SHA-256") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no error: %+v", st)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

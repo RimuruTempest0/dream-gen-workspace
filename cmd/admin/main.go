@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sync"
 
 	"github.com/wailsapp/wails/v2"
@@ -141,19 +140,8 @@ func (x *App) ChooseRepoRoot() (string, error) {
 	return dir, x.a.SetRepoRoot(dir)
 }
 
-var versionField = regexp.MustCompile(`"productVersion"\s*:\s*"([0-9.]+)"`)
-
 // CurrentVersion is the app version in the source folder (wails.json).
-func (x *App) CurrentVersion() string {
-	b, e := os.ReadFile(filepath.Join(x.a.State().RepoRoot, "wails.json"))
-	if e != nil {
-		return ""
-	}
-	if m := versionField.FindSubmatch(b); m != nil {
-		return string(m[1])
-	}
-	return ""
-}
+func (x *App) CurrentVersion() string { return admin.SourceVersion(x.a.State().RepoRoot) }
 
 // BuildPackage starts a customer package build in the background; progress and
 // the result arrive as "build:log" and "build:done" events.
@@ -174,6 +162,40 @@ func (x *App) BuildPackage(customerID, version string) error {
 		runtime.EventsEmit(x.ctx, "build:done", result)
 	}()
 	return nil
+}
+
+// CreativeSource is the source folder's branch, changes and version, for the
+// "发布大众版" page.
+func (x *App) CreativeSource() admin.CreativeSource { return x.a.CreativeSource() }
+
+// CreativeNotes proposes the update notes for a version from docs/CHANGELOG.md.
+func (x *App) CreativeNotes(version string) string { return x.a.CreativeNotes(version) }
+
+// BuildCreative builds, checks and signs a version of the mass-market line in
+// the background; progress and the result arrive as "creative:log" and
+// "creative:done". Nothing is uploaded.
+func (x *App) BuildCreative(version, notes string) error {
+	if !x.building.TryLock() {
+		return errors.New("正在进行另一次构建，请等它完成")
+	}
+	go func() {
+		defer x.building.Unlock()
+		log := func(s string) { runtime.EventsEmit(x.ctx, "creative:log", s) }
+		r, e := x.a.BuildCreative(context.Background(), version, notes, x.builder, admin.LocalDataDir(x.a.State().RepoRoot), log)
+		result := map[string]any{"ok": e == nil}
+		if e != nil {
+			result["error"] = e.Error()
+		} else {
+			result["release"] = r
+		}
+		runtime.EventsEmit(x.ctx, "creative:done", result)
+	}()
+	return nil
+}
+
+// OpenCreativeRelease opens the fixed GitHub pre-release the two files go to.
+func (x *App) OpenCreativeRelease() {
+	runtime.BrowserOpenURL(x.ctx, admin.CreativeReleasePage)
 }
 
 func (x *App) SetCustomerSkills(id string, ids []string) error {

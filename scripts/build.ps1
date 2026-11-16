@@ -1,4 +1,4 @@
-﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.7.31', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath, [string]$UpdateURL, [string]$SignThumbprint)
+﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.7.32', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath, [string]$UpdateURL, [string]$SignThumbprint, [string]$ProductLine, [string]$UpdatePublicKey)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
@@ -50,6 +50,15 @@ if ($UpdateURL) {
     if ($UpdateURL -notmatch '^https?://[^\s]+$') { throw 'UpdateURL must be an http(s) address' }
     $ldflags += " -X imageworkbench/internal/core.updateManifestURL=$UpdateURL"
 }
+# A product line without a licence (the admin tool's "发布大众版"): the app runs
+# without customer.dat, and takes updates signed with -UpdatePublicKey and
+# announced for this line only (docs/adr/0001).
+if ($ProductLine) {
+    if ($ProductLine -notmatch '^[a-z][a-z0-9-]{1,31}$') { throw 'ProductLine must be a short lower-case name' }
+    if ($LicensePublicKey) { throw 'A product-line build has no licence: do not pass -LicensePublicKey' }
+    if (-not $UpdatePublicKey -or -not $UpdateURL) { throw 'A product-line build needs -UpdatePublicKey and -UpdateURL' }
+    $ldflags += " -X imageworkbench/internal/core.productLine=$ProductLine -X imageworkbench/internal/core.updatePublicKey=$UpdatePublicKey"
+} elseif ($UpdatePublicKey) { throw '-UpdatePublicKey is for product-line builds (-ProductLine)' }
 $buildArgs = @('build', '-s', '-o', "ImageWorkbench-$Version.exe", '-ldflags', $ldflags)
 & $wailsCommand @buildArgs
 if ($LASTEXITCODE -ne 0) { throw 'Desktop build failed' }
@@ -87,6 +96,7 @@ $agentTarget = Join-Path $releaseRoot 'agent\claude-code'
 New-Item -ItemType Directory -Force -Path $agentTarget | Out-Null
 foreach ($file in @('claude.exe','version.json','LICENSE.md')) { Copy-Item -LiteralPath (Join-Path $ClaudeSource $file) -Destination (Join-Path $agentTarget $file) -Force }
 $manifest = @{version=$Version;platform='windows-x64';runtime=(Get-Item $runtimeExe).VersionInfo.FileVersion;executableSHA256=(Get-FileHash (Join-Path $releaseRoot 'ImageWorkbench.exe')).Hash;productBrowserSHA256=(Get-FileHash (Join-Path $releaseRoot 'product-browser.exe')).Hash;runtimeSHA256=(Get-FileHash (Join-Path $runtimeTarget 'msedgewebview2.exe')).Hash;claudeVersion=$claudeManifest.version;claudeSHA256=$claudeManifest.executableSHA256}
+if ($ProductLine) { $manifest.productLine = $ProductLine }
 $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot 'version.json') -Encoding utf8
 # Only explicit shipping files; data/cache and development fixtures never enter the ZIP.
 $shipping = @((Join-Path $releaseRoot 'ImageWorkbench.exe'),(Join-Path $releaseRoot 'product-browser.exe'),$runtimeTarget,(Join-Path $releaseRoot 'agent'),(Join-Path $releaseRoot '使用说明.txt'),(Join-Path $releaseRoot 'version.json'))
@@ -111,7 +121,9 @@ $previous = Get-ChildItem -LiteralPath (Split-Path -Parent $releaseRoot) -Direct
     Where-Object { $_.Order -lt [version]$Version } | Sort-Object Order | Select-Object -Last 1
 $updateItems = @((Join-Path $releaseRoot 'ImageWorkbench.exe'),(Join-Path $releaseRoot 'product-browser.exe'),(Join-Path $releaseRoot '使用说明.txt'),(Join-Path $releaseRoot 'version.json'))
 if (-not $previous -or $previous.Info.runtimeSHA256 -ne $manifest.runtimeSHA256) { $updateItems += $runtimeTarget }
-if (-not $previous -or $previous.Info.claudeSHA256 -ne $manifest.claudeSHA256) { $updateItems += (Join-Path $releaseRoot 'agent') }
+# A product line's update package is public and never carries the bundled Claude
+# Code: when it changed, the app refuses the update and asks for the full package.
+if (-not $ProductLine -and (-not $previous -or $previous.Info.claudeSHA256 -ne $manifest.claudeSHA256)) { $updateItems += (Join-Path $releaseRoot 'agent') }
 # Next to the shipping ZIP: ImageWorkbench-portable-x64-<version>-update.zip (admin builds: build-check-update.zip, renamed by the admin tool).
 $updateZip = $zipPath -replace '\.zip$', '-update.zip'
 Compress-Archive -LiteralPath $updateItems -DestinationPath $updateZip -Force

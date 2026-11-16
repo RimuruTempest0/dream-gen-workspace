@@ -164,9 +164,15 @@ func TestStateAndLedgerHoldNoSecrets(t *testing.T) {
 type fakeBuilder struct {
 	leak   string
 	update bool
+	// agentInUpdate puts the bundled Claude Code into the update package.
+	agentInUpdate bool
+	seen          *BuildRequest
 }
 
 func (f fakeBuilder) Build(_ context.Context, b BuildRequest, log func(string)) error {
+	if f.seen != nil {
+		*f.seen = b
+	}
 	dir := filepath.Join(b.RepoRoot, b.ReleaseDir)
 	files := map[string]string{"ImageWorkbench.exe": "exe", "product-browser.exe": "pb", "runtime/msedgewebview2.exe": "rt", "agent/claude-code/claude.exe": "agent", "使用说明.txt": "help " + f.leak, "version.json": "{}"}
 	for name, body := range files {
@@ -179,11 +185,15 @@ func (f fakeBuilder) Build(_ context.Context, b BuildRequest, log func(string)) 
 	if f.update {
 		var buf bytes.Buffer
 		w := zip.NewWriter(&buf)
-		for _, name := range []string{"ImageWorkbench.exe", "version.json"} {
+		names := []string{"ImageWorkbench.exe", "version.json"}
+		if f.agentInUpdate {
+			names = append(names, "agent/claude-code/claude.exe")
+		}
+		for _, name := range names {
 			x, _ := w.Create(name)
 			body := "exe " + f.leak
 			if name == "version.json" {
-				body = "\xef\xbb\xbf" + `{"version":"` + b.Version + `"}`
+				body = "\xef\xbb\xbf" + `{"version":"` + b.Version + `","productLine":"` + b.ProductLine + `"}`
 			}
 			x.Write([]byte(body))
 		}
@@ -201,6 +211,7 @@ func repo(t *testing.T, a *Admin) string {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "scripts"), 0o755)
 	os.WriteFile(filepath.Join(dir, "scripts", "build.ps1"), []byte("#"), 0o644)
+	a.repoState = func(string) (string, []string, error) { return "main", nil, nil }
 	if e := a.SetRepoRoot(dir); e != nil {
 		t.Fatal(e)
 	}
@@ -845,7 +856,7 @@ func TestUpdateAddressAndPublishedManifest(t *testing.T) {
 		t.Fatal(m, e)
 	}
 	data, _ := os.ReadFile(dest)
-	if _, e = update.Verify(data, []string{a.State().SigningPublicKey}); e != nil {
+	if _, e = update.Verify(data, []string{a.State().SigningPublicKey}, ""); e != nil {
 		t.Fatal("published manifest does not verify", e)
 	}
 	// A customer package (with customer.dat) is not an update package.

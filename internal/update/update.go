@@ -25,11 +25,29 @@ import (
 	"time"
 )
 
-const manifestFormat = 1
+// Manifest formats. Format 1 is the e-commerce line: it names no product line
+// and is the only format delivered e-commerce apps accept. Format 2 names its
+// product line; an app built for a line accepts format 2 for that line only.
+// Both are signed with the same key, so the format and line are what keeps one
+// line from installing the other's program (docs/adr/0001).
+const (
+	formatPlain = 1
+	formatLine  = 2
+)
+
+var linePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
+
+func formatFor(line string) int {
+	if line == "" {
+		return formatPlain
+	}
+	return formatLine
+}
 
 // Manifest is what update.json announces.
 type Manifest struct {
 	Format      int    `json:"format"`
+	Line        string `json:"line,omitempty"` // product line; "" = e-commerce (format 1)
 	Version     string `json:"version"`
 	MinVersion  string `json:"minVersion,omitempty"` // oldest version that may update in place
 	PublishedAt string `json:"publishedAt"`
@@ -51,7 +69,10 @@ var versionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // Sign produces update.json.
 func Sign(m Manifest, priv ed25519.PrivateKey) ([]byte, error) {
-	m.Format = manifestFormat
+	m.Format = formatFor(m.Line)
+	if m.Line != "" && !linePattern.MatchString(m.Line) {
+		return nil, errors.New("产品线名称无效")
+	}
 	if !versionPattern.MatchString(m.Version) || (m.MinVersion != "" && !versionPattern.MatchString(m.MinVersion)) {
 		return nil, errors.New("版本号格式应为 0.7.13 这样的三段数字")
 	}
@@ -68,13 +89,15 @@ func Sign(m Manifest, priv ed25519.PrivateKey) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	return json.MarshalIndent(signedFile{Format: manifestFormat, Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))}, "", "  ")
+	return json.MarshalIndent(signedFile{Format: m.Format, Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))}, "", "  ")
 }
 
-// Verify checks update.json against the trusted public keys (base64).
-func Verify(data []byte, publicKeys []string) (Manifest, error) {
+// Verify checks update.json against the trusted public keys (base64) and the
+// product line of the program reading it ("" = e-commerce). A manifest of any
+// other line or format is refused like a bad signature.
+func Verify(data []byte, publicKeys []string, line string) (Manifest, error) {
 	var f signedFile
-	if json.Unmarshal(data, &f) != nil || f.Format != manifestFormat {
+	if json.Unmarshal(data, &f) != nil || f.Format != formatFor(line) {
 		return Manifest{}, ErrSignature
 	}
 	payload, e1 := base64.StdEncoding.DecodeString(f.Payload)
@@ -94,7 +117,7 @@ func Verify(data []byte, publicKeys []string) (Manifest, error) {
 		return Manifest{}, ErrSignature
 	}
 	var m Manifest
-	if json.Unmarshal(payload, &m) != nil || m.Format != manifestFormat || !versionPattern.MatchString(m.Version) || len(m.SHA256) != 64 || m.Size <= 0 {
+	if json.Unmarshal(payload, &m) != nil || m.Format != f.Format || m.Line != line || !versionPattern.MatchString(m.Version) || len(m.SHA256) != 64 || m.Size <= 0 {
 		return Manifest{}, ErrSignature
 	}
 	return m, nil
@@ -131,7 +154,7 @@ func (m Manifest) Applies(current string) (bool, string) {
 		return false, ""
 	}
 	if m.MinVersion != "" && Compare(current, m.MinVersion) < 0 {
-		return false, fmt.Sprintf("新版本 %s 需要先升级到 %s 以上，请下载完整包", m.Version, m.MinVersion)
+		return false, fmt.Sprintf("新版本 %s 不能从当前版本直接更新（需要 %s 以上），请向软件提供方获取完整包", m.Version, m.MinVersion)
 	}
 	return true, ""
 }
@@ -240,6 +263,7 @@ type Info struct {
 	Version       string `json:"version"`
 	RuntimeSHA256 string `json:"runtimeSHA256"`
 	ClaudeSHA256  string `json:"claudeSHA256"`
+	Line          string `json:"productLine,omitempty"`
 }
 
 func ReadInfo(path string) (Info, error) {
@@ -267,7 +291,7 @@ func CheckComponents(stage, program string) error {
 		}
 		have, e := FileSHA256(filepath.Join(program, dir, file))
 		if e != nil || !strings.EqualFold(have, sum) {
-			return fmt.Errorf("这个版本需要新的%s，程序更新包里没有，请下载完整包升级", label)
+			return fmt.Errorf("这个版本换了新的%s，不能一键更新，请向软件提供方获取完整包", label)
 		}
 		return nil
 	}

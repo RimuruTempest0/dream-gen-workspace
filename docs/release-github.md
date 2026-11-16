@@ -38,6 +38,51 @@ GitHub 会把这两个地址跳转到它的文件服务器（另一个域名）�
 - 签名密钥及其备份文件、管理工具（`release/admin/`）及其数据目录。
 - 本机的私有资料：`.local/`、`.tools/`、`ledger.json` 等管理工具文件（这些都在 `.gitignore` 或仓库之外，推送前确认没有被强制加入）。
 
+## 大众版（0.7.32 起，管理工具 1.6.0 起）
+
+大众版没有授权，更新包公开、完整包不公开。它和电商版共用签名密钥，靠清单格式和固定的发布位隔开，原因见 `docs/adr/0001-creative-line-updates.md`。
+
+### 一次性准备
+
+在仓库的 Releases 里有一个标签为 `creative` 的 Release，标记为 **Pre-release**。大众版软件固定读：
+
+`https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/update.json`
+
+这个地址、标签名和产品线名都写进了发出去的程序，**不能改**；改了之后已装出去的大众版收不到更新，只能再发完整包。
+
+### 每次发布
+
+1. 源码目录切到 `creative-concepts` 分支，改动全部提交，`wails.json` 里是要发布的版本号。
+2. 管理工具 → 发布大众版：核对版本号、分支和“未提交的改动：没有”，改好更新说明，点“构建大众版”。
+3. 构建完成后点“要上传的两个文件”，打开 `release/creative/<版本>/upload/`。里面正好两个文件。
+4. 点“打开 creative Release”，在 GitHub 上编辑这个 Release：
+   - 先上传 `ImageWorkbench-update-<版本>.zip`；
+   - 再删除原来的 `update.json`，上传新的 `update.json`；
+   - 保存。**保持 Pre-release，不要勾选 “Set as the latest release”。**
+5. 在一台装着旧版大众版的电脑上点“检查更新”，确认能看到新版本并更新成功。
+6. 旧版本的更新包可以留着，也可以删掉；软件只读 `update.json` 指向的那一个。
+
+顺序很重要：先有包，再换清单。反过来的话，中间那段时间检查更新的顾客会下载失败。
+
+### 为什么必须是 Pre-release
+
+已交付的电商版软件每天读 `releases/latest/download/update.json`。GitHub 不会把 Pre-release 当作 Latest，所以大众版的发布不会出现在那个地址上。即使出现了，电商版软件也只接受格式 1 的清单，会拒绝大众版的格式 2 清单并显示一条更新出错的提示，不会装上大众版。
+
+### 大众版只能上传的文件
+
+| 可以上传 | 说明 |
+|---|---|
+| `release/creative/<版本>/upload/update.json` | 管理工具生成并签名 |
+| `release/creative/<版本>/upload/ImageWorkbench-update-<版本>.zip` | 更新包，不带内置 Claude Code |
+
+**不要上传**：`release/creative/<版本>/ImageWorkbench-<版本>.zip`（完整包，含内置 Claude Code，只私下发）、`release/creative/build/` 下的任何东西。
+
+### 需要完整包的情况
+
+- 0.7.32 之前发出去的大众版没有更新功能。
+- 某一版换了内置 Claude Code：更新包不带它，所有人这一版都要完整包。
+- 某一版换了浏览器运行组件：更新包会带上它，但跳过了这一版的顾客之后更新时会被拒绝，需要完整包。
+
 ## 公开发布后仍然存在的风险
 
 - **源码是公开的**：任何人都能从 `RimuruTempest0/dream-gen-workspace` 自行构建一个不带签名公钥的开发者版，自己填线路和 Key 不受限地使用。授权（试用、激活、有效期、在线更新）只对使用官方交付包的客户有效；它保护的是你的线路、Key 和交付包，不是软件本身。

@@ -119,6 +119,8 @@ type ledgerData struct {
 	// UpdateURL is where customer apps read the signed update.json (admin 1.2.0);
 	// built into packages from then on, empty = no in-app updates.
 	UpdateURL string     `json:"updateURL,omitempty"`
+	// Creative lists the built versions of the mass-market line (admin 1.6.0).
+	Creative  []CreativeRelease `json:"creative,omitempty"`
 	Upstreams []Upstream `json:"upstreams"`
 	Keys      []PoolKey  `json:"keys"`
 	Customers []Customer `json:"customers"`
@@ -167,6 +169,9 @@ type Admin struct {
 	// protect/unprotect are core.Protect/Unprotect (DPAPI); tests may replace them.
 	protect   func([]byte) ([]byte, error)
 	unprotect func([]byte) ([]byte, error)
+	// repoState reports the branch and uncommitted paths of the source folder
+	// (nil = ask git); tests replace it.
+	repoState func(repo string) (branch string, changed []string, e error)
 }
 
 func Open(root string) (*Admin, error) {
