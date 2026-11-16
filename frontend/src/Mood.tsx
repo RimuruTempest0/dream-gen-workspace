@@ -139,6 +139,9 @@ export function MoodGuide({
   const [step, setStep] = useState(0);
   // Set when a step was reopened from the confirmation screen: picking returns there.
   const [revisit, setRevisit] = useState(false);
+  // How the current screen was reached: forward, back, or already there when
+  // the guide opened (then it does not animate at all).
+  const [entry, setEntry] = useState<"forward" | "back" | "still">("forward");
   const heading = useRef<HTMLHeadingElement>(null);
   const applied = useRef(false);
   const advance = useRef<number | undefined>(undefined);
@@ -150,9 +153,11 @@ export function MoodGuide({
     if (value && complete(value)) {
       setDraft(value);
       setStep(confirmStep);
+      setEntry("still");
     } else {
       setDraft({});
       setStep(0);
+      setEntry("forward");
     }
   }, [open]);
   useEffect(() => () => window.clearTimeout(advance.current), []);
@@ -162,6 +167,7 @@ export function MoodGuide({
   }, [step]);
   function goto(n: number) {
     window.clearTimeout(advance.current);
+    setEntry(n < step ? "back" : "forward");
     setStep(n);
   }
   function pick(key: StepKey, id: string) {
@@ -173,6 +179,7 @@ export function MoodGuide({
     // A short pause lets the choice show before the next screen.
     advance.current = window.setTimeout(() => {
       setRevisit(false);
+      setEntry("forward");
       setStep(target);
     }, 180);
   }
@@ -187,7 +194,11 @@ export function MoodGuide({
   ) : !lib ? (
     <p className="mood-loading">正在读取</p>
   ) : current ? (
-    <section className="mood-step" key={current.key} aria-labelledby="mood-q">
+    <section
+      className={`mood-step mood-step-${entry}`}
+      key={current.key}
+      aria-labelledby="mood-q"
+    >
       <p className="mood-kicker" aria-hidden="true">
         {String(step + 1).padStart(2, "0")} /{" "}
         {String(steps.length).padStart(2, "0")}
@@ -215,7 +226,10 @@ export function MoodGuide({
       </div>
     </section>
   ) : done ? (
-    <section className="mood-step mood-confirm" aria-labelledby="mood-q">
+    <section
+      className={`mood-step mood-step-${entry} mood-confirm`}
+      aria-labelledby="mood-q"
+    >
       <p className="mood-kicker" aria-hidden="true">
         就是这样吗
       </p>

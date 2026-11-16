@@ -5,6 +5,7 @@ import {
   type ReactNode,
   type ComponentProps,
 } from "react";
+import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App as AntApp,
@@ -382,6 +383,8 @@ export function Status({ state, task }: { state: string; task?: Task }) {
       : undefined;
   const waitingForSample = state === "queued" && task?.samplePending;
   const rewording = state === "queued" && task?.rewording;
+  // An automatic re-generation is held (unsent) until its image service answers a free check.
+  const waitingForService = state === "queued" && !!task?.autoRetryOf;
   return (
     <Tag color={color}>
       {rewording
@@ -390,7 +393,9 @@ export function Status({ state, task }: { state: string; task?: Task }) {
           : "改写提示词"
         : waitingForSample
           ? "等待样板图"
-          : phase || stateNames[state] || state}
+          : waitingForService
+            ? "等待图片服务恢复"
+            : phase || stateNames[state] || state}
     </Tag>
   );
 }
@@ -558,12 +563,48 @@ export function TaskFailureAlert({ task }: { task: Task }) {
     />
   );
 }
+// The asset ids that appeared while this page was open: the images that have
+// just arrived, as opposed to the ones that were already there. `scope` is
+// whatever the list belongs to (a run, a page); a new scope starts over.
+export function useArrivals(scope: string, ids: string[] | undefined) {
+  const state = useRef({
+    scope,
+    seen: null as Set<string> | null,
+    fresh: new Set<string>(),
+  });
+  if (state.current.scope !== scope)
+    state.current = { scope, seen: null, fresh: new Set() };
+  const s = state.current;
+  if (ids) {
+    if (!s.seen) s.seen = new Set(ids);
+    else
+      for (const id of ids)
+        if (!s.seen.has(id)) {
+          s.seen.add(id);
+          s.fresh.add(id);
+        }
+  }
+  return s.fresh;
+}
+// True while the app is doing something for this image right now: sending,
+// waiting for the image service, saving the result, or rewriting the prompt.
+// Waiting in line, for a retry or for the service to come back is not.
+export function taskWorking(task: Task) {
+  if (task.status === "queued") return !!task.rewording;
+  if (task.status === "downloading")
+    return !(Date.parse(task.downloadRetryAt || "") > Date.now());
+  return ["submitting", "running"].includes(task.status);
+}
 export function AssetImage({
   id,
   thumbnail = true,
+  arrived = false,
 }: {
   id: string;
   thumbnail?: boolean;
+  // This image has just been generated: it is revealed once, like a light
+  // coming on. Images that were already there appear without animation.
+  arrived?: boolean;
 }) {
   // A saved image never changes: read it once and keep it for a while, so going back
   // to a page shows its images at once.
@@ -573,6 +614,9 @@ export function AssetImage({
     staleTime: Infinity,
     gcTime: 10 * 60 * 1000,
   });
+  // Only an image the user actually waited for fades in; one that is already
+  // in memory is simply there.
+  const waited = useRef(q.isPending);
   return (
     <div className="image-frame">
       {q.isPending ? (
@@ -580,7 +624,18 @@ export function AssetImage({
       ) : q.error ? (
         <span>图片无法读取</span>
       ) : (
-        <img src={q.data} alt="本地图片预览" decoding="async" />
+        <img
+          src={q.data}
+          alt="本地图片预览"
+          decoding="async"
+          className={
+            arrived
+              ? "image-arrived"
+              : waited.current
+                ? "image-waited"
+                : undefined
+          }
+        />
       )}
     </div>
   );
@@ -616,6 +671,23 @@ export function AssetOption({ id, name }: { id: string; name: string }) {
       </div>
     </Popover>
   );
+}
+// Runs a state change that rearranges the page as a view transition, so an
+// element that is in both layouts moves to its new place instead of jumping.
+// With "reduce motion" on, or where the runtime has no view transitions, the
+// change simply happens.
+export function withViewTransition(update: () => void) {
+  const doc = document as Document & {
+    startViewTransition?: (callback: () => void) => unknown;
+  };
+  if (
+    !doc.startViewTransition ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    update();
+    return;
+  }
+  doc.startViewTransition(() => flushSync(update));
 }
 export type ViewerItem = { assetID: string; label: string };
 
@@ -685,6 +757,7 @@ export function ImageViewer({
           <span>图片无法读取</span>
         ) : (
           <img
+            key={item?.assetID}
             src={q.data}
             alt={item?.label || "图片"}
             title={actual ? "点击适应窗口" : "点击查看实际大小"}

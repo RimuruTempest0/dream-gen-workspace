@@ -123,12 +123,37 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* 0.7.29: reduce, not remove. Fades that show a state changed stay, at the
+     shortest duration; movement, scaling and loops go. Ant Design's own motion
+     is switched off through its theme (tokens.ts). */
+  :root {
+    --motion-base: 120ms !important;
+    --motion-layout: 120ms !important;
+    --motion-arrive: 120ms !important;
+  }
   *,
   *::before,
   *::after {
-    animation: none !important;
-    transition: none !important;
+    transition-property:
+      opacity, color, background-color, border-color, outline-color, box-shadow,
+      fill, stroke !important;
+    animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+  /* The step still fades in, without rising. */
+  .mood-step:not(.mood-step-still) {
+    animation-name: fade-in;
+  }
+  /* A new image still fades in, without the change of light. */
+  .image-frame img.image-arrived {
+    animation-name: fade-in;
+  }
+  .result-placeholder.is-working > .anticon {
+    animation: none;
+  }
+  .works-panel .image-button:hover img,
+  .recent-works-wall a:hover img {
+    transform: none;
   }
 }
 @media (forced-colors: active) {

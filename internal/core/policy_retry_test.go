@@ -209,3 +209,58 @@ func TestHeldRewordResumesOnStart(t *testing.T) {
 		t.Fatal(tasks[0].Status, tasks[0].Error)
 	}
 }
+
+// A reasoning model spends output tokens on thinking first. With the old fixed
+// 8192 it ran out before writing anything, so a rewrite came back empty: the
+// request must carry the connection's own output limit.
+func TestRewriteUsesTheConnectionOutputLimit(t *testing.T) {
+	s := testService(t)
+	var limit atomic.Int64
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			MaxTokens int64 `json:"max_tokens"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		limit.Store(body.MaxTokens)
+		w.Header().Set("Content-Type", "application/json")
+		if body.MaxTokens <= 8192 {
+			io.WriteString(w, `{"content":[{"type":"thinking","thinking":"..."}],"stop_reason":"max_tokens","usage":{"input_tokens":1000,"output_tokens":8192}}`)
+			return
+		}
+		io.WriteString(w, `{"content":[{"type":"text","text":"雾里的一把椅子"}],"usage":{"input_tokens":1000,"output_tokens":9000}}`)
+	}))
+	defer llm.Close()
+	saveLLM(t, s, llm.URL+"/v1")
+	r, e := s.ComposeConcept(ConceptInput{Prompt: "一把椅子", Form: "mega", Stances: []string{"romanticism"}})
+	if e != nil || !r.UsedLLM || r.Prompts[0] != "雾里的一把椅子" {
+		t.Fatalf("rewrite failed with max_tokens %d: %v %v", limit.Load(), r, e)
+	}
+}
+
+// A rewrite sends no image and costs nothing at the image service, so a
+// connection dropped before any answer is simply tried again.
+func TestRewriteRetriesADroppedConnection(t *testing.T) {
+	s := testService(t)
+	var hits atomic.Int32
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if hits.Add(1) == 1 {
+			if c, _, e := w.(http.Hijacker).Hijack(); e == nil {
+				c.Close()
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"content":[{"type":"text","text":"雾里的一把椅子"}],"usage":{"input_tokens":10,"output_tokens":10}}`)
+	}))
+	defer llm.Close()
+	saveLLM(t, s, llm.URL+"/v1")
+	r, e := s.ComposeConcept(ConceptInput{Prompt: "一把椅子", Form: "mega", Stances: []string{"romanticism"}})
+	if e != nil || r.Prompts[0] != "雾里的一把椅子" || hits.Load() != 2 {
+		t.Fatalf("a dropped connection was not retried: hits %d, %v %v", hits.Load(), r, e)
+	}
+	calls, _ := List[LLMCall](s.store, "llm_call")
+	if len(calls) != 2 {
+		t.Fatalf("both attempts belong in the monitor: %+v", calls)
+	}
+}

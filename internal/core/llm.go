@@ -115,8 +115,9 @@ type messageBlock struct {
 	Input map[string]any `json:"input"`
 }
 type messageResponse struct {
-	Content []messageBlock `json:"content"`
-	Usage   usage          `json:"usage"`
+	Content    []messageBlock `json:"content"`
+	Usage      usage          `json:"usage"`
+	StopReason string         `json:"stop_reason"`
 }
 
 func readMessage(resp *http.Response, key string) (messageResponse, error) {

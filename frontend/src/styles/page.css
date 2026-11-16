@@ -67,9 +67,9 @@
   background: var(--surface);
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    background-color 0.15s,
-    box-shadow 0.15s;
+    border-color var(--motion-instant) var(--ease-out),
+    background-color var(--motion-instant) var(--ease-out),
+    box-shadow var(--motion-instant) var(--ease-out);
 }
 .mode-option:hover {
   border-color: var(--primary);
@@ -90,8 +90,8 @@
   border-radius: 50%;
   background: var(--surface);
   transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+    border-color var(--motion-instant) var(--ease-out),
+    box-shadow var(--motion-instant) var(--ease-out);
 }
 .mode-option-text {
   display: flex;
@@ -273,6 +273,9 @@
 .run-steps .run-step-done .run-step-mark {
   color: var(--success);
 }
+.run-steps .run-step-done .run-step-mark .anticon {
+  animation: fade-in var(--motion-base) var(--ease-out);
+}
 .run-steps .run-step-active {
   color: var(--text);
 }
@@ -337,7 +340,7 @@
   gap: 8px;
   line-height: 1.55;
   overflow-wrap: anywhere;
-  animation: image-in 160ms ease-out;
+  animation: fade-in var(--motion-base) var(--ease-out);
 }
 .run-activity-line time {
   color: #9ca3af;

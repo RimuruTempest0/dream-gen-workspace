@@ -29,8 +29,14 @@
   overflow: hidden;
   background: var(--surface);
 }
+.works-panel .asset-card {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+.works-panel .asset-card.is-leaving {
+  opacity: 0;
+}
 .works-panel .asset-card img {
-  transition: transform 0.2s ease;
+  transition: transform var(--motion-base) var(--ease-out);
 }
 .works-panel .image-button:hover {
   filter: none;
@@ -54,7 +60,7 @@
   top: 8px;
   right: 8px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-instant) var(--ease-out);
 }
 .works-panel .asset-card:hover .asset-card-actions,
 .works-panel .asset-card:focus-within .asset-card-actions {
@@ -85,6 +91,7 @@
   color: var(--background);
 }
 .works-panel .asset-batch-bar {
+  animation: fade-in var(--motion-base) var(--ease-out);
   position: sticky;
   top: 12px;
   z-index: 4;

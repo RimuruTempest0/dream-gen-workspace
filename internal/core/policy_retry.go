@@ -227,10 +227,24 @@ func (s *Service) llmRewrite(ctx context.Context, c Connection, key, request, st
 
 // llmAsk sends one non-streaming request (text, or content blocks with images) and
 // returns the reply text after check accepts it; the call is recorded as kind.
+// A connection dropped before any answer is tried once more: asking again sends
+// no image and costs nothing at the image service. Each attempt is recorded.
 func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage string, content any, check func(string) error) (string, error) {
+	text, dropped, e := s.llmAskOnce(ctx, c, key, kind, stage, content, check)
+	if dropped && ctx.Err() == nil {
+		text, _, e = s.llmAskOnce(ctx, c, key, kind, stage, content, check)
+	}
+	return text, e
+}
+
+// llmAskOnce is one attempt of llmAsk; dropped reports a connection that failed
+// before any HTTP answer arrived.
+func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage string, content any, check func(string) error) (text string, dropped bool, err error) {
 	req := map[string]any{
-		"model":      c.Model,
-		"max_tokens": 8192,
+		"model": c.Model,
+		// The line's own limit: a reasoning model spends output tokens on thinking
+		// first, and a fixed 8192 ran out before it wrote any text.
+		"max_tokens": LLMOutputLimit(c.MaxOutputTokens),
 		"messages":   []any{map[string]any{"role": "user", "content": content}},
 	}
 	if c.Mode == "compatible" {
@@ -250,7 +264,7 @@ func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage str
 	}
 	resp, e := messagesRequest(ctx, llmHTTPClient(), c, key, req)
 	if e != nil {
-		return "", finish(errors.New("连接 AI 模型失败：" + e.Error()))
+		return "", true, finish(errors.New("连接 AI 模型失败：" + e.Error()))
 	}
 	call.HTTPStatus = resp.StatusCode
 	call.RequestID = resp.Header.Get("request-id")
@@ -259,10 +273,9 @@ func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage str
 	}
 	m, e := readMessage(resp, key)
 	if e != nil {
-		return "", finish(e)
+		return "", false, finish(e)
 	}
 	call.addUsage(m.Usage)
-	text := ""
 	for _, b := range m.Content {
 		if b.Type == "text" {
 			text += b.Text
@@ -273,11 +286,14 @@ func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage str
 		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text[strings.Index(text+"\n", "\n"):]), "```"))
 	}
 	if text == "" {
-		return "", finish(errors.New("AI 模型没有返回改写结果"))
+		if m.StopReason == "max_tokens" {
+			return "", false, finish(fmt.Errorf("AI 模型把单次输出上限（%d tokens）都用在了思考上，没有写出结果。可在“系统 → 连接 → AI 模型 → 编辑”调高“单次输出上限”", LLMOutputLimit(c.MaxOutputTokens)))
+		}
+		return "", false, finish(errors.New("AI 模型没有返回改写结果"))
 	}
 	if e := check(text); e != nil {
-		return "", finish(e)
+		return "", false, finish(e)
 	}
 	call.FirstByteMS = time.Since(started).Milliseconds()
-	return text, finish(nil)
+	return text, false, finish(nil)
 }

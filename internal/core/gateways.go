@@ -46,6 +46,10 @@ var (
 	probeInterval            = 3 * time.Minute
 	downProbeInterval        = 30 * time.Second
 	probeTimeout             = 30 * time.Second
+	// An automatic re-generation waits for a free check that passes: checked this
+	// often, given up (unsent) after this long.
+	retryProbeInterval = 10 * time.Second
+	retryWaitLimit     = 10 * time.Minute
 	modelListFreshness       = 30 * time.Minute
 )
 
@@ -455,8 +459,11 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 	if (g.PrimaryID == "" && len(g.BackupIDs) == 0) || t.Diagnostic.UpstreamJobID != "" {
 		return true
 	}
-	h := hc.get(t.Connection)
 	retry := t.AutoRetryOf != ""
+	if retry && !s.retryMayGoLocked(t) {
+		return false
+	}
+	h := hc.get(t.Connection)
 	if h.State != "slow" && h.State != "down" {
 		return true
 	}
@@ -492,6 +499,41 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 }
 
 // ---- auto re-generate an image whose result is unknown ------------------------
+
+// retryMayGoLocked holds an automatic re-generation until one free check, made
+// after the original failed, has reached its gateway. Whatever cut the original
+// (often a local proxy that lost its upstream) cuts an immediate second request
+// too, and the image is re-generated only once. Nothing is sent while it waits;
+// past retryWaitLimit it is given up unsent.
+func (s *Service) retryMayGoLocked(t *Task) bool {
+	created, e := time.Parse(time.RFC3339Nano, t.CreatedAt)
+	if e != nil {
+		return true
+	}
+	id := t.Connection.ID
+	p, had := s.probes[id]
+	fresh := had && p.at.After(created)
+	if fresh && !p.down {
+		return true
+	}
+	now := time.Now()
+	if now.Sub(created) > retryWaitLimit {
+		t.Status, t.UpdatedAt = "failed", Now()
+		t.Error = fmt.Sprintf("图片服务「%s」在 %d 分钟内一直连不上，没有自动重新生成。这次没有发送、未计费；原来那张可能已计费，请核对图片服务记录。网络恢复后可点“重新生成”。", t.Connection.Name, int(retryWaitLimit.Minutes()))
+		_ = s.store.Put("task", t.ID, *t)
+		_ = s.store.appendLog("warn", "image", t.BatchID, "等待图片服务恢复超时，自动重新生成没有发送："+t.ID)
+		return false
+	}
+	if !s.probing[id] && (!fresh || now.Sub(p.at) >= retryProbeInterval) && s.ctx.Err() == nil {
+		s.probing[id] = true
+		s.workers.Add(1)
+		go func() {
+			defer s.workers.Done()
+			s.probe(id)
+		}()
+	}
+	return false
+}
 
 // autoRegenerateLocked queues one more attempt for an image whose result is
 // unknown. Each image is re-generated at most once, so it costs at most twice.
@@ -529,7 +571,7 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 	if !s.gatewaySetupLocked() {
 		return fmt.Sprintf("已在「%s」自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
 	}
-	return fmt.Sprintf("没有可用的同模型备用图片服务，将在「%s」恢复正常后自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
+	return fmt.Sprintf("没有可用的同模型备用图片服务，将在「%s」能连上之后自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
 }
 
 // ---- relay rejections -------------------------------------------------------

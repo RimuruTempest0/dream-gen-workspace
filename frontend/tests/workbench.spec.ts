@@ -233,6 +233,8 @@ test("real desktop generates locally and an unknown result is re-generated once"
     )
     .toBe("succeeded");
   expect(requests).toBe(1);
+  // The image that has just been generated is the one that gets the reveal.
+  await expect(page.locator(".result-item img.image-arrived")).toHaveCount(1);
   await page.getByLabel("提示词", { exact: true }).fill("timeout");
   await page.getByRole("button", { name: "生成图片", exact: true }).click();
   await page
@@ -274,6 +276,8 @@ test("an image waiting on the relay can be cancelled after confirming", async ()
     .getByRole("button", { name: "继续", exact: true })
     .click();
   await expect.poll(() => requests).toBe(4);
+  // Only the image being worked on breathes; the unknown ones stay still.
+  await expect(page.locator(".result-placeholder.is-working")).toHaveCount(1);
   await page.getByRole("link", { name: /生成记录/ }).click();
   const row = page.getByRole("row").filter({ hasText: "等待图片服务" });
   await row.getByRole("button", { name: "取消生成" }).click();
@@ -463,6 +467,10 @@ test("assets show images at once when coming back and keep readable names", asyn
   await page.getByRole("link", { name: "作品与素材", exact: true }).click();
   await expect(page.locator(".asset-card img").first()).toBeVisible();
   expect(await page.evaluate(() => (window as any).__reads)).toBe(0);
+  // ...and an image already in memory does not fade in again.
+  await expect(page.locator(".asset-card img").first()).not.toHaveClass(
+    /image-/,
+  );
   await page.screenshot({
     path: path.join(docs, "desktop-assets.png"),
     fullPage: true,

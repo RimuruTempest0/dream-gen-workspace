@@ -41,7 +41,7 @@
   width: min(760px, 100%);
   padding: 18px 18px 14px;
   border-radius: 18px;
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-base) var(--ease-out);
 }
 .create-box:focus-within {
   border-color: var(--muted);
@@ -163,7 +163,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.2s ease;
+  transition: transform var(--motion-base) var(--ease-out);
 }
 .recent-works-wall a:hover img {
   transform: scale(1.03);
@@ -251,4 +251,27 @@
 /* Use-actions on the left, edit and delete pushed to the right. */
 .template-list .template-actions > .ant-space-item:has(.template-edit) {
   margin-left: auto;
+}
+
+/* 0.7.31: starting a request (and going back to a new one) moves the input
+   box between the centred home layout and the left column, instead of
+   cutting. The box keeps its own scale while it moves; the rest cross-fades. */
+.agent-input-panel {
+  view-transition-name: create-box;
+}
+::view-transition-group(*) {
+  animation-duration: var(--motion-layout);
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--motion-layout);
+}
+::view-transition-old(create-box),
+::view-transition-new(create-box) {
+  width: 100%;
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+  overflow: clip;
 }

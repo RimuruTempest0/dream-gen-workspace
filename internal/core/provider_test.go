@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,5 +152,40 @@ func TestEditsDeclareReferenceImageTypes(t *testing.T) {
 	_, _, e := NewProvider().Generate(context.Background(), Task{ID: "edit", Model: "m", Prompt: "p", Connection: Connection{BaseURL: server.URL}}, "k", refs, root)
 	if e != nil || strings.Join(types, ",") != "image/png,image/jpeg" {
 		t.Fatal("reference parts must carry image MIME types", types, e)
+	}
+}
+
+// A proxy that drops the CONNECT (the user's local proxy lost its upstream) ends
+// the attempt with "EOF" before any connection exists. Nothing was sent, so the
+// result is not unknown and cannot have been billed.
+func TestConnectionNeverMadeIsNotAnUnknownResult(t *testing.T) {
+	proxy, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer proxy.Close()
+	go func() {
+		for {
+			c, e := proxy.Accept()
+			if e != nil {
+				return
+			}
+			// Read the CONNECT request, then hang up without answering.
+			_, _ = c.Read(make([]byte, 4096))
+			c.Close()
+		}
+	}()
+	proxyURL, _ := url.Parse("http://" + proxy.Addr().String())
+	provider := &Provider{Client: &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}}
+	var diag GenerationDiagnostic
+	_, unknown, err := provider.GenerateWithProgress(context.Background(), Task{Model: "m", Prompt: "p", Connection: Connection{BaseURL: "https://image.invalid"}}, "test-key", nil, "", func(d GenerationDiagnostic) { diag = d })
+	if err == nil || !strings.Contains(diag.NetworkError, "EOF") || diag.Stage != "connecting" {
+		t.Fatalf("want an EOF while connecting, got stage %q, error %v", diag.Stage, err)
+	}
+	if unknown {
+		t.Fatalf("no connection was made, so nothing was sent: the result must not be unknown (%v)", err)
+	}
+	if !strings.Contains(err.Error(), "未计费") || strings.Contains(err.Error(), "避免重复扣费") {
+		t.Fatalf("the message should say nothing was sent or billed: %v", err)
 	}
 }

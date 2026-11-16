@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -181,10 +182,17 @@ func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asse
 	}
 	// No automatic POST retries or assumed provider idempotency.
 	report(func(d *GenerationDiagnostic) { d.Stage = "connecting" })
+	// The request is only written after a connection exists (GotConn). A failure
+	// before that, such as a proxy that hangs up, sent nothing to the image service.
+	var connected atomic.Bool
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }}))
 	resp, e := p.Client.Do(req)
 	if e != nil {
 		detail := redact(e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
+		if !connected.Load() {
+			return nil, false, fmt.Errorf("没有连上图片服务，请求没有发出、未计费（%s）。多半是本机网络或代理暂时中断，稍后重新生成即可", detail)
+		}
 		return nil, true, fmt.Errorf("%s（%s）。请先核对平台记录，避免重复扣费", networkProblem(e, "提交后未收到确定结果"), detail)
 	}
 	defer resp.Body.Close()

@@ -22,8 +22,8 @@
   font: inherit;
   text-align: left;
   transition:
-    border-color 150ms ease-out,
-    background-color 150ms ease-out;
+    border-color var(--motion-instant) var(--ease-out),
+    background-color var(--motion-instant) var(--ease-out);
 }
 .concept-entry:hover:not(:disabled) {
   border-color: var(--primary);
@@ -199,9 +199,9 @@
   font: inherit;
   text-align: left;
   transition:
-    border-color 150ms ease-out,
-    background-color 150ms ease-out,
-    color 150ms ease-out;
+    border-color var(--motion-instant) var(--ease-out),
+    background-color var(--motion-instant) var(--ease-out),
+    color var(--motion-instant) var(--ease-out);
 }
 .concept-pick {
   display: grid;
@@ -329,7 +329,7 @@
   list-style: none;
   font-size: 13px;
   color: var(--inkMuted);
-  animation: concept-look-in 150ms ease-out;
+  animation: concept-look-in var(--motion-instant) var(--ease-out);
 }
 .concept-looks li span {
   display: inline-block;

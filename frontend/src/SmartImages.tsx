@@ -46,6 +46,8 @@ import {
   presetSizes,
   withCurrent,
   AssetImage,
+  useArrivals,
+  withViewTransition,
   AssetOption,
   CancelTaskButton,
   DataState,
@@ -157,6 +159,10 @@ export function SmartImages() {
   });
   const run = runQuery.data,
     tasks = taskQuery.data || [];
+  const arrivals = useArrivals(
+    runID || "",
+    taskQuery.data?.flatMap((t) => t.assetIDs),
+  );
   const incomingTemplate = (
     useLocation().state as { templateID?: string } | null
   )?.templateID;
@@ -382,7 +388,7 @@ export function SmartImages() {
       call<string>("StartSmartGeneration", { ...input, autoMode }, id),
     );
     if (out) {
-      setRunID(out);
+      withViewTransition(() => setRunID(out));
       latestDraft.current = null;
       setError("");
       // The steps are at the top of the page; the button can be far below them.
@@ -410,7 +416,7 @@ export function SmartImages() {
     window.scrollTo(0, 0);
   }
   function newRun() {
-    setRunID("");
+    withViewTransition(() => setRunID(""));
     initialized.current = "";
     startRequest.current = null;
     continuationRequest.current = null;
@@ -1183,7 +1189,7 @@ export function SmartImages() {
                           aria-label={`查看第 ${index + 1} 张大图`}
                           onClick={() => openViewer(id)}
                         >
-                          <AssetImage id={id} />
+                          <AssetImage id={id} arrived={arrivals.has(id)} />
                         </button>
                         <div className="agent-result-actions">
                           <Button
@@ -1352,7 +1358,7 @@ export function SmartImages() {
                 </div>
                 <Button
                   onClick={() => {
-                    setRunID(r.id);
+                    withViewTransition(() => setRunID(r.id));
                     setError("");
                   }}
                 >

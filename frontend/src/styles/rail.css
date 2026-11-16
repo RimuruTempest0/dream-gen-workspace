@@ -28,7 +28,7 @@ h1 {
   overflow: hidden;
   background: var(--background);
   border-right: 1px solid var(--border);
-  transition: width 0.2s ease 0.12s;
+  transition: width var(--motion-base) var(--ease-out) var(--motion-instant);
 }
 /* Open on hover or keyboard focus. After a click the rail stays closed until
    the pointer leaves, so it never covers the page it just opened. */
@@ -96,7 +96,7 @@ h1 {
 .rail-wordmark,
 .rail .license-badge,
 .rail .update-badge {
-  transition: color 0.15s ease 0.12s;
+  transition: color var(--motion-instant) var(--ease-out) var(--motion-instant);
 }
 .rail .rail-label,
 .rail .rail-wordmark {
@@ -180,7 +180,8 @@ h1 {
   white-space: nowrap;
   font-size: 12px;
   opacity: 0;
-  transition: opacity 0.15s ease 0.12s;
+  transition: opacity var(--motion-instant) var(--ease-out)
+    var(--motion-instant);
 }
 .rail:not(.rail-closed):hover .rail-version,
 .rail:has(:focus-visible) .rail-version {

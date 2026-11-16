@@ -46,6 +46,8 @@ import {
   TaskTiming,
   autoHandledNote,
   AssetImage,
+  taskWorking,
+  useArrivals,
   ModelSelect,
   presetQualities,
   presetSizes,
@@ -87,6 +89,10 @@ export function Workbench() {
     [6],
     2500,
   );
+  const arrivals = useArrivals(
+    "recent",
+    tasks.data?.flatMap((b) => b.tasks.flatMap((t) => t.assetIDs)),
+  );
   const draft = useData<GenerateInput>(["draft"], "GetDraft");
   const [input, setInput] = useState<GenerateInput>(blankDraft);
   const [prompt, setPrompt] = useState("");
@@ -95,6 +101,10 @@ export function Workbench() {
   const [draftError, setDraftError] = useState("");
   const [formError, setFormError] = useState("");
   const promptRef = useRef<null | any>(null);
+  // Brief marks for a change made from the other column: the reference image
+  // that was just added, and the prompt that was just filled in.
+  const [newReference, setNewReference] = useState("");
+  const [promptFilled, setPromptFilled] = useState(false);
   const latestDraft = useRef<GenerateInput | null>(null);
   const [composing, setComposing] = useState(false);
   const { modal, notification } = AntApp.useApp();
@@ -319,6 +329,7 @@ export function Workbench() {
       return;
     }
     change({ references: [...input.references, assetID] });
+    setNewReference(assetID);
     notification.success({ message: "已添加为参考图" });
   }
   // Puts a past prompt and its size and quality back in the form. The current text
@@ -340,6 +351,7 @@ export function Workbench() {
       });
       if (t.moodChoice && !guideOn) setGuide(true);
       setViewerIndex(null);
+      setPromptFilled(true);
       requestAnimationFrame(() => {
         promptRef.current?.focus();
         document
@@ -530,6 +542,10 @@ export function Workbench() {
           <Input.TextArea
             ref={promptRef}
             id="prompt"
+            className={promptFilled ? "is-filled" : undefined}
+            onAnimationEnd={(e) => {
+              if (e.animationName === "mark-filled") setPromptFilled(false);
+            }}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             value={prompt}
@@ -652,7 +668,15 @@ export function Workbench() {
           >
             {input.references.length ? (
               input.references.map((id, i) => (
-                <div className="reference" key={id}>
+                <div
+                  className={
+                    id === newReference ? "reference is-new" : "reference"
+                  }
+                  key={id}
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === "mark-new") setNewReference("");
+                  }}
+                >
                   <AssetImage id={id} />
                   <Button
                     size="small"
@@ -870,7 +894,10 @@ export function Workbench() {
                                   aria-label={`查看大图：${t.prompt.slice(0, 24)}${t.assetIDs.length > 1 ? `（第 ${n + 1} 张）` : ""}`}
                                   onClick={() => openViewer(id)}
                                 >
-                                  <AssetImage id={id} />
+                                  <AssetImage
+                                    id={id}
+                                    arrived={arrivals.has(id)}
+                                  />
                                 </button>
                                 <div className="result-image-actions">
                                   <Button
@@ -900,7 +927,13 @@ export function Workbench() {
                             ))}
                           </div>
                         ) : (
-                          <div className="result-placeholder">
+                          <div
+                            className={
+                              taskWorking(t)
+                                ? "result-placeholder is-working"
+                                : "result-placeholder"
+                            }
+                          >
                             <PictureOutlined aria-hidden="true" />
                             <Status state={t.status} task={t} />
                           </div>

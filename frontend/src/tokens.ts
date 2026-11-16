@@ -1,3 +1,4 @@
+import { useMemo, useSyncExternalStore } from "react";
 import { theme, type ThemeConfig } from "antd";
 
 // 0.7.20: one dark "gallery wall" for the whole app. The interface steps back
@@ -34,11 +35,49 @@ export const font = '"Microsoft YaHei UI", "Segoe UI", sans-serif';
 // stack falls through to the body font instead of SimSun, which is rough at
 // display sizes.
 export const serif = `"Noto Serif SC", "Source Han Serif SC", "思源宋体", ${font}`;
+// 0.7.29: durations and one curve for every authored transition.
+// instant = feedback on a control, base = a state change, layout = something
+// moves or a view changes. The curve decelerates and never overshoots.
+export const motion = {
+  instant: "120ms",
+  base: "200ms",
+  layout: "360ms",
+  // Only for a newly generated image coming up on the wall.
+  arrive: "640ms",
+  ease: "cubic-bezier(0.16, 1, 0.3, 1)",
+};
 export function installTokens() {
   const root = document.documentElement.style;
   for (const [k, v] of Object.entries(colors)) root.setProperty(`--${k}`, v);
   root.setProperty("--serif", serif);
+  root.setProperty("--motion-instant", motion.instant);
+  root.setProperty("--motion-base", motion.base);
+  root.setProperty("--motion-layout", motion.layout);
+  root.setProperty("--motion-arrive", motion.arrive);
+  root.setProperty("--ease-out", motion.ease);
   root.setProperty("color-scheme", "dark");
+}
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+function watchReducedMotion(changed: () => void) {
+  reducedMotion.addEventListener("change", changed);
+  return () => reducedMotion.removeEventListener("change", changed);
+}
+// With "reduce motion" on in Windows, Ant Design's own motion (drawers, modals,
+// collapses) is switched off through its theme, so its components never wait
+// for a transition that the stylesheet has removed.
+export function useAntdTheme(): ThemeConfig {
+  const reduced = useSyncExternalStore(
+    watchReducedMotion,
+    () => reducedMotion.matches,
+  );
+  return useMemo(
+    () =>
+      reduced
+        ? { ...antdTheme, token: { ...antdTheme.token, motion: false } }
+        : antdTheme,
+    [reduced],
+  );
 }
 
 // Shared by the app and the admin tool so both stay on the same theme.

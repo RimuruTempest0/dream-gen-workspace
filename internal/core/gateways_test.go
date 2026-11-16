@@ -22,6 +22,9 @@ type fakeGateway struct {
 	refuseMessage string
 	modelHits     atomic.Int32
 	imageHits     atomic.Int32
+	// cut drops the generation response half way; unreachable fails the free check.
+	cut         atomic.Bool
+	unreachable atomic.Bool
 }
 
 func newFakeGateway(t *testing.T, g *fakeGateway) *httptest.Server {
@@ -29,6 +32,10 @@ func newFakeGateway(t *testing.T, g *fakeGateway) *httptest.Server {
 		io.Copy(io.Discard, r.Body)
 		if strings.HasSuffix(r.URL.Path, "/models") {
 			g.modelHits.Add(1)
+			if g.unreachable.Load() {
+				w.WriteHeader(503)
+				return
+			}
 			if g.modelsErr != 0 {
 				w.WriteHeader(g.modelsErr)
 				w.Write([]byte(`{"error":{"message":"denied"}}`))
@@ -53,6 +60,17 @@ func newFakeGateway(t *testing.T, g *fakeGateway) *httptest.Server {
 			return
 		}
 		time.Sleep(20 * time.Millisecond) // a measurable generation time
+		if g.cut.Load() {
+			// Half an answer, then the connection is gone: the result is unknown.
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Length", "4096")
+			w.Write([]byte(`{"data":[{"b64_json":"AAAA`))
+			w.(http.Flusher).Flush()
+			if c, _, e := w.(http.Hijacker).Hijack(); e == nil {
+				c.Close()
+			}
+			return
+		}
 		if g.timeout {
 			w.WriteHeader(524)
 			w.Write([]byte("error code: 524"))
@@ -313,5 +331,56 @@ func TestNoGatewaySetupSkipsHealthChecks(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if g.modelHits.Load() != 0 || g.imageHits.Load() != 4 {
 		t.Fatal("health checks or routing ran without a gateway setup", g.modelHits.Load(), g.imageHits.Load())
+	}
+}
+
+func shortRetryWait(t *testing.T, every, limit time.Duration) {
+	oldEvery, oldLimit := retryProbeInterval, retryWaitLimit
+	retryProbeInterval, retryWaitLimit = every, limit
+	t.Cleanup(func() { retryProbeInterval, retryWaitLimit = oldEvery, oldLimit })
+}
+
+// The network that cut an image (a dropped proxy) cuts an immediate re-generation
+// too, so the automatic attempt waits for one free check that passes.
+func TestAutoRegenerateWaitsUntilTheGatewayAnswersAgain(t *testing.T) {
+	shortRetryWait(t, 50*time.Millisecond, time.Minute)
+	s := testService(t)
+	g := &fakeGateway{models: []string{"test-image"}}
+	a := gatewayConnection(t, s, "A", newFakeGateway(t, g).URL+"/v1")
+	s.SetGatewaySettings(GatewaySettings{PrimaryID: a.ID, AutoReroute: true})
+	s.CheckGateways()
+	g.cut.Store(true)
+	g.unreachable.Store(true)
+	submitN(t, s, a, 1)
+	s.Start(func() {})
+	waitFor(t, "the cut image is unknown", func() bool { return countStatus(s, "unknown") == 1 })
+	time.Sleep(500 * time.Millisecond)
+	retries := tasksWhere(s, func(t Task) bool { return t.AutoRetryOf != "" })
+	if hits := g.imageHits.Load(); hits != 1 || len(retries) != 1 || retries[0].Status != "queued" {
+		t.Fatal("the re-generation was sent while the gateway could not be reached", hits, retries)
+	}
+	g.cut.Store(false)
+	g.unreachable.Store(false)
+	waitFor(t, "re-generated once the free check passes", func() bool { return countStatus(s, "succeeded") == 1 })
+	if hits := g.imageHits.Load(); hits != 2 {
+		t.Fatal("exactly one re-generation", hits)
+	}
+}
+
+func TestAutoRegenerateGivesUpUnsentWhenTheGatewayStaysAway(t *testing.T) {
+	shortRetryWait(t, 50*time.Millisecond, 400*time.Millisecond)
+	s := testService(t)
+	g := &fakeGateway{models: []string{"test-image"}}
+	a := gatewayConnection(t, s, "A", newFakeGateway(t, g).URL+"/v1")
+	s.SetGatewaySettings(GatewaySettings{PrimaryID: a.ID, AutoReroute: true})
+	s.CheckGateways()
+	g.cut.Store(true)
+	g.unreachable.Store(true)
+	submitN(t, s, a, 1)
+	s.Start(func() {})
+	waitFor(t, "the waiting re-generation is given up", func() bool { return countStatus(s, "failed") == 1 })
+	gave := tasksWhere(s, func(t Task) bool { return t.AutoRetryOf != "" })
+	if hits := g.imageHits.Load(); hits != 1 || len(gave) != 1 || !strings.Contains(gave[0].Error, "未计费") {
+		t.Fatal("given up without sending, and said so", hits, gave)
 	}
 }

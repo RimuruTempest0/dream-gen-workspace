@@ -25,8 +25,8 @@
   text-align: left;
   cursor: pointer;
   transition:
-    border-color 150ms ease-out,
-    background-color 150ms ease-out;
+    border-color var(--motion-instant) var(--ease-out),
+    background-color var(--motion-instant) var(--ease-out);
 }
 .mood-entry:hover:not(:disabled) {
   border-color: var(--primary);
@@ -163,8 +163,8 @@
   font-size: 12px;
   cursor: pointer;
   transition:
-    background-color 150ms ease-out,
-    color 150ms ease-out;
+    background-color var(--motion-instant) var(--ease-out),
+    color var(--motion-instant) var(--ease-out);
 }
 .mood-nudge + .mood-nudge {
   border-left: 1px solid var(--border);
@@ -253,7 +253,7 @@
   height: 2px;
   border-radius: 1px;
   background: var(--inkLine);
-  transition: background-color 200ms ease-out;
+  transition: background-color var(--motion-base) var(--ease-out);
 }
 .mood-progress-step[data-done="true"] .mood-progress-line {
   background: var(--inkMuted);
@@ -272,13 +272,31 @@
   color: var(--inkMuted);
 }
 .mood-step {
-  animation: mood-step-in 220ms ease-out;
+  animation: mood-step-in var(--motion-base) var(--ease-out);
 }
 @keyframes mood-step-in {
   from {
     opacity: 0;
     transform: translateY(8px);
   }
+}
+/* 0.7.31: going back, the screen comes from above; a guide reopened on its
+   sentence does not animate; a sentence just put together takes a moment. */
+.mood-step-back {
+  animation-name: mood-step-back;
+}
+@keyframes mood-step-back {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.mood-step-still {
+  animation: none;
+}
+.mood-step-forward .mood-sentence {
+  animation: fade-in var(--motion-layout) var(--ease-out) var(--motion-instant)
+    backwards;
 }
 .mood-kicker {
   margin: 0;
@@ -343,9 +361,9 @@
   font: inherit;
   cursor: pointer;
   transition:
-    border-color 150ms ease-out,
-    background-color 150ms ease-out,
-    color 150ms ease-out;
+    border-color var(--motion-instant) var(--ease-out),
+    background-color var(--motion-instant) var(--ease-out),
+    color var(--motion-instant) var(--ease-out);
 }
 .mood-options-4 .mood-option {
   min-height: 128px;
@@ -396,8 +414,8 @@
   text-align: left;
   cursor: pointer;
   transition:
-    border-color 150ms ease-out,
-    background-color 150ms ease-out;
+    border-color var(--motion-instant) var(--ease-out),
+    background-color var(--motion-instant) var(--ease-out);
 }
 .mood-pick .mood-glyph {
   width: 28px;

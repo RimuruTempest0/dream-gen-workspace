@@ -54,6 +54,8 @@ export function Assets() {
   // in list order, so removed images drop out by themselves.
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Images being removed fade out before the list closes up.
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const items = q.data?.items || [];
   const chosen = items.filter((a) => picked.has(a.id));
   const ids = chosen.map((a) => a.id);
@@ -151,8 +153,16 @@ export function Assets() {
                   `移除 ${ids.length} 张图片？`,
                   "图片会从列表隐藏，文件和任务引用仍保留。",
                   async () => {
-                    await call("UpdateAssets", ids, "", true);
-                    setPicked(new Set());
+                    setLeaving(new Set(ids));
+                    try {
+                      await Promise.all([
+                        call("UpdateAssets", ids, "", true),
+                        new Promise((done) => window.setTimeout(done, 200)),
+                      ]);
+                      setPicked(new Set());
+                    } finally {
+                      setLeaving(new Set());
+                    }
                   },
                   true,
                 )
@@ -179,7 +189,9 @@ export function Assets() {
             {q.data?.items.map((a) => (
               <article
                 className={
-                  "asset-card" + (picked.has(a.id) ? " asset-card-picked" : "")
+                  "asset-card" +
+                  (picked.has(a.id) ? " asset-card-picked" : "") +
+                  (leaving.has(a.id) ? " is-leaving" : "")
                 }
                 key={a.id}
               >
