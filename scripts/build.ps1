@@ -1,4 +1,4 @@
-﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.7.36', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath, [string]$UpdateURL, [string]$SignThumbprint, [string]$ProductLine, [string]$UpdatePublicKey)
+﻿param([string]$RuntimeSource, [string]$ClaudeSource = '.tools\claude-code', [string]$Version = '0.7.37', [string]$ReleaseDirectory, [switch]$NoLocalProfile, [string]$LicensePublicKey, [string]$ZipPath, [string]$UpdateURL, [string]$SignThumbprint, [string]$ProductLine, [string]$UpdatePublicKey)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot

@@ -238,6 +238,11 @@ func main() {
 				shown = true
 				pShowWindow.Call(hwnd, swShow)
 				pSetForeground.Call(hwnd)
+				// The page was loaded while the window was hidden; WebView2 then
+				// paints nothing on show until its visibility changes.
+				chromium.Hide()
+				chromium.Resize()
+				chromium.Show()
 				emit(map[string]any{"event": "verify"})
 			}
 		case "page":

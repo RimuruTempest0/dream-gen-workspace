@@ -1,7 +1,8 @@
 # Builds the product-browser helper and runs the Go tests that drive it against
 # local mock pages (no real site, isolated temporary data). A verification
 # window appears for a few seconds during one test.
-# Covered: script-rendered pages, redirects, human checks (auto and shown window),
+# Covered: script-rendered pages, redirects, human checks (auto, and a shown window
+# that must display the page, not stay blank),
 # blank-page timeout, dropped connections, unreachable sites, and the read-only
 # guards: new windows and popups blocked, downloads cancelled, navigation to
 # anything but http/https cancelled (Chromium itself refuses file:// from a page),
@@ -31,3 +32,6 @@ $env:IMAGEWORKBENCH_TEST_BROWSER = $helper
 $env:IMAGEWORKBENCH_TEST_WEBVIEW2 = (Resolve-Path $RuntimeSource).Path
 & $go test ./internal/core -run 'RealHelper' -count=1 -v -timeout 300s
 if ($LASTEXITCODE -ne 0) { throw 'product browser tests failed' }
+# The tests above only see the "verify" event; this one checks the shown window
+# actually displays the check page (0.7.36 and earlier showed it blank).
+& (Join-Path $PSScriptRoot 'test-verify-window.ps1') -Helper $helper -Runtime $env:IMAGEWORKBENCH_TEST_WEBVIEW2
