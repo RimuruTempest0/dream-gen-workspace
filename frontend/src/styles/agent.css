@@ -219,6 +219,27 @@
   max-height: none;
   cursor: zoom-out;
 }
+/* The large viewer scrolls inside its stage only: the modal body does not add
+   a second scrollbar (or its gutter), so the stage and the footer share edges. */
+.image-viewer-modal .ant-modal-body {
+  max-height: none;
+  overflow: visible;
+}
+.image-viewer-modal .image-viewer,
+.image-viewer-modal .image-viewer:not(.actual) img {
+  max-height: min(72vh, calc(100vh - 250px));
+}
+.viewer-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.viewer-footer .viewer-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
 .refine-preview {
   max-width: 220px;
   margin-bottom: 12px;
@@ -253,6 +274,15 @@
   box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar) var(--background);
+}
+/* Selection and caret come from the palette, not the browser's blue. */
+::selection {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--text);
+}
+input,
+textarea {
+  caret-color: var(--primary);
 }
 *::-webkit-scrollbar {
   width: 9px;

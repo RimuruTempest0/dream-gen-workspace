@@ -183,6 +183,26 @@
 .viewer-footer .mood-nudges {
   margin: 0;
 }
+/* On a result card the three pairs are three equal columns under the title,
+   each pair stacked, so the block keeps one edge at any card width. */
+.result-copy .mood-nudges {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 12px 0 8px;
+}
+.result-copy .mood-nudges-title {
+  grid-column: 1 / -1;
+}
+.result-copy .mood-nudge-pair {
+  display: grid;
+}
+.result-copy .mood-nudge {
+  padding: 0 4px;
+}
+.result-copy .mood-nudge + .mood-nudge {
+  border-left: 0;
+  border-top: 1px solid var(--border);
+}
 
 /* ---- the guide ---- */
 .mood-guide .ant-drawer-content {

@@ -43,6 +43,7 @@ import {
   DataState,
   Header,
   Status,
+  TaskErrorText,
   TaskTiming,
   autoHandledNote,
   AssetImage,
@@ -847,7 +848,7 @@ export function Workbench() {
           <div className="panel-heading">
             <h2>最近生成</h2>
             <Button type="link" onClick={() => navigate("/tasks")}>
-              全部任务
+              全部记录
             </Button>
           </div>
           <DataState
@@ -978,7 +979,7 @@ export function Workbench() {
                                 {autoHandledNote(t)}
                               </p>
                             ) : (
-                              <p className="error-text">{t.error}</p>
+                              <TaskErrorText error={t.error} />
                             ))}
                         </div>
                       </div>

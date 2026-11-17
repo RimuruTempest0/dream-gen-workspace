@@ -239,6 +239,14 @@
   color: var(--danger);
   white-space: pre-wrap;
 }
+/* The technical cause of a failure folds under the sentence, in muted text. */
+.result-copy .error-text .task-error-details {
+  color: var(--muted);
+  font-size: 12px;
+}
+.result-copy .error-text .task-error-details p {
+  margin-bottom: 0;
+}
 .asset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

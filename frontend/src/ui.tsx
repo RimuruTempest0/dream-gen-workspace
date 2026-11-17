@@ -519,6 +519,24 @@ export function autoHandledNote(task: Task) {
     return "内容审核拒绝了这张图，已自动重发（未生成，一般不计费）。";
   return "";
 }
+// A failure sentence from the backend carries its technical cause in full-width
+// brackets (an address, a Go network error). On a result card the sentence is
+// what the user reads; the cause folds away under it.
+const technicalCause = /（[^（）]*[\x21-\x7e]{12,}[^（）]*）/;
+export function TaskErrorText({ error }: { error: string }) {
+  const plain = error.replace(technicalCause, "");
+  if (plain === error || !plain.trim())
+    return <p className="error-text">{error}</p>;
+  return (
+    <div className="error-text">
+      <p>{plain}</p>
+      <details className="task-error-details">
+        <summary>查看详细错误</summary>
+        <p>{error}</p>
+      </details>
+    </div>
+  );
+}
 export function TaskFailureAlert({ task }: { task: Task }) {
   if (!task.error) return null;
   const note = autoHandledNote(task);
@@ -735,20 +753,31 @@ export function ImageViewer({
       destroyOnHidden
       footer={
         item && (
-          <Space wrap className="viewer-footer">
-            <Button disabled={index === 0} onClick={() => onIndex(index! - 1)}>
-              上一张
-            </Button>
-            <Button
-              disabled={index === items.length - 1}
-              onClick={() => onIndex(index! + 1)}
-            >
-              下一张
-            </Button>
-            {actions?.(item)}
-          </Space>
+          <div className="viewer-footer">
+            {/* Nothing to move between when there is one image. */}
+            {items.length > 1 && (
+              <Space>
+                <Button
+                  disabled={index === 0}
+                  onClick={() => onIndex(index! - 1)}
+                >
+                  上一张
+                </Button>
+                <Button
+                  disabled={index === items.length - 1}
+                  onClick={() => onIndex(index! + 1)}
+                >
+                  下一张
+                </Button>
+              </Space>
+            )}
+            <Space wrap className="viewer-actions">
+              {actions?.(item)}
+            </Space>
+          </div>
         )
       }
+      className="image-viewer-modal"
     >
       <div className={actual ? "image-viewer actual" : "image-viewer"}>
         {q.isPending ? (
@@ -766,7 +795,8 @@ export function ImageViewer({
         )}
       </div>
       <p className="hint">
-        点击图片切换“适应窗口 / 实际大小”，← → 键切换上一张、下一张。
+        点击图片切换“适应窗口 / 实际大小”
+        {items.length > 1 && "，← → 键切换上一张、下一张"}。
       </p>
     </Modal>
   );

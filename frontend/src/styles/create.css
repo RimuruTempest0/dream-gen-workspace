@@ -198,7 +198,12 @@
 }
 .is-home ~ .agent-history {
   width: min(1120px, 100%);
-  margin-inline: auto;
+  /* Same distance as between the box and the wall above it. */
+  margin: 56px auto 20px;
+}
+/* An empty history is one quiet line, not a tall empty stage. */
+.agent-history > .state-panel {
+  min-height: 96px;
 }
 @media (max-width: 900px) {
   .page:has(.agent-layout.is-home) .smart-header-actions {

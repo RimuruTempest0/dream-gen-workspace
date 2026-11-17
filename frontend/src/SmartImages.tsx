@@ -1373,6 +1373,7 @@ export function SmartImages() {
           pageSize={10}
           total={history.data?.total || 0}
           showSizeChanger={false}
+          hideOnSinglePage
           onChange={setPage}
         />
       </section>

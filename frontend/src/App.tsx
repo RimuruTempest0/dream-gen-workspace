@@ -199,7 +199,7 @@ export default function App() {
           <LicenseBadge />
           <UpdateBadge />
           <small className="rail-version">
-            版本 {summary.data?.version || "0.7.32"}，数据保存在本机
+            版本 {summary.data?.version || "0.7.33"}，数据保存在本机
           </small>
         </div>
       </aside>
