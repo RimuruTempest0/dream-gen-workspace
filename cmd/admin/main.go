@@ -39,6 +39,23 @@ func dataDir() string {
 	return filepath.Join(base, "ImageWorkbenchAdmin")
 }
 
+// webviewPath is the WebView2 runtime the window uses: IMAGEWORKBENCH_ADMIN_WEBVIEW
+// when set (desktop QA), else the fixed runtime build-admin.ps1 puts beside the
+// program, else ("") the system WebView2. The fixed one comes first because a
+// system runtime update can stop the window from opening (admin 1.8.1).
+func webviewPath() string {
+	if p := os.Getenv("IMAGEWORKBENCH_ADMIN_WEBVIEW"); p != "" {
+		return p
+	}
+	if exe, e := os.Executable(); e == nil {
+		dir := filepath.Join(filepath.Dir(exe), "runtime")
+		if _, e := os.Stat(filepath.Join(dir, "msedgewebview2.exe")); e == nil {
+			return dir
+		}
+	}
+	return ""
+}
+
 // App is bound to the admin frontend (window.go.main.App).
 type App struct {
 	ctx      context.Context
@@ -65,9 +82,7 @@ func main() {
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        func(ctx context.Context) { app.ctx = ctx },
 		Bind:             []interface{}{app},
-		// The system WebView2 runtime by default; IMAGEWORKBENCH_ADMIN_WEBVIEW may
-		// point at a fixed runtime folder instead.
-		Windows: &windows.Options{WebviewBrowserPath: os.Getenv("IMAGEWORKBENCH_ADMIN_WEBVIEW"), WebviewUserDataPath: filepath.Join(dataDir(), "webview"), Theme: windows.Light},
+		Windows:          &windows.Options{WebviewBrowserPath: webviewPath(), WebviewUserDataPath: filepath.Join(dataDir(), "webview"), Theme: windows.Light},
 	})
 	if e != nil {
 		fmt.Fprintln(os.Stderr, e)
