@@ -76,4 +76,13 @@ func writeQACustomer(dir, expiresAt string) error {
 
 // ForgetTestLicenseKey returns the QA instance to a developer build (no trusted
 // key), as after a reset; customer packages set one again.
-func ForgetTestLicenseKey() { licensePublicKey = "" }
+func ForgetTestLicenseKey() { licensePublicKey, productLine, updatePublicKey = "", "", "" }
+
+// WriteTestHosted writes a signed customer.dat into dir and makes this QA process
+// a mass-market program that trusts its key: without the file beside the program
+// it is the open edition, and importing the file makes it the hosted one.
+func WriteTestHosted(dir, imageBase, llmBase string, trialImages int) (string, string, error) {
+	id, code, e := WriteTestCustomerExpiring(dir, imageBase, llmBase, trialImages, "")
+	productLine, updatePublicKey, licensePublicKey = "creative", licensePublicKey, ""
+	return id, code, e
+}

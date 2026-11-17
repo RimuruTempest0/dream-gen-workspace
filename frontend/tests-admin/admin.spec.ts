@@ -241,9 +241,11 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await expect(page.getByRole("button", { name: "验证能力" })).toHaveCount(0);
 
   await page.getByRole("link", { name: "客户" }).click();
-  await page.getByRole("button", { name: "新建客户" }).click();
-  const create = page.getByRole("dialog", { name: "新建客户" });
-  await create.getByLabel("客户名称").fill("QA 客户");
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  const create = page.getByRole("dialog", { name: "新建客户或顾客" });
+  // The e-commerce line is the default.
+  await expect(create.getByRole("radio", { name: "电商版" })).toBeChecked();
+  await create.getByLabel("名称").fill("QA 客户");
   await create.getByRole("button", { name: "创建" }).click();
   await expect(
     page.getByRole("heading", { name: "QA 客户", level: 1 }),
@@ -347,6 +349,18 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
     "ImageWorkbench-QA 客户-0.6.2.zip",
   );
   expect(fs.existsSync(zip)).toBe(true);
+  // The package is the e-commerce line: built in its own build folder from main
+  // (0.6.2), while the source folder stays on the mass-market branch (0.7.34).
+  await expect(page.getByText(/构建电商版：main 分支的提交/)).toBeVisible();
+  expect(
+    fs.readFileSync(
+      path.join(repo + "-build", "ecommerce", "wails.json"),
+      "utf8",
+    ),
+  ).toContain("0.6.2");
+  expect(fs.readFileSync(path.join(repo, "wails.json"), "utf8")).toContain(
+    "0.7.34",
+  );
   const dat = fs.readFileSync(
     path.join(
       repo,
@@ -495,49 +509,60 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   ).toHaveCount(1);
 });
 
-test("发布大众版：分支和未提交改动的检查、构建签名、只留两个要上传的文件", async () => {
+test("发布大众版：显示将要构建的提交，未提交的改动不进包，源码目录不被改动", async () => {
   const { execFileSync } = await import("node:child_process");
   const git = (...args: string[]) =>
-    execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" });
+    execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" })
+      .toString()
+      .trim();
   const build = page.getByRole("button", { name: /^构建大众版/ });
+  const edited = '{ "info": { "productVersion": "0.7.34" } }\n// edited';
   try {
-    // On the e-commerce branch the build is refused, with the reason.
+    // The page shows the newest commit of the line's branch; no branch to switch.
     await page.getByRole("link", { name: "发布大众版" }).click();
-    await expect(page.getByText(/要从 creative-concepts 分支构建/)).toBeVisible(
-      { timeout: 15000 },
-    );
-    await expect(build).toBeDisabled();
-
-    // On the right branch with an uncommitted change it names the file.
-    git("checkout", "-q", "-b", "creative-concepts");
-    fs.writeFileSync(
-      path.join(repo, "wails.json"),
-      '{ "info": { "productVersion": "0.6.2" } }\n// edited',
-    );
-    await expect(page.getByText(/有未提交的改动（wails\.json）/)).toBeVisible({
+    await expect(page.getByText("QA creative source")).toBeVisible({
       timeout: 15000,
     });
-    await expect(build).toBeDisabled();
-    git("checkout", "-q", "--", "wails.json");
+    await expect(
+      page.getByText("creative-concepts", { exact: true }),
+    ).toBeVisible();
+    await expect(build).toBeEnabled();
+    await expect(build).toHaveText(/0\.7\.34/);
 
-    // Clean: the notes come from the changelog, without its verification part.
-    await expect(build).toBeEnabled({ timeout: 15000 });
-    await expect(build).toHaveText(/0\.6\.2/);
+    // Uncommitted work in the source folder is pointed out and does not block.
+    fs.writeFileSync(path.join(repo, "wails.json"), edited);
+    await expect(
+      page.getByText("源码目录有 1 个未提交的改动，不会进入这次构建。"),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(build).toBeEnabled();
+
+    // The notes come from the changelog of that commit, without its verification part.
     const notes = page.getByRole("textbox", { name: /更新说明/ });
-    await expect(notes).toHaveValue(/QA update notes, first paragraph\./);
+    await expect(notes).toHaveValue(/QA creative notes, first paragraph\./);
     await expect(notes).not.toHaveValue(/not for people using the app/);
     await build.click();
     await expect(page.getByText("大众版已构建并签名。")).toBeVisible({
       timeout: 60000,
     });
-    await expect(page.getByText("0.6.2 已准备好，还没有上传")).toBeVisible();
+    await expect(page.getByText("0.7.34 已准备好，还没有上传")).toBeVisible();
 
-    const out = path.join(repo, "release", "creative", "0.6.2");
+    // Built from the commit, in the line's build folder; the source folder keeps
+    // its branch and its uncommitted work.
+    expect(
+      fs.readFileSync(
+        path.join(repo + "-build", "creative", "wails.json"),
+        "utf8",
+      ),
+    ).not.toContain("edited");
+    expect(git("rev-parse", "--abbrev-ref", "HEAD")).toBe("creative-concepts");
+    expect(fs.readFileSync(path.join(repo, "wails.json"), "utf8")).toBe(edited);
+
+    const out = path.join(repo, "release", "creative", "0.7.34");
     expect(fs.readdirSync(path.join(out, "upload")).sort()).toEqual([
-      "ImageWorkbench-update-0.6.2.zip",
+      "ImageWorkbench-update-0.7.34.zip",
       "update.json",
     ]);
-    expect(fs.existsSync(path.join(out, "ImageWorkbench-0.6.2.zip"))).toBe(
+    expect(fs.existsSync(path.join(out, "ImageWorkbench-0.7.34.zip"))).toBe(
       true,
     );
     // Format 2 with the line: delivered e-commerce apps (format 1) refuse it.
@@ -551,11 +576,11 @@ test("发布大众版：分支和未提交改动的检查、构建签名、只�
     expect(payload).toMatchObject({
       format: 2,
       line: "creative",
-      version: "0.6.2",
-      url: "https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/ImageWorkbench-update-0.6.2.zip",
+      version: "0.7.34",
+      url: "https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/ImageWorkbench-update-0.7.34.zip",
     });
     await expect(
-      page.locator(".ant-table-row").filter({ hasText: "0.6.2" }),
+      page.locator(".ant-table-row").filter({ hasText: "0.7.34" }),
     ).toBeVisible();
 
     await settle();
@@ -564,10 +589,102 @@ test("发布大众版：分支和未提交改动的检查、构建签名、只�
       .analyze();
     expect(a11y.violations).toEqual([]);
     await page.screenshot({
-      path: "../docs/admin-creative-1.6.0.png",
+      path: "../docs/admin-creative-1.7.0.png",
       fullPage: true,
     });
   } finally {
-    git("checkout", "-q", "-f", "main");
+    git("checkout", "-q", "--", "wails.json");
   }
+});
+
+test("大众版托管版：新建顾客，用已构建的大众版程序加授权文件出包，不重新构建", async () => {
+  // More keys for a second person (the first customer took the pool), through
+  // the same calls the Key 池 page makes; the LLM keys are verified on the mock.
+  type Key = { id: string; upstreamID: string; verified: boolean };
+  type St = {
+    upstreams: { id: string; name: string }[];
+    keys: Key[];
+    customers: { name: string; softwareID: string; line?: string }[];
+  };
+  const app = <T>(name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window as any).go.main.App[n as string](...(a as [])),
+      [name, args] as const,
+    ) as Promise<T>;
+  const st = await app<St>("State");
+  const relay = st.upstreams.find((u) => u.name === "QA 幻灵")!.id;
+  const llm = st.upstreams.find((u) => u.name === "QA LLM")!.id;
+  await app("ImportKeys", relay, "primary", "sk-qa-hosted-prim-0123456789", "");
+  await app("ImportKeys", relay, "backup", "sk-qa-hosted-back-0123456789", "");
+  await app("ImportKeys", llm, "primary", "sk-qa-hosted-llm-0123456789", "");
+  for (const k of (await app<St>("State")).keys)
+    if (k.upstreamID === llm && !k.verified) await app("VerifyLLM", k.id);
+
+  await page.getByRole("link", { name: "客户" }).click();
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  const create = page.getByRole("dialog", { name: "新建客户或顾客" });
+  await create.getByRole("radio", { name: "大众版 · 托管版" }).check();
+  await create.getByLabel("名称").fill("QA 顾客");
+  await create.getByRole("button", { name: "创建" }).click();
+  await expect(
+    page.getByRole("heading", { name: "QA 顾客", level: 1 }),
+  ).toBeVisible();
+  await expect(page.locator(".page-header p")).toContainText("大众版 · 托管版");
+  // The package is made of the version built on the 发布大众版 page.
+  const build = page.getByRole("button", { name: /^生成交付包/ });
+  await expect(build).toBeDisabled();
+  await expect(build).toHaveText(/0\.7\.34/);
+  // A hosted user who already has the program needs the licence file only.
+  await page.getByRole("button", { name: "自动分配空缺线路" }).click();
+  // Fewer keys than lines: the optional lines stay empty, which is said once.
+  const partial = page.getByRole("dialog", {
+    name: "部分可选线路没有可用的 Key",
+  });
+  await partial.getByRole("button").last().click();
+  await expect(page.locator(".ant-modal-wrap:visible")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "只生成授权文件" }),
+  ).toBeEnabled();
+  await expect(build).toBeEnabled();
+  await build.click();
+  await expect(page.getByText("交付包已生成。")).toBeVisible({
+    timeout: 60000,
+  });
+  await expect(page.getByText(/不重新构建/).first()).toBeVisible();
+  const person = (await app<St>("State")).customers.find(
+    (c) => c.name === "QA 顾客",
+  )!;
+  expect(person.line).toBe("creative");
+  const out = path.join(repo, "release", "customers", person.softwareID);
+  const zip = path.join(out, "ImageWorkbench-QA 顾客-0.7.34.zip");
+  expect(fs.existsSync(zip)).toBe(true);
+  // Put together, not built: no program folder for this person, and the
+  // licence file is in the package (stored names are plain in a ZIP).
+  expect(fs.existsSync(path.join(out, "0.7.34"))).toBe(false);
+  const bytes = fs.readFileSync(zip);
+  expect(bytes.includes(Buffer.from("customer.dat"))).toBe(true);
+  expect(bytes.includes(Buffer.from("sk-qa-hosted"))).toBe(false);
+  expect(
+    fs.existsSync(
+      path.join(repo, "release", "creative", "build", "0.7.34", "customer.dat"),
+    ),
+  ).toBe(false);
+
+  // The list tells the two product lines apart (the first test deleted its
+  // customer, so an e-commerce one is created here).
+  await app("CreateCustomer", "QA 客户 乙", 0, "ecommerce");
+  await page.getByRole("link", { name: "客户", exact: true }).click();
+  const row = (name: string) =>
+    page.locator(".ant-table-row").filter({ hasText: name });
+  await expect(row("QA 顾客")).toContainText("大众版 · 托管版");
+  await expect(row("QA 客户 乙")).toContainText("电商版");
+  await settle();
+  const a11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+  await page.screenshot({
+    path: "../docs/admin-hosted-1.8.0.png",
+    fullPage: true,
+  });
 });

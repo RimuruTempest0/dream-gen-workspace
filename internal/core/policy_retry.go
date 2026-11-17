@@ -85,7 +85,7 @@ func (s *Service) rewordLLMLocked(t Task) (Connection, string, bool) {
 			continue
 		}
 		c = normalizeConnection(c)
-		if c.Kind != "llm" || c.Model == "" {
+		if c.Kind != "llm" || c.Model == "" || (s.hostedLocked() && c.Managed == "") {
 			continue
 		}
 		if key, e := s.key(c.Credential); e == nil && key != "" {

@@ -57,6 +57,11 @@ type LicenseStatus struct {
 	DaysLeft  int    `json:"daysLeft,omitempty"`
 	// Activated tells an expired licence that had been activated from one in trial.
 	Activated bool `json:"activated,omitempty"`
+	// Hosted: a mass-market program running as the hosted edition (customer.dat is
+	// beside it). CanImport: a mass-market program in the open edition, which
+	// becomes the hosted one by importing a licence file.
+	Hosted    bool `json:"hosted,omitempty"`
+	CanImport bool `json:"canImport,omitempty"`
 }
 
 // licenseRecord is saved in the data directory (preferences/license).
@@ -94,21 +99,42 @@ func (s *Service) licenseRecordLocked() (licenseRecord, bool) {
 	return r, s.store.Get("preferences", licensePrefKey, &r) == nil
 }
 
+// licenseKey is the public key customer.dat must be signed with. The mass-market
+// line trusts the key its updates are signed with (docs/adr/0003): its builds
+// carry no licence key of their own.
+func licenseKey() string {
+	if productLine != "" {
+		return updatePublicKey
+	}
+	return licensePublicKey
+}
+
+// hostedLocked reports whether a mass-market program runs as the hosted edition
+// (托管版): customer.dat is beside it, whatever state the licence is in.
+func (s *Service) hostedLocked() bool { return productLine != "" && s.lic.mode != "" }
+
 // LoadLicense reads customer.dat from the program folder. A missing file means
 // developer mode only in builds without a trusted public key; a customer build
 // (key built in) without it is invalid, so removing the file never unlocks the
-// app or the built-in skills. Called once at start, before the queue runs.
+// app or the built-in skills. The mass-market line is one program for both of
+// its editions: without the file it is the open edition, configured by its user,
+// and the provider's lines of an earlier licence are taken away. Called once at
+// start, before the queue runs.
 func (s *Service) LoadLicense(programDir string) error {
 	s.mu.Lock()
 	s.programDir = programDir
 	s.mu.Unlock()
 	data, e := os.ReadFile(filepath.Join(programDir, license.FileName))
 	if errors.Is(e, os.ErrNotExist) {
-		if licensePublicKey == "" {
+		if licensePublicKey == "" && productLine == "" {
 			return nil
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		if productLine != "" {
+			s.lic = licenseState{}
+			return s.releaseHostedLocked()
+		}
 		s.lic = licenseState{mode: "invalid", message: missingCustomerFile}
 		_ = s.store.appendLog("error", "license", "", missingCustomerFile)
 		return nil
@@ -125,12 +151,15 @@ func (s *Service) LoadLicense(programDir string) error {
 		return nil
 	}
 	keys := []string{}
-	if licensePublicKey != "" {
-		keys = append(keys, licensePublicKey)
+	if key := licenseKey(); key != "" {
+		keys = append(keys, key)
 	}
 	p, e := license.Verify(data, keys)
 	if e != nil {
 		s.lic = licenseState{mode: "invalid", message: "软件授权文件无效或已被修改，请联系软件提供方重新获取软件包。"}
+		if productLine != "" {
+			s.lic.message = invalidHostedFile
+		}
 		_ = s.store.appendLog("error", "license", "", s.lic.message)
 		return nil
 	}
@@ -199,6 +228,16 @@ func (s *Service) applyLinesLocked(rec *licenseRecord) error {
 			ids[c.Managed] = c.ID
 		}
 	}
+	if productLine != "" && len(ids) == 0 {
+		// The first licence on a program its user had configured: remember which
+		// image services were in use, to give them back when the licence goes.
+		var own GatewaySettings
+		if s.store.Get("preferences", ownGatewaysPrefKey, &own) != nil {
+			if e := s.store.Put("preferences", ownGatewaysPrefKey, s.gatewaySettingsLocked()); e != nil {
+				return e
+			}
+		}
+	}
 	if rec.LinesRevision != p.LinesRevision || len(ids) < len(p.Connections) {
 		for _, c := range p.Connections {
 			key, e := license.RevealKey(c.KeyObf, p.SoftwareID)
@@ -264,6 +303,46 @@ func (s *Service) upsertManagedLocked(c license.Connection) (Connection, error) 
 		full.Capabilities = LLMCapabilities{Model: full.Model, Text: true, Vision: true, Tools: true, Streaming: true, CheckedAt: Now(), Details: []string{"由软件提供方验证"}}
 	}
 	return full, s.store.Put("connection", full.ID, full)
+}
+
+const ownGatewaysPrefKey = "image-gateways-own"
+
+// releaseHostedLocked turns a mass-market program without customer.dat back into
+// the open edition: the provider's lines and their keys are deleted, so removing
+// the file never leaves the provider's keys usable, and the user's own image
+// services are in use again. The trial count and the activation are kept outside
+// the data folder, so importing the same licence again does not reset them.
+func (s *Service) releaseHostedLocked() error {
+	cs, e := List[Connection](s.store, "connection")
+	if e != nil {
+		return e
+	}
+	removed := 0
+	for _, c := range cs {
+		if c.Managed == "" {
+			continue
+		}
+		if c.Credential != "" {
+			_ = os.Remove(filepath.Join(s.store.Root, "secrets", c.Credential+".bin"))
+		}
+		if e = s.store.Delete("connection", c.ID); e != nil {
+			return e
+		}
+		removed++
+	}
+	_, had := s.licenseRecordLocked()
+	if removed == 0 && !had {
+		return nil
+	}
+	var own GatewaySettings
+	_ = s.store.Get("preferences", ownGatewaysPrefKey, &own)
+	if e = s.store.Put("preferences", gatewaySettingsPrefKey, own); e != nil {
+		return e
+	}
+	_ = s.store.Delete("preferences", ownGatewaysPrefKey)
+	_ = s.store.Delete("preferences", licensePrefKey)
+	_ = s.store.appendLog("info", "license", "", "程序目录里没有授权文件，已改为使用你自己配置的服务；提供方的线路已移除")
+	return nil
 }
 
 func (s *Service) rememberActivationLocked(rec *licenseRecord, code string) error {
@@ -344,9 +423,10 @@ func (s *Service) trialCountLocked() (used, pending int) {
 }
 
 func (s *Service) licenseStatusLocked() LicenseStatus {
-	st := LicenseStatus{Mode: s.lic.mode, Message: s.lic.message}
+	st := LicenseStatus{Mode: s.lic.mode, Message: s.lic.message, Hosted: s.hostedLocked()}
 	if st.Mode == "" {
 		st.Mode = "developer"
+		st.CanImport = productLine != "" && updatePublicKey != "" && s.programDir != ""
 	}
 	if p := s.lic.profile; p != nil {
 		st.SoftwareID, st.Customer, st.TrialLimit = p.SoftwareID, p.Customer, p.TrialImages
@@ -456,6 +536,10 @@ func (s *Service) trialLocked() bool { return s.lic.mode == "trial" }
 
 const missingCustomerFile = "缺少软件授权文件 customer.dat，暂时不能生图。请完整解压软件提供方发来的软件包，或在“系统 → 连接 → 授权”导入授权文件。"
 
+const invalidHostedFile = "程序目录里的授权文件 customer.dat 无效或已被修改，暂时不能生图。请联系软件提供方重新获取；如果想改用自己的服务，关闭软件后删除程序目录里的 customer.dat 再打开。"
+
+const hostedLinesOnly = "托管版只使用软件提供方的线路。想用自己的服务，关闭软件后删除程序目录里的 customer.dat 再打开。"
+
 const trialUsedUp = "试用额度已用完，请在“系统 → 连接”输入激活码后继续使用。"
 
 const trialLinesOnly = "试用期只能使用图片线路 1 和 LLM 线路 1，输入激活码后可使用全部线路。"
@@ -475,6 +559,14 @@ func mainLine(c Connection) bool { return c.Managed == "image-1" || c.Managed ==
 func (s *Service) ensureCanGenerateLocked(n int, lines ...string) error {
 	if expired, msg := s.expiredLocked(time.Now()); expired {
 		return errors.New(msg)
+	}
+	if s.hostedLocked() {
+		for _, id := range lines {
+			var c Connection
+			if id != "" && s.store.Get("connection", id, &c) == nil && c.Managed == "" {
+				return errors.New(hostedLinesOnly)
+			}
+		}
 	}
 	switch s.lic.mode {
 	case "invalid", "mismatch":

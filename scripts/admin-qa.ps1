@@ -31,9 +31,10 @@ $repo = Join-Path $projectRoot ".tools\admin-qa-repo-$id"
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'scripts') | Out-Null
 Set-Content -LiteralPath (Join-Path $repo 'scripts\build.ps1') -Value '# stand-in: the QA admin build uses a fake builder' -Encoding utf8
 Set-Content -LiteralPath (Join-Path $repo 'wails.json') -Value '{ "info": { "productVersion": "0.6.2" } }' -Encoding utf8
-# A real Git repository on the e-commerce branch with nothing uncommitted: the
-# admin tool refuses to build from the wrong branch or a dirty tree. release/ is
-# ignored, as in the real repository.
+# A real Git repository with both product lines, as the admin tool reads them:
+# main (e-commerce) at 0.6.2 and creative-concepts (mass-market) at 0.7.34. The
+# source folder is left on creative-concepts; each line is built in its own build
+# folder next to it (<repo>-build). release/ is ignored, as in the real repository.
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'docs') | Out-Null
 [IO.File]::WriteAllText((Join-Path $repo 'docs\CHANGELOG.md'), "# Changelog`n`n## 0.6.2 - QA build`n`nQA update notes, first paragraph.`n`n- first item`n`n### Verification`n- not for people using the app`n")
 [IO.File]::WriteAllText((Join-Path $repo '.gitignore'), "release/`n")
@@ -42,10 +43,19 @@ if ($LASTEXITCODE -ne 0) { throw 'git init failed for the admin QA source folder
 git -C $repo add -A
 git -C $repo -c user.name=qa -c user.email=qa@example.invalid commit -q -m 'QA source'
 if ($LASTEXITCODE -ne 0) { throw 'git commit failed for the admin QA source folder' }
+git -C $repo checkout -q -b creative-concepts
+[IO.File]::WriteAllText((Join-Path $repo 'wails.json'), '{ "info": { "productVersion": "0.7.34" } }')
+[IO.File]::WriteAllText((Join-Path $repo 'docs\CHANGELOG.md'), "# Changelog`n`n## 0.7.34 - QA creative build`n`nQA creative notes, first paragraph.`n`n- first item`n`n### Verification`n- not for people using the app`n")
+git -C $repo -c user.name=qa -c user.email=qa@example.invalid commit -q -a -m 'QA creative source'
+if ($LASTEXITCODE -ne 0) { throw 'git commit failed for the mass-market branch of the admin QA source folder' }
 $env:IMAGEWORKBENCH_ADMIN_DATA = Join-Path $projectRoot ".tools\admin-qa-data-$id"
 $env:IMAGEWORKBENCH_ADMIN_REPO = $repo
 $runtime = Get-ChildItem (Join-Path $projectRoot '.tools\webview-expanded') -Filter 'msedgewebview2.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($runtime) { $env:IMAGEWORKBENCH_ADMIN_WEBVIEW = $runtime.Directory.FullName }
+# IMAGEWORKBENCH_QA_SYSTEM_WEBVIEW=1 uses the system WebView2 instead (when the fixed runtime cannot start here).
+if ($runtime -and $env:IMAGEWORKBENCH_QA_SYSTEM_WEBVIEW -ne '1') { $env:IMAGEWORKBENCH_ADMIN_WEBVIEW = $runtime.Directory.FullName }
+[IO.File]::WriteAllText((Join-Path $projectRoot '.tools\admin-qa-repo.txt'), $repo)
+# IMAGEWORKBENCH_QA_NO_START=1: build and prepare only; the caller starts the program.
+if ($env:IMAGEWORKBENCH_QA_NO_START -eq '1') { Write-Output 'Admin QA prepared, not started'; return }
 $p = Start-Process -FilePath (Join-Path $projectRoot '.tools\admin-qa\ImageWorkbenchAdmin.exe') -WindowStyle Hidden -PassThru
 $p.Id | Set-Content '.tools\admin-qa.pid'
 [IO.File]::WriteAllText((Join-Path $projectRoot '.tools\admin-qa-repo.txt'), $repo)

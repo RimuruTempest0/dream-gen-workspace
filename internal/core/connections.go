@@ -29,6 +29,10 @@ func (s *Service) SaveConnection(in ConnectionInput) (Connection, error) {
 	if s.lic.mode == "invalid" || s.lic.mode == "mismatch" {
 		return Connection{}, errors.New(strings.TrimSpace(s.lic.message))
 	}
+	// The hosted edition of the mass-market line runs on the provider's lines only.
+	if s.hostedLocked() {
+		return Connection{}, errors.New(hostedLinesOnly)
+	}
 	return s.saveConnectionLocked(in)
 }
 func (s *Service) saveConnectionLocked(in ConnectionInput) (Connection, error) {
@@ -127,6 +131,10 @@ func (s *Service) ListConnections() ([]Connection, error) {
 	for _, c := range all {
 		// During the trial the customer sees only the main lines.
 		if s.lic.mode == "trial" && !mainLine(c) {
+			continue
+		}
+		// In the hosted edition the user's own services are kept but out of use.
+		if s.hostedLocked() && c.Managed == "" {
 			continue
 		}
 		cs = append(cs, cleanConnection(c))

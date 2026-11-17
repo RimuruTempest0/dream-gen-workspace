@@ -21,6 +21,10 @@ export type LicenseStatus = {
   expiresAt?: string;
   daysLeft?: number;
   activated?: boolean;
+  /** The mass-market program running as the hosted edition (托管版). */
+  hosted?: boolean;
+  /** The mass-market program in the open edition: a licence file makes it hosted. */
+  canImport?: boolean;
 };
 
 export function useLicense() {
@@ -108,7 +112,6 @@ export function LicensePanel() {
   const [error, setError] = useState("");
   const { notification } = AntApp.useApp();
   const l = license.data;
-  if (!l || l.mode === "developer") return null;
   async function importFile() {
     const path = await call<string>("ChooseCustomerFile");
     if (!path) return;
@@ -117,6 +120,37 @@ export function LicensePanel() {
     await qc.invalidateQueries(notImages);
     notification.success({ message: "已导入新的授权文件" });
   }
+  if (!l || (l.mode === "developer" && !l.canImport)) return null;
+  // The open edition of the mass-market line: a licence file from the provider
+  // turns this same program into the hosted edition.
+  if (l.mode === "developer")
+    return (
+      <section
+        className="panel license-panel"
+        id="license"
+        aria-labelledby="license-title"
+      >
+        <div className="panel-heading">
+          <h2 id="license-title">
+            <SafetyCertificateOutlined aria-hidden="true" /> 托管版授权
+          </h2>
+          <Tag>未使用</Tag>
+        </div>
+        <p className="hint">
+          你现在用的是自己配置的图片服务和 AI
+          模型。如果软件提供方给了你授权文件（customer.dat），在这里导入，就改用提供方的线路，不用自己填地址和
+          Key；你已经配置的连接会保留，授权期间不使用。
+        </p>
+        <div className="license-import">
+          <Button
+            onClick={() => actions.run(importFile)}
+            disabled={actions.busy}
+          >
+            导入授权文件
+          </Button>
+        </div>
+      </section>
+    );
   async function activate() {
     setError("");
     try {
@@ -159,7 +193,7 @@ export function LicensePanel() {
       <dl className="license-facts">
         {l.customer && (
           <>
-            <dt>客户</dt>
+            <dt>{l.hosted ? "顾客" : "客户"}</dt>
             <dd>{l.customer}</dd>
           </>
         )}
@@ -199,6 +233,12 @@ export function LicensePanel() {
           customer.dat。导入后立即生效，图片、任务和激活状态都保留。
         </small>
       </div>
+      {l.hosted && (
+        <p className="hint">
+          想改用自己的图片服务和 AI 模型：关闭软件，删除程序目录里的
+          customer.dat，再打开。提供方的线路会随之移除。
+        </p>
+      )}
       {l.mode === "active" && (
         <p className="hint">
           已启用全部线路（含备用线路）。额度和有效期以软件提供方的设置为准，升级软件后无需重新激活。

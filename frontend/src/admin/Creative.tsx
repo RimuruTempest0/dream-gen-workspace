@@ -2,20 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Space, Table } from "antd";
 import { FolderOpenOutlined, LinkOutlined } from "@ant-design/icons";
 import { call, errorText } from "../api";
-import { Header, time, useActions, useData } from "../ui";
+import { Header, time, useActions } from "../ui";
 import { useAdminState } from "./AdminApp";
-import type { CreativeRelease, CreativeSource } from "./types";
+import { LineFacts, useLineSource } from "./LineSource";
+import type { CreativeRelease } from "./types";
 
-// 发布大众版: build the mass-market line from its own branch, check both
-// packages, sign update.json. Uploading the two public files stays manual.
+// 发布大众版: build the mass-market line from the newest commit of its branch,
+// check both packages, sign update.json. Uploading the two public files stays manual.
 export function Creative() {
   const state = useAdminState();
-  const source = useData<CreativeSource>(
-    ["creative-source"],
-    "CreativeSource",
-    [],
-    5000,
-  );
+  const source = useLineSource("creative");
   const actions = useActions();
   // Notes proposed from the changelog, kept per version; what the provider
   // typed wins until the version changes.
@@ -36,7 +32,7 @@ export function Creative() {
         : undefined;
   const setNotes = (text: string) => setEdited({ version, text });
 
-  // Propose the notes from the changelog for the version in the source folder.
+  // Propose the notes from the changelog of the commit to be built.
   useEffect(() => {
     if (!version) return;
     let current = true;
@@ -82,28 +78,12 @@ export function Creative() {
       />
       <section className="panel" aria-labelledby="creative-source-title">
         <div className="panel-heading">
-          <h2 id="creative-source-title">源码状态</h2>
+          <h2 id="creative-source-title">将要构建的代码</h2>
         </div>
-        <dl className="admin-facts">
-          <dt>版本号</dt>
-          <dd>{version || "—"}</dd>
-          <dt>当前分支</dt>
-          <dd>{src?.branch || "—"}</dd>
-          <dt>未提交的改动</dt>
-          <dd>
-            {src?.changed.length
-              ? `${src.changed.length} 个文件`
-              : src?.branch
-                ? "没有"
-                : "—"}
-          </dd>
-        </dl>
-        {src?.blocked ? (
-          <Alert type="warning" showIcon message={src.blocked} />
-        ) : (
+        <LineFacts src={src} />
+        {!src?.blocked && (
           <p className="hint">
-            大众版按源码里的版本号发布，只能从 creative-concepts
-            分支、在没有未提交改动时构建。
+            大众版按这个提交里的版本号发布。构建在管理工具自己的构建目录里进行，不会切换源码目录的分支。
           </p>
         )}
       </section>

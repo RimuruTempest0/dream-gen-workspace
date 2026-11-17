@@ -8,6 +8,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Select,
   Space,
   Switch,
@@ -25,8 +26,9 @@ import {
 } from "@ant-design/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { call, errorText } from "../api";
-import { DataState, Header, dateTime, useActions, time } from "../ui";
+import { DataState, Header, dateTime, useActions, useData, time } from "../ui";
 import { useAdminState } from "./AdminApp";
+import { LineFacts, useLineSource } from "./LineSource";
 import {
   allSlots,
   backupImageSlots,
@@ -39,6 +41,7 @@ import {
   type Customer,
   type AdminState,
   type Delivery,
+  type HostedSource,
 } from "./types";
 
 function filled(c: Customer) {
@@ -60,6 +63,10 @@ function slotNeed(slot: string) {
   return `${kind} · 备用 · 可选`;
 }
 
+function lineLabel(c: Customer) {
+  return c.line === "creative" ? "大众版 · 托管版" : "电商版";
+}
+
 export function Customers() {
   const state = useAdminState();
   const actions = useActions();
@@ -69,8 +76,8 @@ export function Customers() {
   return (
     <>
       <Header
-        title="客户"
-        sub="每位客户一个软件标识和激活码；图片线路 1、至少一条备用图片线路（2–6）和 LLM 线路 1 分配好 Key 即可生成交付包，其余线路可选。"
+        title="客户与顾客"
+        sub="电商版的客户和大众版托管版的顾客都在这里，产品线在新建时选定。每人一个软件标识和激活码；图片线路 1、至少一条备用图片线路（2–6）和 LLM 线路 1 分配好 Key 即可生成交付包，其余线路可选。"
         action={
           <Button
             type="primary"
@@ -80,7 +87,7 @@ export function Customers() {
               setOpen(true);
             }}
           >
-            新建客户
+            新建
           </Button>
         }
       />
@@ -88,7 +95,7 @@ export function Customers() {
         <DataState
           query={state}
           empty={!state.data?.customers.length}
-          emptyText="还没有客户"
+          emptyText="还没有客户或顾客"
         >
           <Table<Customer>
             rowKey="id"
@@ -97,10 +104,19 @@ export function Customers() {
             scroll={{ x: 760 }}
             columns={[
               {
-                title: "客户",
+                title: "名称",
                 render: (_, c) => (
                   <Link to={`/customer/${c.id}`}>{c.name}</Link>
                 ),
+              },
+              {
+                title: "产品线",
+                filters: [
+                  { text: "电商版", value: "ecommerce" },
+                  { text: "大众版 · 托管版", value: "creative" },
+                ],
+                onFilter: (value, c) => (c.line || "ecommerce") === value,
+                render: (_, c) => <Tag>{lineLabel(c)}</Tag>,
               },
               {
                 title: "软件标识",
@@ -139,7 +155,7 @@ export function Customers() {
         </DataState>
       </section>
       <Modal
-        title="新建客户"
+        title="新建客户或顾客"
         open={open}
         okText="创建"
         cancelText="取消"
@@ -147,8 +163,14 @@ export function Customers() {
         onOk={async () => {
           const v = await form.validateFields();
           const c = await actions.run(
-            () => call<Customer>("CreateCustomer", v.name, v.trialImages || 20),
-            "已创建客户，已生成软件标识和激活码",
+            () =>
+              call<Customer>(
+                "CreateCustomer",
+                v.name,
+                v.trialImages || 20,
+                v.line,
+              ),
+            "已创建，已生成软件标识和激活码",
           );
           if (c) {
             setOpen(false);
@@ -156,11 +178,27 @@ export function Customers() {
           }
         }}
       >
-        <Form form={form} layout="vertical" initialValues={{ trialImages: 20 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ trialImages: 20, line: "ecommerce" }}
+        >
+          <Form.Item
+            name="line"
+            label="产品线"
+            extra="创建后不能改：它决定交付包里是哪个程序。电商版给客户，按电商版的代码构建；大众版托管版给顾客，用最新构建的大众版程序加授权文件。"
+          >
+            <Radio.Group
+              options={[
+                { label: "电商版", value: "ecommerce" },
+                { label: "大众版 · 托管版", value: "creative" },
+              ]}
+            />
+          </Form.Item>
           <Form.Item
             name="name"
-            label="客户名称"
-            rules={[{ required: true, message: "请填写客户名称" }]}
+            label="名称"
+            rules={[{ required: true, message: "请填写名称" }]}
           >
             <Input autoFocus />
           </Form.Item>
@@ -213,15 +251,24 @@ export function CustomerDetail() {
   const { modal, notification } = AntApp.useApp();
   const nav = useNavigate();
   const c = state.data?.customers.find((x) => x.id === id);
-  const [version, setVersion] = useState("");
+  // A customer's package is the e-commerce line, built from its source and
+  // labelled with that version. A hosted user's package is the newest built
+  // mass-market program plus their licence file: nothing is built for it.
+  const hosted = c?.line === "creative";
+  const source = useLineSource("ecommerce");
+  const program = useData<HostedSource>(
+    ["hosted-source"],
+    "HostedSource",
+    [],
+    5000,
+  );
+  const version = (hosted ? program.data?.version : source.data?.version) || "";
+  const blocked = hosted ? program.data?.blocked : source.data?.blocked;
   const [log, setLog] = useState<string[]>([]);
   const [building, setBuilding] = useState(false);
   const [notes] = Form.useForm();
   const [event, setEvent] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    call<string>("CurrentVersion").then((v) => setVersion((old) => old || v));
-  }, []);
   useEffect(() => {
     const offLog = window.runtime?.EventsOn("build:log", (line: string) =>
       setLog((l) => [...l, line].slice(-200)),
@@ -232,6 +279,7 @@ export function CustomerDetail() {
         setBuilding(false);
         setLog((l) => [...l, r.ok ? "交付包已生成。" : "失败：" + r.error]);
         state.refetch();
+        source.refetch();
       },
     );
     return () => {
@@ -324,7 +372,7 @@ export function CustomerDetail() {
     <>
       <Header
         title={c.name}
-        sub={`软件标识 ${c.softwareID} · 创建于 ${time(c.createdAt)}`}
+        sub={`${lineLabel(c)} · 软件标识 ${c.softwareID} · 创建于 ${time(c.createdAt)}`}
         action={
           <Space size="middle">
             <Link to="/">返回客户列表</Link>
@@ -624,20 +672,36 @@ export function CustomerDetail() {
           />
         )}
         <div className="admin-build">
-          <label htmlFor="pkg-version" className="field-label">
-            软件版本
-          </label>
+          {hosted ? (
+            <>
+              <dl className="admin-facts">
+                <dt>大众版程序</dt>
+                <dd>
+                  {program.data?.version ? (
+                    <>
+                      {program.data.version}
+                      <span className="hint">
+                        {" "}
+                        · 构建于 {time(program.data.at)}
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </dl>
+              {program.data?.blocked && (
+                <Alert type="warning" showIcon message={program.data.blocked} />
+              )}
+            </>
+          ) : (
+            <LineFacts src={source.data} />
+          )}
           <Space wrap>
-            <Input
-              id="pkg-version"
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-              style={{ width: 140 }}
-            />
             <Button
               type="primary"
               loading={building}
-              disabled={!complete || !version}
+              disabled={!complete || !version || !!blocked}
               onClick={async () => {
                 setLog([]);
                 try {
@@ -649,33 +713,45 @@ export function CustomerDetail() {
                 }
               }}
             >
-              生成交付包
+              生成交付包 {version}
             </Button>
           </Space>
-          <p className="hint">
-            构建一份不含你本机数据的程序，写入签名的 customer.dat，打包为
-            ImageWorkbench-{c.name}-{version || "版本"}.zip，并检查包内没有任何
-            Key 明文。
-          </p>
+          {hosted ? (
+            <p className="hint">
+              托管版的包不重新构建：用“发布大众版”里最新构建的那一版程序，加上这位顾客的授权文件，打包为
+              ImageWorkbench-{c.name}-{version || "版本"}
+              .zip，并检查包内没有任何 Key
+              明文。顾客解压就能用，不用自己配置；以后和开源版一样一键更新。
+            </p>
+          ) : (
+            <p className="hint">
+              交付包是电商版，按上面这个提交里的版本号构建，不能另填。构建一份不含你本机数据的程序，写入签名的
+              customer.dat，打包为 ImageWorkbench-{c.name}-{version || "版本"}
+              .zip，并检查包内没有任何 Key 明文。
+            </p>
+          )}
           <Space wrap>
             <Button
-              disabled={!c.deliveries.length || !complete}
+              disabled={(!hosted && !c.deliveries.length) || !complete}
               onClick={() =>
                 actions.run(async () => {
                   const saved = await call<boolean>("SaveCustomerFile", c.id);
                   if (saved)
                     notification.success({
-                      message: "续费授权文件已保存",
-                      description:
-                        "把这个 customer.dat 发给客户，客户在“连接与设置 → 授权 → 导入授权文件”导入即可（软件 0.7.12 起）。",
+                      message: "授权文件已保存",
+                      description: hosted
+                        ? "把这个 customer.dat 发给顾客，顾客在“连接 → 托管版授权 → 导入授权文件”导入，再输入激活码即可（大众版 0.7.34 起）。"
+                        : "把这个 customer.dat 发给客户，客户在“连接与设置 → 授权 → 导入授权文件”导入即可（软件 0.7.12 起）。",
                     });
                 })
               }
             >
-              生成续费授权文件
+              {hosted ? "只生成授权文件" : "生成续费授权文件"}
             </Button>
             <span className="hint">
-              续费、改有效期或换 Key 后，只发这个小文件，不必重发整包。
+              {hosted
+                ? "顾客已经装了大众版（0.7.34 或更高）时，只发这个小文件：导入后就是托管版，不用重装。续费、改有效期或换 Key 后也只发它。"
+                : "续费、改有效期或换 Key 后，只发这个小文件，不必重发整包。"}
               {c.expiresAt
                 ? `当前有效期至 ${dateTime(c.expiresAt)}。`
                 : "当前不限有效期。"}

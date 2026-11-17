@@ -1379,6 +1379,8 @@ export namespace core {
 	    expiresAt?: string;
 	    daysLeft?: number;
 	    activated?: boolean;
+	    hosted?: boolean;
+	    canImport?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new LicenseStatus(source);
@@ -1399,6 +1401,8 @@ export namespace core {
 	        this.expiresAt = source["expiresAt"];
 	        this.daysLeft = source["daysLeft"];
 	        this.activated = source["activated"];
+	        this.hosted = source["hosted"];
+	        this.canImport = source["canImport"];
 	    }
 	}
 	export class LogEntry {

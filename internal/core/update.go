@@ -108,6 +108,11 @@ func (s *Service) updateSupportedLocked() bool {
 
 // updateBlockedLocked explains why no update is offered with this licence, or "".
 func (s *Service) updateBlockedLocked() string {
+	// The mass-market program is the same with or without a licence, and its
+	// update package is public: the licence never holds an update back.
+	if productLine != "" {
+		return ""
+	}
 	if s.lic.mode == "invalid" || s.lic.mode == "mismatch" {
 		return "软件授权无效，不能在线更新。请先在“系统 → 连接 → 授权”导入授权文件。"
 	}

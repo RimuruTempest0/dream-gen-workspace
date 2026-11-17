@@ -86,8 +86,11 @@ type Event struct {
 }
 
 type Customer struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Line is the product line this person uses, fixed when created: "" is the
+	// e-commerce line, "creative" a hosted user of the mass-market line (admin 1.8.0).
+	Line        string `json:"line,omitempty"`
 	SoftwareID  string `json:"softwareID"`
 	CodeRef     string `json:"codeRef"`
 	CreatedAt   string `json:"createdAt"`
@@ -169,9 +172,13 @@ type Admin struct {
 	// protect/unprotect are core.Protect/Unprotect (DPAPI); tests may replace them.
 	protect   func([]byte) ([]byte, error)
 	unprotect func([]byte) ([]byte, error)
-	// repoState reports the branch and uncommitted paths of the source folder
-	// (nil = ask git); tests replace it.
-	repoState func(repo string) (branch string, changed []string, e error)
+	// head reads the newest commit of a product line's branch (nil = ask git),
+	// prepare readies a line's build folder at a commit (nil = a Git worktree
+	// next to the source folder), changelog reads the mass-market line's
+	// docs/CHANGELOG.md (nil = from its branch); tests replace them.
+	head      func(repo, branch string) (LineHead, error)
+	prepare   func(repo, line, commit string) (string, error)
+	changelog func(repo string) ([]byte, error)
 }
 
 func Open(root string) (*Admin, error) {

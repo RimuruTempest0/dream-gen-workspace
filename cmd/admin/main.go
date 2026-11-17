@@ -114,9 +114,15 @@ func (x *App) DisableKeys(ids []string, reason string) error { return x.a.Disabl
 func (x *App) DeleteKeys(ids []string) error                 { return x.a.DeleteKeys(ids) }
 func (x *App) SetKeyUse(id, use string) error                { return x.a.SetKeyUse(id, use) }
 func (x *App) RevealCode(customerID string) (string, error)  { return x.a.RevealCode(customerID) }
-func (x *App) CreateCustomer(name string, trial int) (admin.Customer, error) {
-	return x.a.CreateCustomer(name, trial)
+
+// CreateCustomer creates a person on a product line: "ecommerce" (a customer) or
+// "creative" (a hosted user of the mass-market line).
+func (x *App) CreateCustomer(name string, trial int, line string) (admin.Customer, error) {
+	return x.a.CreateCustomerOn(line, name, trial)
 }
+
+// HostedSource is the built mass-market version a hosted package would be made of.
+func (x *App) HostedSource() admin.HostedSource { return x.a.HostedSource() }
 func (x *App) SetCustomerNotes(id, plan, quota string, trial int) error {
 	return x.a.SetCustomerNotes(id, plan, quota, trial)
 }
@@ -140,14 +146,15 @@ func (x *App) ChooseRepoRoot() (string, error) {
 	return dir, x.a.SetRepoRoot(dir)
 }
 
-// CurrentVersion is the app version in the source folder (wails.json).
-func (x *App) CurrentVersion() string { return admin.SourceVersion(x.a.State().RepoRoot) }
+// LineSource is the commit and version a build of a product line ("ecommerce"
+// or "creative") would take now, for the two build pages.
+func (x *App) LineSource(line string) admin.LineSource { return x.a.LineSource(line) }
 
 // BuildPackage starts a customer package build in the background; progress and
 // the result arrive as "build:log" and "build:done" events.
 func (x *App) BuildPackage(customerID, version string) error {
 	if !x.building.TryLock() {
-		return errors.New("正在生成另一个交付包，请等它完成")
+		return errors.New("正在进行另一次构建，请等它完成")
 	}
 	go func() {
 		defer x.building.Unlock()
@@ -163,10 +170,6 @@ func (x *App) BuildPackage(customerID, version string) error {
 	}()
 	return nil
 }
-
-// CreativeSource is the source folder's branch, changes and version, for the
-// "发布大众版" page.
-func (x *App) CreativeSource() admin.CreativeSource { return x.a.CreativeSource() }
 
 // CreativeNotes proposes the update notes for a version from docs/CHANGELOG.md.
 func (x *App) CreativeNotes(version string) string { return x.a.CreativeNotes(version) }

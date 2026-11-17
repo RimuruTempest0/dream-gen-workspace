@@ -36,6 +36,8 @@ $env:IMAGEWORKBENCH_DATA_DIR = Join-Path $projectRoot ('.tools\qa-data-' + [guid
 $agentDir = Join-Path $projectRoot '.tools\desktop-qa\agent\claude-code'
 New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
 Copy-Item -LiteralPath '.tools\claude-code\claude.exe' -Destination (Join-Path $agentDir 'claude.exe') -Force
+# IMAGEWORKBENCH_QA_NO_START=1: build and prepare only; the caller starts the program.
+if ($env:IMAGEWORKBENCH_QA_NO_START -eq '1') { Write-Output 'Desktop QA prepared, not started'; return }
 $qaProcess = Start-Process -FilePath (Join-Path $projectRoot '.tools\desktop-qa\ImageWorkbench.exe') -WindowStyle Hidden -PassThru
 $qaProcess.Id | Set-Content '.tools\desktop-qa.pid'
 Write-Output "Desktop QA process: $($qaProcess.Id)"

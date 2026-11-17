@@ -174,7 +174,7 @@ func (f fakeBuilder) Build(_ context.Context, b BuildRequest, log func(string)) 
 		*f.seen = b
 	}
 	dir := filepath.Join(b.RepoRoot, b.ReleaseDir)
-	files := map[string]string{"ImageWorkbench.exe": "exe", "product-browser.exe": "pb", "runtime/msedgewebview2.exe": "rt", "agent/claude-code/claude.exe": "agent", "使用说明.txt": "help " + f.leak, "version.json": "{}"}
+	files := map[string]string{"ImageWorkbench.exe": "exe", "product-browser.exe": "pb", "runtime/msedgewebview2.exe": "rt", "agent/claude-code/claude.exe": "agent", "使用说明.txt": "help " + f.leak, "version.json": `{"version":"` + b.Version + `","productLine":"` + b.ProductLine + `"}`}
 	for name, body := range files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
 		os.MkdirAll(filepath.Dir(p), 0o755)
@@ -211,18 +211,35 @@ func repo(t *testing.T, a *Admin) string {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "scripts"), 0o755)
 	os.WriteFile(filepath.Join(dir, "scripts", "build.ps1"), []byte("#"), 0o644)
-	a.repoState = func(string) (string, []string, error) { return "main", nil, nil }
 	if e := a.SetRepoRoot(dir); e != nil {
 		t.Fatal(e)
 	}
+	// No Git in these tests: the source folder stands in for the build folder of
+	// both product lines.
+	a.prepare = func(repo, line, commit string) (string, error) { return repo, nil }
+	sourceAt(a, "0.6.2")
 	return dir
+}
+
+// sourceAt makes the newest commit of both product lines carry version; changed
+// are uncommitted paths of the source folder, which is on the mass-market branch.
+func sourceAt(a *Admin, version string, changed ...string) {
+	a.head = func(repo, branch string) (LineHead, error) {
+		return LineHead{Commit: "c0ffee0000000000000000000000000000000000", Short: "c0ffee0", Subject: "测试提交", At: "2026-11-17T10:00:00+08:00", Version: version, Current: CreativeBranch, Changed: changed}, nil
+	}
+}
+
+// buildPackage builds a customer package of version from a source at that version.
+func buildPackage(a *Admin, customerID, version string, b Builder, log func(string)) (Delivery, error) {
+	sourceAt(a, version)
+	return a.BuildPackage(context.Background(), customerID, version, b, "", log)
 }
 
 func TestPackageRefusesIncompleteOrUnverifiedLines(t *testing.T) {
 	a := open(t)
 	c, _ := a.CreateCustomer("客户 A", 0)
 	repo(t, a)
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.6.2", fakeBuilder{}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "还没有分配 Key") {
+	if _, e := buildPackage(a, c.ID, "0.6.2", fakeBuilder{}, func(string) {}); e == nil || !strings.Contains(e.Error(), "还没有分配 Key") {
 		t.Fatal(e)
 	}
 	stock(t, a, 1, "")
@@ -284,7 +301,7 @@ func TestPackageNeedsOnlyMainLines(t *testing.T) {
 	if got := a.State().Customers[0].ImageBackups; len(got) != len(defaultOrder) {
 		t.Fatal("saved backup order lost its empty lines", got)
 	}
-	if _, e = a.BuildPackage(context.Background(), c.ID, "0.6.6", fakeBuilder{}, "", func(string) {}); e != nil {
+	if _, e = buildPackage(a, c.ID, "0.6.6", fakeBuilder{}, func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -297,7 +314,7 @@ func TestDeleteCustomerFreesUndeliveredAndDisablesDeliveredKeys(t *testing.T) {
 	repo(t, a)
 	c, _ := a.CreateCustomer("客户 C", 0)
 	a.AutoAssign(c.ID)
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.6.15", fakeBuilder{}, "", func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.6.15", fakeBuilder{}, func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	r, _ := a.ImportKeys(a.State().Upstreams[0].ID, "primary", "sk-late-key-0001", "")
@@ -375,7 +392,7 @@ func TestBulkDeleteAndDisableKeys(t *testing.T) {
 	repo(t, a)
 	c, _ := a.CreateCustomer("客户 E", 0)
 	a.AutoAssign(c.ID)
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.6.17", fakeBuilder{}, "", func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.6.17", fakeBuilder{}, func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	u := a.State().Upstreams[0].ID
@@ -446,7 +463,7 @@ func TestBuildPackageZipsChecksAndRecords(t *testing.T) {
 	a.AutoAssign(c.ID)
 	dir := repo(t, a)
 	var logs []string
-	d, e := a.BuildPackage(context.Background(), c.ID, "0.6.2", fakeBuilder{}, "", func(s string) { logs = append(logs, s) })
+	d, e := buildPackage(a, c.ID, "0.6.2", fakeBuilder{}, func(s string) { logs = append(logs, s) })
 	if e != nil {
 		t.Fatal(e, logs)
 	}
@@ -509,7 +526,7 @@ func TestBuildPackageZipsChecksAndRecords(t *testing.T) {
 	k, _ := a.keyLocked(cust.Slots["llm-1"])
 	leak, _ := a.secret(k.SecretRef)
 	a.mu.Unlock()
-	_, e = a.BuildPackage(context.Background(), c.ID, "0.6.3", fakeBuilder{leak: string(leak)}, "", func(string) {})
+	_, e = buildPackage(a, c.ID, "0.6.3", fakeBuilder{leak: string(leak)}, func(string) {})
 	if e == nil || !strings.Contains(e.Error(), "LLM 线路 1 Key found in 使用说明.txt") || strings.Contains(e.Error(), string(leak)) {
 		t.Fatal(e)
 	}
@@ -784,7 +801,7 @@ func TestExpiryAndRenewalFile(t *testing.T) {
 	if e := a.WriteCustomerFile(c.ID, renewal); e == nil {
 		t.Fatal("renewal file before any package")
 	}
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.12", fakeBuilder{}, "", func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.7.12", fakeBuilder{}, func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	defer core.TrustLicenseKeyForTest(a.State().SigningPublicKey)()
@@ -843,7 +860,7 @@ func TestUpdateAddressAndPublishedManifest(t *testing.T) {
 	}
 	c, _ := a.CreateCustomer("客户 C", 3)
 	a.AutoAssign(c.ID)
-	d, e := a.BuildPackage(context.Background(), c.ID, "0.7.13", fakeBuilder{update: true}, "", func(string) {})
+	d, e := buildPackage(a, c.ID, "0.7.13", fakeBuilder{update: true}, func(string) {})
 	if e != nil {
 		t.Fatal(e)
 	}

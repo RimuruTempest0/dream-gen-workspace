@@ -28,7 +28,11 @@ type Builder interface {
 }
 
 type BuildRequest struct {
+	// RepoRoot is the source folder: what is built lands in its release\ folder.
+	// BuildDir is the product line's build folder, where the build script of the
+	// commit being built runs (its release\ is a link to RepoRoot's).
 	RepoRoot   string
+	BuildDir   string
 	Version    string
 	ReleaseDir string // relative to RepoRoot, under release/
 	ZipPath    string // relative to RepoRoot; the build's own (temporary) ZIP
@@ -209,7 +213,9 @@ func (a *Admin) WriteCustomerFile(customerID, dest string) error {
 	if e != nil {
 		return e
 	}
-	if len(c.Deliveries) == 0 {
+	// A hosted user of the mass-market line may already have the program (the
+	// open edition): the licence file alone makes it the hosted edition.
+	if len(c.Deliveries) == 0 && c.Line != CreativeLine {
 		return errors.New("这位客户还没有交付包，请先生成交付包")
 	}
 	data, revision, e := a.profileLocked(customerID)
@@ -274,6 +280,10 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 		a.mu.Unlock()
 		return Delivery{}, e
 	}
+	if c.Line == CreativeLine {
+		a.mu.Unlock()
+		return a.buildHosted(ctx, customerID, version, localDataDir, log)
+	}
 	repo := a.d.RepoRoot
 	pub := a.d.SigningPublicKey
 	updateURL := a.d.UpdateURL
@@ -288,14 +298,15 @@ func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, bu
 		return Delivery{}, errors.New("请先在“设置”中选择软件源码目录")
 	}
 	// Customer packages are the e-commerce line.
-	if e = a.requireBranch(repo, EcommerceBranch, "客户交付包"); e != nil {
+	work, e := a.checkout(repo, EcommerceLine, version, log)
+	if e != nil {
 		return Delivery{}, e
 	}
 	rel := filepath.Join("release", "customers", softwareID, version)
 	releaseDir := filepath.Join(repo, rel)
 	baseZip := filepath.Join(rel, "build-check.zip")
 	log("开始构建程序文件（约 3–5 分钟）…")
-	if e = builder.Build(ctx, BuildRequest{RepoRoot: repo, Version: version, ReleaseDir: rel, ZipPath: baseZip, PublicKey: pub, UpdateURL: updateURL}, log); e != nil {
+	if e = builder.Build(ctx, BuildRequest{RepoRoot: repo, BuildDir: work, Version: version, ReleaseDir: rel, ZipPath: baseZip, PublicKey: pub, UpdateURL: updateURL}, log); e != nil {
 		return Delivery{}, fmt.Errorf("构建失败：%w", e)
 	}
 	os.Remove(filepath.Join(repo, baseZip))
@@ -360,6 +371,11 @@ func writeZip(dir, path string) error { return writeZipOf(dir, path, shippingEnt
 
 // writeZipOf zips the named entries of a built program folder.
 func writeZipOf(dir, path string, entries []string) error {
+	return writeZipWith(dir, path, entries, nil)
+}
+
+// writeZipWith also adds files that are not in the folder (name → content).
+func writeZipWith(dir, path string, entries []string, extra map[string][]byte) error {
 	tmp := path + ".partial"
 	f, e := os.Create(tmp)
 	if e != nil {
@@ -397,6 +413,17 @@ func writeZipOf(dir, path string, entries []string) error {
 			return e
 		}
 	}
+	for name, body := range extra {
+		w, e := zw.Create(name)
+		if e == nil {
+			_, e = w.Write(body)
+		}
+		if e != nil {
+			zw.Close()
+			f.Close()
+			return e
+		}
+	}
 	if e = zw.Close(); e != nil {
 		f.Close()
 		return e
@@ -420,11 +447,12 @@ func fileSHA256(path string) (string, error) {
 	return strings.ToUpper(hex.EncodeToString(h.Sum(nil))), nil
 }
 
-// ScriptBuilder runs scripts/build.ps1 for a clean, unlinked customer build.
+// ScriptBuilder runs scripts/build.ps1 of the build folder for a clean build
+// that is not linked to the developer's own data.
 type ScriptBuilder struct{}
 
 func (ScriptBuilder) Build(ctx context.Context, b BuildRequest, log func(string)) error {
-	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(b.RepoRoot, "scripts", "build.ps1"), "-Version", b.Version, "-NoLocalProfile", "-ReleaseDirectory", b.ReleaseDir, "-ZipPath", b.ZipPath}
+	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(b.BuildDir, "scripts", "build.ps1"), "-Version", b.Version, "-NoLocalProfile", "-ReleaseDirectory", b.ReleaseDir, "-ZipPath", b.ZipPath}
 	if b.ProductLine != "" {
 		args = append(args, "-ProductLine", b.ProductLine, "-UpdatePublicKey", b.UpdateKey)
 	} else {
@@ -434,7 +462,7 @@ func (ScriptBuilder) Build(ctx context.Context, b BuildRequest, log func(string)
 		args = append(args, "-UpdateURL", b.UpdateURL)
 	}
 	cmd := exec.CommandContext(ctx, "powershell.exe", args...)
-	cmd.Dir = b.RepoRoot
+	cmd.Dir = b.BuildDir
 	cmd.Env = append(os.Environ(), "PATH="+buildPath(b.RepoRoot))
 	out, e := cmd.CombinedOutput()
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {

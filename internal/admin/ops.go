@@ -293,15 +293,28 @@ func (a *Admin) EnableKey(id string) error {
 // ---- customers ---------------------------------------------------------------
 
 func (a *Admin) CreateCustomer(name string, trialImages int) (Customer, error) {
+	return a.CreateCustomerOn(EcommerceLine, name, trialImages)
+}
+
+// CreateCustomerOn creates a person on a product line: a customer of the
+// e-commerce line, or a hosted user of the mass-market line. The line cannot be
+// changed afterwards: it decides which program their packages carry.
+func (a *Admin) CreateCustomerOn(line, name string, trialImages int) (Customer, error) {
+	if line != EcommerceLine && line != CreativeLine {
+		return Customer{}, errors.New("请选择产品线")
+	}
+	if line == EcommerceLine {
+		line = ""
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Customer{}, errors.New("请填写客户名称")
+		return Customer{}, errors.New("请填写名称")
 	}
 	for _, c := range a.d.Customers {
 		if c.Name == name {
-			return Customer{}, errors.New("已有同名客户")
+			return Customer{}, errors.New("已有同名的客户或顾客")
 		}
 	}
 	if trialImages <= 0 {
@@ -319,8 +332,12 @@ func (a *Admin) CreateCustomer(name string, trialImages int) (Customer, error) {
 	if e != nil {
 		return Customer{}, e
 	}
-	c := Customer{ID: newID(), Name: name, SoftwareID: id, CodeRef: ref, CreatedAt: now(), TrialImages: trialImages, Slots: map[string]string{}, ImageBackups: slices.Clone(defaultOrder), Deliveries: []Delivery{}, Events: []Event{}, Changed: true}
-	c.log("created", "创建客户，软件标识 "+id)
+	c := Customer{ID: newID(), Name: name, Line: line, SoftwareID: id, CodeRef: ref, CreatedAt: now(), TrialImages: trialImages, Slots: map[string]string{}, ImageBackups: slices.Clone(defaultOrder), Deliveries: []Delivery{}, Events: []Event{}, Changed: true}
+	if line == CreativeLine {
+		c.log("created", "创建大众版托管顾客，软件标识 "+id)
+	} else {
+		c.log("created", "创建客户，软件标识 "+id)
+	}
 	a.d.Customers = append(a.d.Customers, c)
 	return c, a.saveLocked()
 }

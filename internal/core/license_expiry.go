@@ -62,7 +62,9 @@ func (s *Service) noteRunningLocked(now time.Time) {
 // ImportCustomerFile replaces customer.dat beside the program with a renewed one
 // from the provider: it must be signed by a trusted key and belong to this
 // software (same software ID). The licence is then read again; images, tasks,
-// the trial count and the activation stay.
+// the trial count and the activation stay. A mass-market program in the open
+// edition has no software ID yet: importing its first licence file makes it the
+// hosted edition.
 func (s *Service) ImportCustomerFile(source string) (LicenseStatus, error) {
 	data, e := os.ReadFile(source)
 	if e != nil {
@@ -81,16 +83,13 @@ func (s *Service) ImportCustomerFile(source string) (LicenseStatus, error) {
 	}
 	busy := s.agentRunID != ""
 	s.mu.Unlock()
-	if dir == "" || licensePublicKey == "" {
-		return LicenseStatus{}, errors.New("此版本不是客户版，不需要导入授权文件")
+	if dir == "" || licenseKey() == "" {
+		return LicenseStatus{}, errors.New("此版本不使用授权文件，不需要导入")
 	}
 	if busy {
 		return LicenseStatus{}, errors.New("创作正在进行，请等它完成或取消后再导入")
 	}
-	keys := []string{}
-	if licensePublicKey != "" {
-		keys = append(keys, licensePublicKey)
-	}
+	keys := []string{licenseKey()}
 	p, e := license.Verify(data, keys)
 	if e != nil {
 		return LicenseStatus{}, errors.New("授权文件无效或已被修改，请向软件提供方重新获取")

@@ -2,8 +2,8 @@
 
 package admin
 
-// A manual integration test: builds a complete customer package with the real
-// scripts/build.ps1 (several minutes), using fake keys and an isolated admin data
+// A manual integration test: builds a complete customer package of the
+// e-commerce line in its build folder with that line's scripts/build.ps1 (several minutes), using fake keys and an isolated admin data
 // folder; no network call is made. Run from the repository root:
 //
 //	go test -tags realbuild -run TestRealCustomerPackage -timeout 20m ./internal/admin
@@ -35,14 +35,18 @@ func TestRealCustomerPackage(t *testing.T) {
 	if missing, e := a.AutoAssign(c.ID); e != nil || len(missing) != 0 {
 		t.Fatal(missing, e)
 	}
-	// This manual test builds whatever is checked out.
-	a.repoState = func(string) (string, []string, error) { return EcommerceBranch, nil, nil }
 	if e = a.SetRepoRoot(repo); e != nil {
 		t.Fatal(e)
 	}
+	// The e-commerce line is built in its real build folder, at the newest commit
+	// of main and under that commit's version.
+	version := a.LineSource(EcommerceLine).Version
+	if version == "" {
+		t.Fatal(a.LineSource(EcommerceLine).Blocked)
+	}
 	out := filepath.Join(repo, "release", "customers", c.SoftwareID)
 	t.Cleanup(func() { os.RemoveAll(out) })
-	d, e := a.BuildPackage(context.Background(), c.ID, "0.6.2", ScriptBuilder{}, LocalDataDir(repo), func(s string) { t.Log(s) })
+	d, e := a.BuildPackage(context.Background(), c.ID, version, ScriptBuilder{}, LocalDataDir(repo), func(s string) { t.Log(s) })
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -72,7 +76,7 @@ func TestRealCustomerPackage(t *testing.T) {
 		}
 	}
 	// The program in the package trusts this admin key (built with -LicensePublicKey).
-	exe, _ := os.ReadFile(filepath.Join(out, "0.6.2", "ImageWorkbench.exe"))
+	exe, _ := os.ReadFile(filepath.Join(out, version, "ImageWorkbench.exe"))
 	if !strings.Contains(string(exe), a.State().SigningPublicKey) {
 		t.Fatal("program does not embed the admin public key")
 	}

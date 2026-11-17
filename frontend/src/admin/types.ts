@@ -41,6 +41,9 @@ export type AdminEvent = { at: string; kind: string; text: string };
 export type Customer = {
   id: string;
   name: string;
+  /** Product line, fixed when created: none = e-commerce, "creative" = a hosted
+   * user of the mass-market line. */
+  line?: string;
   softwareID: string;
   createdAt: string;
   trialImages: number;
@@ -68,13 +71,18 @@ export type CreativeRelease = {
   manifest: string;
   notes: string;
 };
-export type CreativeSource = {
-  version: string;
+export type HostedSource = { version: string; at: string; blocked: string };
+export type LineSource = {
+  line: string;
   branch: string;
-  changed: string[];
+  version: string;
+  commit: string;
+  subject: string;
+  at: string;
+  uncommitted: number;
   blocked: string;
-  releasePage: string;
-  releaseURL: string;
+  releasePage?: string;
+  releaseURL?: string;
 };
 export type AdminState = {
   signingPublicKey: string;

@@ -6,25 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 
 	"imageworkbench/internal/packcheck"
 	"imageworkbench/internal/update"
 )
 
-// The mass-market line (大众版, admin 1.6.0): no licence, built from its own
-// branch, and updated from a fixed pre-release of the public repository. The
-// admin tool builds, checks and signs; the provider uploads the two files of the
-// upload folder by hand. See docs/adr/0001-creative-line-updates.md: the line
-// name and these addresses are built into delivered programs and must not change.
+// The mass-market line (大众版, admin 1.6.0): no licence, and updated from a fixed
+// pre-release of the public repository. The admin tool builds, checks and signs;
+// the provider uploads the two files of the upload folder by hand. See
+// docs/adr/0001-creative-line-updates.md: the line name and these addresses are
+// built into delivered programs and must not change.
 const (
-	CreativeLine        = "creative"
-	CreativeBranch      = "creative-concepts"
-	EcommerceBranch     = "main"
 	CreativeReleaseURL  = "https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/"
 	CreativeReleasePage = "https://github.com/RimuruTempest0/dream-gen-workspace/releases/tag/creative"
 )
@@ -46,17 +41,11 @@ type CreativeRelease struct {
 // uncommitted changes. Untracked files under .claude/ are local agent tooling,
 // not part of either product line, and are left out.
 func gitRepoState(repo string) (string, []string, error) {
-	git := func(args ...string) (string, error) {
-		cmd := exec.Command("git", append([]string{"-C", repo, "-c", "core.quotepath=false"}, args...)...)
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		out, e := cmd.Output()
-		return strings.TrimRight(string(out), "\r\n"), e
-	}
-	branch, e := git("rev-parse", "--abbrev-ref", "HEAD")
+	branch, e := git(repo, "rev-parse", "--abbrev-ref", "HEAD")
 	if e != nil {
 		return "", nil, errors.New("无法读取源码目录的 Git 分支（需要安装 Git，且源码目录是一个 Git 仓库）")
 	}
-	out, e := git("status", "--porcelain")
+	out, e := git(repo, "status", "--porcelain")
 	if e != nil {
 		return "", nil, errors.New("无法读取源码目录的改动情况")
 	}
@@ -74,57 +63,23 @@ func gitRepoState(repo string) (string, []string, error) {
 	return branch, changed, nil
 }
 
-// requireBranch refuses a build from the wrong product line's branch or with
-// uncommitted changes, so that what ships is exactly a commit of that line.
-func (a *Admin) requireBranch(repo, want, what string) error {
-	state := a.repoState
-	if state == nil {
-		state = gitRepoState
-	}
-	branch, changed, e := state(repo)
-	if e != nil {
-		return e
-	}
-	return branchProblem(branch, changed, want, what)
-}
-
-func branchProblem(branch string, changed []string, want, what string) error {
-	if branch != want {
-		return fmt.Errorf("%s要从 %s 分支构建，源码目录现在是 %s 分支。请先切换分支再试", what, want, branch)
-	}
-	if len(changed) > 0 {
-		list := changed
-		more := ""
-		if len(list) > 5 {
-			list, more = list[:5], fmt.Sprintf(" 等 %d 个文件", len(changed))
-		}
-		return fmt.Errorf("源码目录有未提交的改动（%s%s）。请先提交或撤销，再构建%s", strings.Join(list, "、"), more, what)
-	}
-	return nil
-}
-
 var versionInSource = regexp.MustCompile(`"productVersion"\s*:\s*"([0-9.]+)"`)
 
-// SourceVersion is the app version of the source folder (wails.json).
-func SourceVersion(repo string) string {
-	b, e := os.ReadFile(filepath.Join(repo, "wails.json"))
-	if e != nil {
-		return ""
-	}
-	if m := versionInSource.FindSubmatch(b); m != nil {
-		return string(m[1])
-	}
-	return ""
-}
-
 // CreativeNotes proposes the update notes for version: the opening of its entry
-// in docs/CHANGELOG.md, up to the first sub-heading (the parts below it are
-// about verification, not for the people using the app).
+// in docs/CHANGELOG.md of the line's newest commit, up to the first sub-heading
+// (the parts below it are about verification, not for the people using the app).
 func (a *Admin) CreativeNotes(version string) string {
 	a.mu.Lock()
 	repo := a.d.RepoRoot
 	a.mu.Unlock()
-	b, e := os.ReadFile(filepath.Join(repo, "docs", "CHANGELOG.md"))
+	read := a.changelog
+	if read == nil {
+		read = func(repo string) ([]byte, error) {
+			out, e := git(repo, "show", "refs/heads/"+CreativeBranch+":docs/CHANGELOG.md")
+			return []byte(out), e
+		}
+	}
+	b, e := read(repo)
 	if e != nil {
 		return ""
 	}
@@ -171,11 +126,9 @@ func (a *Admin) BuildCreative(ctx context.Context, version, notes string, builde
 	if pub == "" {
 		return CreativeRelease{}, errors.New("还没有签名密钥")
 	}
-	if e := a.requireBranch(repo, CreativeBranch, "大众版"); e != nil {
+	work, e := a.checkout(repo, CreativeLine, version, log)
+	if e != nil {
 		return CreativeRelease{}, e
-	}
-	if src := SourceVersion(repo); src != version {
-		return CreativeRelease{}, fmt.Errorf("源码里的版本号是 %s，与要发布的 %s 不一致。大众版按源码的版本号发布", src, version)
 	}
 	base := filepath.Join("release", "creative")
 	// Program folders of all versions sit side by side: the build compares with
@@ -183,7 +136,7 @@ func (a *Admin) BuildCreative(ctx context.Context, version, notes string, builde
 	rel := filepath.Join(base, "build", version)
 	buildZip := filepath.Join(base, "build", "build-check.zip")
 	log("开始构建大众版程序文件（约 3–5 分钟）…")
-	req := BuildRequest{RepoRoot: repo, Version: version, ReleaseDir: rel, ZipPath: buildZip, UpdateURL: CreativeReleaseURL + "update.json", ProductLine: CreativeLine, UpdateKey: pub}
+	req := BuildRequest{RepoRoot: repo, BuildDir: work, Version: version, ReleaseDir: rel, ZipPath: buildZip, UpdateURL: CreativeReleaseURL + "update.json", ProductLine: CreativeLine, UpdateKey: pub}
 	if e := builder.Build(ctx, req, log); e != nil {
 		return CreativeRelease{}, fmt.Errorf("构建失败：%w", e)
 	}
@@ -308,45 +261,4 @@ func checkCreativeUpdate(path, version string) error {
 		return errors.New("这个更新包不是大众版的构建，已删除")
 	}
 	return nil
-}
-
-// CreativeSource is what the "发布大众版" page shows before building.
-type CreativeSource struct {
-	Version string   `json:"version"` // wails.json of the source folder
-	Branch  string   `json:"branch"`
-	Changed []string `json:"changed"`
-	// Blocked is why a build would be refused now, or "".
-	Blocked     string `json:"blocked"`
-	ReleasePage string `json:"releasePage"`
-	ReleaseURL  string `json:"releaseURL"`
-}
-
-// CreativeSource reads the state of the source folder for the mass-market line.
-func (a *Admin) CreativeSource() CreativeSource {
-	a.mu.Lock()
-	repo := a.d.RepoRoot
-	a.mu.Unlock()
-	s := CreativeSource{Changed: []string{}, ReleasePage: CreativeReleasePage, ReleaseURL: CreativeReleaseURL}
-	if repo == "" {
-		s.Blocked = "请先在“设置与签名密钥”中选择软件源码目录"
-		return s
-	}
-	s.Version = SourceVersion(repo)
-	state := a.repoState
-	if state == nil {
-		state = gitRepoState
-	}
-	branch, changed, e := state(repo)
-	if e != nil {
-		s.Blocked = e.Error()
-		return s
-	}
-	s.Branch = branch
-	if changed != nil {
-		s.Changed = changed
-	}
-	if e = branchProblem(branch, changed, CreativeBranch, "大众版"); e != nil {
-		s.Blocked = e.Error()
-	}
-	return s
 }

@@ -3,6 +3,7 @@ package admin
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,17 +12,13 @@ import (
 	"imageworkbench/internal/update"
 )
 
-func onBranch(a *Admin, branch string, changed ...string) {
-	a.repoState = func(string) (string, []string, error) { return branch, changed, nil }
-}
-
 func creativeRepo(t *testing.T, a *Admin, version string) string {
 	t.Helper()
 	dir := repo(t, a)
-	os.WriteFile(filepath.Join(dir, "wails.json"), []byte(`{"info": {"productVersion": "`+version+`"}}`), 0o644)
-	os.MkdirAll(filepath.Join(dir, "docs"), 0o755)
-	os.WriteFile(filepath.Join(dir, "docs", "CHANGELOG.md"), []byte("# 更新记录\r\n\r\n## "+version+" · 一键更新\r\n\r\n大众版可以一键更新。\r\n\r\n- 点一次即可\r\n\r\n### 验证\r\n- 内部说明\r\n\r\n## 0.0.1 · 旧\r\n\r\n旧说明\r\n"), 0o644)
-	onBranch(a, "creative-concepts")
+	a.changelog = func(string) ([]byte, error) {
+		return []byte("# 更新记录\r\n\r\n## " + version + " · 一键更新\r\n\r\n大众版可以一键更新。\r\n\r\n- 点一次即可\r\n\r\n### 验证\r\n- 内部说明\r\n\r\n## 0.0.1 · 旧\r\n\r\n旧说明\r\n"), nil
+	}
+	sourceAt(a, version)
 	return dir
 }
 
@@ -77,32 +74,81 @@ func TestCreativeReleaseIsBuiltSignedAndLaidOutForUpload(t *testing.T) {
 	}
 }
 
-func TestCreativeReleaseRefusesWrongBranchDirtyTreeAndVersion(t *testing.T) {
+func TestCreativeReleaseRefusesOtherVersionAndMissingNotes(t *testing.T) {
 	a := open(t)
 	creativeRepo(t, a, "0.7.32")
-	build := func() error {
-		_, e := a.BuildCreative(context.Background(), "0.7.32", "说明", fakeBuilder{update: true}, "", func(string) {})
-		return e
-	}
-	onBranch(a, "main")
-	if e := build(); e == nil || !strings.Contains(e.Error(), "creative-concepts") {
-		t.Fatal("built the mass-market line from main:", e)
-	}
-	onBranch(a, "creative-concepts", "frontend/src/App.tsx")
-	if e := build(); e == nil || !strings.Contains(e.Error(), "frontend/src/App.tsx") {
-		t.Fatal("built with uncommitted changes:", e)
-	}
-	onBranch(a, "creative-concepts")
 	if _, e := a.BuildCreative(context.Background(), "0.7.33", "说明", fakeBuilder{update: true}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "0.7.32") {
 		t.Fatal("version differs from the source:", e)
 	}
 	if _, e := a.BuildCreative(context.Background(), "0.7.32", "  ", fakeBuilder{update: true}, "", func(string) {}); e == nil {
 		t.Fatal("released without notes")
 	}
-	if e := build(); e != nil {
+}
+
+// Each product line is built in its own build folder at the newest commit of its
+// own branch, whatever the source folder has checked out or left uncommitted.
+func TestBuildsTakeTheirLinesCommitAndIgnoreTheSourceFolder(t *testing.T) {
+	isolate(t)
+	a := open(t)
+	dir := creativeRepo(t, a, "0.7.32")
+	stock(t, a, 1, "http://127.0.0.1:1/v1")
+	c, _ := a.CreateCustomer("客户 D", 3)
+	a.AutoAssign(c.ID)
+	heads := map[string]LineHead{
+		EcommerceBranch: {Commit: "aaaa", Short: "aaaa", Subject: "电商版提交", Version: "0.7.17", Current: CreativeBranch, Changed: []string{"frontend/src/App.tsx"}},
+		CreativeBranch:  {Commit: "bbbb", Short: "bbbb", Subject: "大众版提交", Version: "0.7.32", Current: CreativeBranch, Changed: []string{"frontend/src/App.tsx"}},
+	}
+	a.head = func(_, branch string) (LineHead, error) { return heads[branch], nil }
+	var prepared []string
+	a.prepare = func(repo, line, commit string) (string, error) {
+		prepared = append(prepared, line+"@"+commit)
+		return filepath.Join(repo, "build-"+line), nil
+	}
+	var req BuildRequest
+	var logs []string
+	log := func(s string) { logs = append(logs, s) }
+	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", fakeBuilder{seen: &req}, "", log); e != nil {
 		t.Fatal(e)
 	}
+	if req.RepoRoot != dir || req.BuildDir != filepath.Join(dir, "build-ecommerce") {
+		t.Fatalf("customer package built in %+v", req)
+	}
+	// The uncommitted changes are the mass-market line's: nothing to say here.
+	if strings.Contains(strings.Join(logs, "\n"), "未提交") {
+		t.Fatal("warned about changes of the other line", logs)
+	}
+	logs = nil
+	if _, e := a.BuildCreative(context.Background(), "0.7.32", "说明", fakeBuilder{update: true, seen: &req}, "", log); e != nil {
+		t.Fatal(e)
+	}
+	if req.BuildDir != filepath.Join(dir, "build-creative") || strings.Join(prepared, " ") != "ecommerce@aaaa creative@bbbb" {
+		t.Fatal(req.BuildDir, prepared)
+	}
+	if all := strings.Join(logs, "\n"); !strings.Contains(all, "1 个未提交的改动，不会进入这次构建") || !strings.Contains(all, "bbbb 大众版提交") {
+		t.Fatal("build log lacks the commit or the notice", logs)
+	}
+	// A customer package cannot be labelled with another version than its code.
+	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.32", fakeBuilder{}, "", log); e == nil || !strings.Contains(e.Error(), "0.7.17") {
+		t.Fatal("0.7.17 code labelled 0.7.32:", e)
+	}
+	// What the pages show before building.
+	if s := a.LineSource(EcommerceLine); s.Version != "0.7.17" || s.Commit != "aaaa" || s.Uncommitted != 0 || s.Blocked != "" {
+		t.Fatalf("%+v", s)
+	}
+	if s := a.LineSource(CreativeLine); s.Version != "0.7.32" || s.Uncommitted != 1 || s.ReleasePage == "" {
+		t.Fatalf("%+v", s)
+	}
+	// No fallback to building in the source folder when the build folder fails.
+	a.prepare = func(string, string, string) (string, error) { return "", errors.New("磁盘已满") }
+	built := false
+	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", builderFunc(func() { built = true }), "", log); e == nil || !strings.Contains(e.Error(), "磁盘已满") || built {
+		t.Fatal("built without a build folder:", e, built)
+	}
 }
+
+type builderFunc func()
+
+func (f builderFunc) Build(context.Context, BuildRequest, func(string)) error { f(); return nil }
 
 // The public update package of the mass-market line never carries Claude Code.
 func TestCreativeUpdatePackageWithClaudeCodeIsRefused(t *testing.T) {
@@ -130,27 +176,5 @@ func TestCreativeReleaseRefusesPoolKeys(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(dir, "release", "creative", "0.7.32", "*.zip")); len(left) != 0 {
 		t.Fatal("refused package left behind", left)
-	}
-}
-
-// Customer packages are the e-commerce line: built from main, nothing uncommitted.
-func TestCustomerPackageNeedsMainBranch(t *testing.T) {
-	isolate(t)
-	a := open(t)
-	repo(t, a)
-	stock(t, a, 1, "http://127.0.0.1:1/v1")
-	c, _ := a.CreateCustomer("客户 D", 3)
-	a.AutoAssign(c.ID)
-	onBranch(a, "creative-concepts")
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", fakeBuilder{}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "main") {
-		t.Fatal("customer package built from the mass-market branch:", e)
-	}
-	onBranch(a, "main", "scripts/build.ps1")
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", fakeBuilder{}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "未提交") {
-		t.Fatal("customer package built with uncommitted changes:", e)
-	}
-	onBranch(a, "main")
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", fakeBuilder{}, "", func(string) {}); e != nil {
-		t.Fatal(e)
 	}
 }
