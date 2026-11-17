@@ -152,7 +152,7 @@ func (s *Service) redrawSampleLocked(t *Task) string {
 func (s *Service) askSampleCheck(ctx context.Context, c Connection, key string, t Task, files [][]byte) (bool, []string, error) {
 	content := []any{map[string]any{"type": "text", "text": sampleCheckInstruction + t.Prompt}}
 	for _, data := range files {
-		block, e := visionImageBlock(data)
+		block, e := messagesImageBlock(data)
 		if e != nil {
 			return false, nil, e
 		}

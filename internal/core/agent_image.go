@@ -50,3 +50,14 @@ func visionImageBlock(data []byte) (map[string]any, error) {
 	}
 	return map[string]any{"type": "image", "mimeType": http.DetectContentType(data), "data": base64.StdEncoding.EncodeToString(data)}, nil
 }
+
+// messagesImageBlock is visionImageBlock in the Messages API shape, for requests
+// the app sends to the LLM itself; visionImageBlock's shape is an MCP tool result
+// and a strict endpoint rejects it (DeepSeek: 422 missing field `source`).
+func messagesImageBlock(data []byte) (map[string]any, error) {
+	block, e := visionImageBlock(data)
+	if e != nil {
+		return nil, e
+	}
+	return map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": block["mimeType"], "data": block["data"]}}, nil
+}

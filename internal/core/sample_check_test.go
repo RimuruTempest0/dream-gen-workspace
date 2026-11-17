@@ -90,6 +90,18 @@ func TestCropReferenceSavesACleanReference(t *testing.T) {
 	}
 }
 
+// anthropicImageBlock reports whether block is a Messages API image block.
+func anthropicImageBlock(block map[string]any) bool {
+	source, _ := block["source"].(map[string]any)
+	data, _ := source["data"].(string)
+	media, _ := source["media_type"].(string)
+	if source["type"] != "base64" || !strings.HasPrefix(media, "image/") {
+		return false
+	}
+	_, e := base64.StdEncoding.DecodeString(data)
+	return e == nil && data != ""
+}
+
 // checkedSampleFixture is sampleFixture with an LLM line whose checks of the
 // sample answer verdicts in order.
 func checkedSampleFixture(t *testing.T, verdicts ...string) (*Service, string, map[string][]*sampleCall, *sync.Mutex, *atomic.Int32) {
@@ -127,6 +139,12 @@ func checkedSampleFixture(t *testing.T, verdicts ...string) (*Service, string, m
 		images := 0
 		for _, block := range body.Messages[0].Content {
 			if block["type"] == "image" {
+				// Like a strict Messages endpoint (DeepSeek, 11/17): an image block
+				// needs source {type: base64, media_type, data}.
+				if !anthropicImageBlock(block) {
+					http.Error(w, "Failed to deserialize the JSON body into the target type: messages[0]: missing field `source`", 422)
+					return
+				}
 				images++
 			}
 		}

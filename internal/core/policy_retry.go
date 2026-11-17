@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -246,6 +248,9 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 		// first, and a fixed 8192 ran out before it wrote any text.
 		"max_tokens": LLMOutputLimit(c.MaxOutputTokens),
 		"messages":   []any{map[string]any{"role": "user", "content": content}},
+		// Streamed: a model that thinks first sends nothing for minutes otherwise,
+		// and a relay drops the idle connection (幻灵 11/17: EOF after 60 s).
+		"stream": true,
 	}
 	if c.Mode == "compatible" {
 		basicMessages(req)
@@ -271,22 +276,33 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 	if call.RequestID == "" {
 		call.RequestID = resp.Header.Get("x-request-id")
 	}
-	m, e := readMessage(resp, key)
-	if e != nil {
-		return "", false, finish(e)
-	}
-	call.addUsage(m.Usage)
-	for _, b := range m.Content {
-		if b.Type == "text" {
-			text += b.Text
+	var stopReason string
+	if resp.StatusCode == 200 && strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
+		call.Stream = true
+		text, stopReason, e = readTextStream(ctx, resp, &call, started)
+		if e != nil {
+			return "", false, finish(errors.New("AI 模型的回答中途断开：" + e.Error()))
 		}
+	} else {
+		// A relay that ignores "stream" answers with one JSON message.
+		m, e := readMessage(resp, key)
+		if e != nil {
+			return "", false, finish(e)
+		}
+		call.addUsage(m.Usage)
+		for _, b := range m.Content {
+			if b.Type == "text" {
+				text += b.Text
+			}
+		}
+		stopReason = m.StopReason
 	}
 	text = strings.TrimSpace(text)
 	if strings.HasPrefix(text, "```") {
 		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text[strings.Index(text+"\n", "\n"):]), "```"))
 	}
 	if text == "" {
-		if m.StopReason == "max_tokens" {
+		if stopReason == "max_tokens" {
 			return "", false, finish(fmt.Errorf("AI 模型把单次输出上限（%d tokens）都用在了思考上，没有写出结果。可在“系统 → 连接 → AI 模型 → 编辑”调高“单次输出上限”", LLMOutputLimit(c.MaxOutputTokens)))
 		}
 		return "", false, finish(errors.New("AI 模型没有返回改写结果"))
@@ -294,6 +310,51 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 	if e := check(text); e != nil {
 		return "", false, finish(e)
 	}
-	call.FirstByteMS = time.Since(started).Milliseconds()
+	if call.FirstByteMS == 0 {
+		call.FirstByteMS = time.Since(started).Milliseconds()
+	}
 	return text, false, finish(nil)
+}
+
+// readTextStream reads a streamed Messages reply: the text of its text blocks
+// (thinking is left out) and its stop reason, with usage added to call.
+func readTextStream(ctx context.Context, resp *http.Response, call *LLMCall, started time.Time) (string, string, error) {
+	defer resp.Body.Close()
+	var text strings.Builder
+	stop := ""
+	e := readSSE(ctx, resp.Body, func(frame []byte) error {
+		if call.FirstByteMS == 0 {
+			call.FirstByteMS = max(time.Since(started).Milliseconds(), 1)
+		}
+		call.readStreamUsage(frame)
+		for _, line := range strings.Split(string(frame), "\n") {
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			var v struct {
+				Type  string `json:"type"`
+				Delta struct {
+					Type       string `json:"type"`
+					Text       string `json:"text"`
+					StopReason string `json:"stop_reason"`
+				} `json:"delta"`
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &v) != nil {
+				continue
+			}
+			switch {
+			case v.Type == "error":
+				return errors.New(v.Error.Message)
+			case v.Type == "content_block_delta" && v.Delta.Type == "text_delta":
+				text.WriteString(v.Delta.Text)
+			case v.Type == "message_delta" && v.Delta.StopReason != "":
+				stop = v.Delta.StopReason
+			}
+		}
+		return nil
+	})
+	return text.String(), stop, e
 }
