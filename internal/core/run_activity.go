@@ -35,6 +35,8 @@ func llmFailureReason(message string) string {
 	switch {
 	case strings.Contains(message, "TLS handshake timeout"):
 		return "网络握手超时，请检查代理或网络"
+	case strings.Contains(message, "client connection lost"):
+		return "连接已断开且不再响应（网络或代理中断）"
 	case strings.Contains(message, "unexpected EOF"), strings.Contains(message, "connection reset"), strings.Contains(message, "forcibly closed"):
 		return "连接被中途切断（网络、代理或服务方）"
 	case strings.Contains(message, "first-reply limit"):

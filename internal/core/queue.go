@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -248,7 +249,9 @@ func (s *Service) step(claimed Task) bool {
 		}
 		if unknown {
 			note := s.autoRegenerateLocked(&t)
-			if relayTimedOut(t.Diagnostic) {
+			if connectionLost(e) {
+				t.Error = fmt.Sprintf("等待约 %d 秒时发现与图片服务的连接已经断开（网络或代理中断，连接不再响应），没能收到结果。这张图可能已在图片服务生成并计费。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, note, t.Error)
+			} else if relayTimedOut(t.Diagnostic) {
 				t.Error = fmt.Sprintf("图片服务等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在图片服务生成并已计费。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), note, t.Error)
 			} else {
 				t.Error = "结果未知，这张图可能已生成并计费。" + note + "原始错误：" + t.Error
@@ -281,6 +284,12 @@ func relayTimedOut(d GenerationDiagnostic) bool {
 		return d.ElapsedMS >= 90_000 && d.NetworkError != ""
 	}
 	return false
+}
+
+// connectionLost is a connection closed after it stopped answering pings (see
+// http2PingAfter): the tunnel under it died, the service did not cut the request.
+func connectionLost(e error) bool {
+	return e != nil && strings.Contains(e.Error(), "client connection lost")
 }
 
 func timeoutLabel(d GenerationDiagnostic) string {

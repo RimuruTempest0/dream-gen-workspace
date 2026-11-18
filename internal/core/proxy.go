@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var errProxyAddress = errors.New("系统代理地址格式不受支持")
@@ -21,9 +22,22 @@ func networkProxy() func(*http.Request) (*url.URL, error) {
 	return proxyResolver(server, bypass)
 }
 
+// Requests to one host share an HTTP/2 connection, and an image waits up to
+// minutes on it without a byte. When the tunnel under it dies silently (a proxy
+// node dropped, no FIN or RST reaching us), every image on it waited the full
+// 10-minute limit while the service had long finished (11/18: 263 s, results
+// lost). A connection silent for http2PingAfter is pinged; no answer within
+// http2PingTimeout closes it, so the images fail and are retried at once. A
+// live service answers pings while it generates.
+var (
+	http2PingAfter   = 20 * time.Second
+	http2PingTimeout = 15 * time.Second
+)
+
 func newNetworkTransport() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = networkProxy()
+	transport.HTTP2 = &http.HTTP2Config{SendPingTimeout: http2PingAfter, PingTimeout: http2PingTimeout}
 	return transport
 }
 
