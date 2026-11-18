@@ -159,9 +159,22 @@ func (m Manifest) Applies(current string) (bool, string) {
 	return true, ""
 }
 
+// Manuals are the 《使用说明》 at the program folder's root, one per display
+// language (Chinese, English, Vietnamese, Japanese, Korean), each named in its
+// own language. Versions before 0.8.0 refuse an update package holding any
+// other top-level file, so update packages carry only the Chinese one (the
+// first); the others ship in the full package.
+var Manuals = []string{"使用说明.txt", "User Guide.txt", "Hướng dẫn sử dụng.txt", "使い方ガイド.txt", "사용 설명서.txt"}
+
 // Package entries. Everything else (data, data-location.txt, customer.dat,
 // cache) is never part of an update and never touched.
-var topFiles = map[string]bool{"ImageWorkbench.exe": true, "product-browser.exe": true, "使用说明.txt": true, "version.json": true}
+var topFiles = map[string]bool{"ImageWorkbench.exe": true, "product-browser.exe": true, "version.json": true}
+
+func init() {
+	for _, m := range Manuals {
+		topFiles[m] = true
+	}
+}
 var topDirs = map[string]bool{"runtime": true, "agent": true}
 
 // AllowedEntry reports whether a package path may be written into the program folder.

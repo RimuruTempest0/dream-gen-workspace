@@ -21,11 +21,13 @@ import (
 	"unicode/utf16"
 
 	"imageworkbench/internal/core"
+	"imageworkbench/internal/update"
 	_ "modernc.org/sqlite"
 )
 
-// shipping lists every path the clean package may contain; anything else fails.
-var shipping = []string{"ImageWorkbench.exe", "product-browser.exe", "使用说明.txt", "version.json", "runtime/", "agent/claude-code/claude.exe", "agent/claude-code/version.json", "agent/claude-code/LICENSE.md"}
+// shipping lists every path the clean package may contain, including the
+// 《使用说明》 in each display language; anything else fails.
+var shipping = append([]string{"ImageWorkbench.exe", "product-browser.exe", "version.json", "runtime/", "agent/claude-code/claude.exe", "agent/claude-code/version.json", "agent/claude-code/LICENSE.md"}, update.Manuals...)
 
 // vendor files are copied unchanged and verified by signature or hash in build.ps1.
 // A connection name is often a common word ("DeepSeek"), which these files can

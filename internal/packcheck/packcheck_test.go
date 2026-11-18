@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"imageworkbench/internal/core"
+	"imageworkbench/internal/update"
 )
 
 const testKey = "sk-packcheck-fixture-0123456789"
@@ -67,6 +68,24 @@ func clean() map[string][]byte {
 func TestCleanPackagePasses(t *testing.T) {
 	findings, e := Check(testZip(t, clean()), Options{DataDir: testData(t)})
 	if e != nil || len(findings) != 0 {
+		t.Fatal(e, findings)
+	}
+}
+
+func TestManualsInEveryLanguageShipButAreSearched(t *testing.T) {
+	root := testData(t)
+	files := clean()
+	for _, m := range update.Manuals {
+		files[m] = []byte("Image Workbench")
+	}
+	if findings, e := Check(testZip(t, files), Options{DataDir: root}); e != nil || len(findings) != 0 {
+		t.Fatal(e, findings)
+	}
+	files["사용 설명서.txt"] = []byte("relay.fixture-images.test/v1")
+	files["Guide.txt"] = []byte("help")
+	findings, e := Check(testZip(t, files), Options{DataDir: root})
+	joined := strings.Join(findings, "\n")
+	if e != nil || !strings.Contains(joined, "found in 사용 설명서.txt") || !strings.Contains(joined, "unexpected file in shipping ZIP: Guide.txt") {
 		t.Fatal(e, findings)
 	}
 }
