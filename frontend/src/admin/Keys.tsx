@@ -16,7 +16,7 @@ import {
 import type { CheckboxProps } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { call } from "../api";
-import { DataState, Header, useActions } from "../ui";
+import { DataState, Header, time, useActions } from "../ui";
 import { useAdminState } from "./AdminApp";
 import {
   kindLabel,
@@ -42,12 +42,17 @@ export function KeyPool() {
     s?.upstreams.find((u) => u.id === id)?.name || "—";
   const customerName = (id?: string) =>
     s?.customers.find((c) => c.id === id)?.name || "";
+  // Keys cancelled at the upstream are records only: they show in their own
+  // category ("已注销"), not among the rest.
   const keys = (s?.keys || []).filter(
     (k) =>
       (!filter.kind || k.kind === filter.kind) &&
       (!filter.use || k.use === filter.use) &&
-      (!filter.status || k.status === filter.status),
+      (filter.status ? k.status === filter.status : k.status !== "revoked"),
   );
+  const revokedCount = (s?.keys || []).filter(
+    (k) => k.status === "revoked",
+  ).length;
   // Bulk actions work on the ticked rows that the current filter shows.
   const [selected, setSelected] = useState<string[]>([]);
   const picked = keys.filter((k) => selected.includes(k.id));
@@ -55,29 +60,66 @@ export function KeyPool() {
   const pickedDelivered = picked.filter(
     (k) => k.status !== "assigned" && (k.delivered || k.deliveredBefore),
   ).length;
+  const revokedView = filter.status === "revoked";
   const changeFilter = (f: typeof filter) => {
     setFilter(f);
     setSelected([]);
   };
-  function bulk(kind: "disable" | "delete") {
+  type Bulk = "disable" | "delete" | "revoke" | "unrevoke";
+  const bulkText: Record<
+    Bulk,
+    { title: string; content: string; ok: string; done: string }
+  > = {
+    delete: {
+      title: "删除",
+      content:
+        "这些 Key 会从 Key 池和本机加密存储中删除，无法恢复；以后需要时可以重新导入。",
+      ok: "删除",
+      done: "已删除",
+    },
+    disable: {
+      title: "停用",
+      content:
+        "停用后不会再分配给任何客户，需要时可以逐个重新启用。已停用的 Key 保留原来的停用原因。",
+      ok: "停用",
+      done: "已停用",
+    },
+    revoke: {
+      title: "标记为已在上游注销",
+      content:
+        "只在你已经在上游后台注销（删除）了这些 Key 时使用。它们会移到“已注销”分类，不再出现在其他列表里，不能再分配或重新启用；记录会保留，用来防止同一个 Key 再次导入、分给另一位客户。",
+      ok: "标记为已注销",
+      done: "已标记为已注销",
+    },
+    unrevoke: {
+      title: "撤销注销标记",
+      content:
+        "这些 Key 会回到“已停用”。只在标记错了、上游其实没有注销时使用；要再分配，先到上游后台确认后再逐个重新启用。",
+      ok: "撤销标记",
+      done: "已撤销注销标记",
+    },
+  };
+  function bulk(kind: Bulk) {
     const ids = picked.map((k) => k.id);
     const n = ids.length;
+    const t = bulkText[kind];
     modal.confirm({
-      title: kind === "delete" ? `删除 ${n} 个 Key？` : `停用 ${n} 个 Key？`,
-      content:
-        kind === "delete"
-          ? "这些 Key 会从 Key 池和本机加密存储中删除，无法恢复；以后需要时可以重新导入。"
-          : "停用后不会再分配给任何客户，需要时可以逐个重新启用。已停用的 Key 保留原来的停用原因。",
-      okText: kind === "delete" ? "删除" : "停用",
-      okButtonProps: { danger: true },
+      title: `${t.title} ${n} 个 Key？`,
+      content: t.content,
+      okText: t.ok,
+      okButtonProps: { danger: kind === "delete" || kind === "disable" },
       cancelText: "取消",
       onOk: async () => {
         const ok = await actions.run(
           () =>
             kind === "delete"
               ? call("DeleteKeys", ids)
-              : call("DisableKeys", ids, "手动停用"),
-          kind === "delete" ? `已删除 ${n} 个 Key` : `已停用 ${n} 个 Key`,
+              : kind === "disable"
+                ? call("DisableKeys", ids, "手动停用")
+                : kind === "revoke"
+                  ? call("RevokeKeys", ids)
+                  : call("UnrevokeKeys", ids),
+          `${t.done} ${n} 个 Key`,
         );
         if (ok) setSelected([]);
       },
@@ -317,21 +359,54 @@ export function KeyPool() {
                 { value: "available", label: "可用" },
                 { value: "assigned", label: "已分配" },
                 { value: "disabled", label: "已停用" },
+                {
+                  value: "revoked",
+                  label: `已注销${revokedCount ? `（${revokedCount}）` : ""}`,
+                },
               ]}
             />
           </Space>
         </div>
+        {revokedView ? (
+          <p className="hint">
+            已在上游注销的 Key
+            只留记录：不会再分配或重新启用，但记录用来防止同一个 Key
+            再次导入、分给另一位客户，所以交付过的不能删除。
+          </p>
+        ) : (
+          !!revokedCount && (
+            <p className="hint">
+              另有 {revokedCount} 个已在上游注销的 Key
+              不在这个列表里，在“已注销”分类中查看。
+            </p>
+          )
+        )}
         {picked.length > 0 && (
           <div className="bulk-bar" role="group" aria-label="批量操作">
             <strong>已选 {picked.length} 个 Key</strong>
-            <Button
-              size="small"
-              danger
-              disabled={pickedAssigned > 0}
-              onClick={() => bulk("disable")}
-            >
-              停用所选
-            </Button>
+            {revokedView ? (
+              <Button size="small" onClick={() => bulk("unrevoke")}>
+                撤销注销标记
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="small"
+                  danger
+                  disabled={pickedAssigned > 0}
+                  onClick={() => bulk("disable")}
+                >
+                  停用所选
+                </Button>
+                <Button
+                  size="small"
+                  disabled={pickedAssigned > 0}
+                  onClick={() => bulk("revoke")}
+                >
+                  标记为已在上游注销
+                </Button>
+              </>
+            )}
             <Button
               size="small"
               danger
@@ -347,9 +422,9 @@ export function KeyPool() {
               <span className="muted">
                 {[
                   pickedAssigned > 0 &&
-                    `${pickedAssigned} 个已分配给客户，先在客户页撤下后才能停用或删除`,
+                    `${pickedAssigned} 个已分配给客户，先在客户页撤下后才能停用、注销或删除`,
                   pickedDelivered > 0 &&
-                    `${pickedDelivered} 个交付过，只能停用、不能删除`,
+                    `${pickedDelivered} 个交付过，不能删除；已在上游注销的可以标记为已注销，移到单独的分类`,
                 ]
                   .filter(Boolean)
                   .join("；")}
@@ -419,6 +494,9 @@ export function KeyPool() {
                     )}
                     {k.status === "disabled" && k.disabledFor && (
                       <span className="muted">{k.disabledFor}</span>
+                    )}
+                    {k.status === "revoked" && k.revokedAt && (
+                      <span className="muted">{time(k.revokedAt)}</span>
                     )}
                   </span>
                 ),

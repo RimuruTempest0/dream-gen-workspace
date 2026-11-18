@@ -218,8 +218,57 @@ func (a *Admin) DisableKeys(ids []string, reason string) error {
 		}
 	}
 	for _, k := range keys {
-		if k.Status != "disabled" {
+		// Disabled keys keep their reason; revoked ones stay revoked.
+		if k.Status == "available" {
 			k.Status, k.DisabledFor = "disabled", strings.TrimSpace(reason)
+		}
+	}
+	return a.saveLocked()
+}
+
+// RevokeKeys marks keys the provider cancelled at the upstream. They leave the
+// usable lists for good but keep their record (and stored secret), so the same
+// key can still never be imported again or handed to a second customer, and the
+// package checks still look for it. Nothing changes if any key is assigned.
+func (a *Admin) RevokeKeys(ids []string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	keys, e := a.keysLocked(ids)
+	if e != nil {
+		return e
+	}
+	for _, k := range keys {
+		if k.Status == "assigned" {
+			return fmt.Errorf("…%s 正分配给客户，请先在客户页撤下或换 Key", k.Tail)
+		}
+	}
+	at := now()
+	for _, k := range keys {
+		if k.Status != "revoked" {
+			k.Status, k.RevokedAt = "revoked", at
+		}
+	}
+	return a.saveLocked()
+}
+
+// UnrevokeKeys moves keys marked revoked by mistake back to disabled; the
+// provider re-enables one from there only after checking the upstream.
+func (a *Admin) UnrevokeKeys(ids []string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	keys, e := a.keysLocked(ids)
+	if e != nil {
+		return e
+	}
+	for _, k := range keys {
+		if k.Status != "revoked" {
+			return fmt.Errorf("…%s 不是已注销的 Key", k.Tail)
+		}
+	}
+	for _, k := range keys {
+		k.Status, k.RevokedAt = "disabled", ""
+		if k.DisabledFor == "" {
+			k.DisabledFor = "撤销注销标记"
 		}
 	}
 	return a.saveLocked()

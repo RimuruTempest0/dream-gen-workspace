@@ -45,9 +45,12 @@ type Upstream struct {
 	UsageURL string `json:"usageURL,omitempty"`
 }
 
-// PoolKey is one upstream key. Status: available, assigned or disabled. A key
-// that went out in a package is disabled when it comes off its customer and is
-// only handed out again if the provider re-enables it.
+// PoolKey is one upstream key. Status: available, assigned, disabled or revoked.
+// A key that went out in a package is disabled when it comes off its customer
+// and is only handed out again if the provider re-enables it. Revoked (admin
+// 1.9.0): the provider cancelled it at the upstream, so it is useless; it is
+// kept only as a record that stops the same key being imported and handed out
+// again, and is never assigned or re-enabled.
 type PoolKey struct {
 	ID         string `json:"id"`
 	Hash       string `json:"hash"` // sha256 of the key, for de-duplication
@@ -67,6 +70,8 @@ type PoolKey struct {
 	VerifiedAt      string `json:"verifiedAt,omitempty"`
 	ImportedAt      string `json:"importedAt"`
 	DisabledFor     string `json:"disabledFor,omitempty"`
+	// RevokedAt is when the key was marked as cancelled at the upstream.
+	RevokedAt string `json:"revokedAt,omitempty"`
 }
 
 type Delivery struct {

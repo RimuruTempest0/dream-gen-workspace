@@ -127,6 +127,8 @@ func (x *App) DisableKey(id, reason string) error            { return x.a.Disabl
 func (x *App) EnableKey(id string) error                     { return x.a.EnableKey(id) }
 func (x *App) DisableKeys(ids []string, reason string) error { return x.a.DisableKeys(ids, reason) }
 func (x *App) DeleteKeys(ids []string) error                 { return x.a.DeleteKeys(ids) }
+func (x *App) RevokeKeys(ids []string) error                 { return x.a.RevokeKeys(ids) }
+func (x *App) UnrevokeKeys(ids []string) error               { return x.a.UnrevokeKeys(ids) }
 func (x *App) SetKeyUse(id, use string) error                { return x.a.SetKeyUse(id, use) }
 func (x *App) RevealCode(customerID string) (string, error)  { return x.a.RevealCode(customerID) }
 

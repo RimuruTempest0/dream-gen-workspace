@@ -20,7 +20,7 @@ export type PoolKey = {
   kind: "image" | "llm";
   use: "primary" | "backup";
   quotaNote?: string;
-  status: "available" | "assigned" | "disabled";
+  status: "available" | "assigned" | "disabled" | "revoked";
   customerID?: string;
   slot?: string;
   delivered?: boolean;
@@ -29,6 +29,8 @@ export type PoolKey = {
   verifiedAt?: string;
   importedAt: string;
   disabledFor?: string;
+  /** When it was marked as cancelled at the upstream (status revoked). */
+  revokedAt?: string;
 };
 export type Delivery = {
   version: string;
@@ -134,6 +136,7 @@ export const statusLabel = {
   available: "可用",
   assigned: "已分配",
   disabled: "已停用",
+  revoked: "已注销",
 };
 export type ImportResult = {
   added: number;

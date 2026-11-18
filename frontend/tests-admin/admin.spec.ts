@@ -475,7 +475,7 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await page.getByRole("checkbox", { name: "选择本页 Key" }).check();
   const bar = page.getByRole("group", { name: "批量操作" });
   await expect(bar).toContainText(`已选 ${freeCount} 个 Key`);
-  await expect(bar).toContainText("1 个交付过，只能停用、不能删除");
+  await expect(bar).toContainText("1 个交付过，不能删除");
   await expect(bar.getByRole("button", { name: "删除所选" })).toBeDisabled();
   await settle();
   const a11yBulk = await new AxeBuilder({ page })
@@ -507,6 +507,46 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await expect(
     page.locator(".ant-table-row").filter({ hasText: "曾交付" }),
   ).toHaveCount(1);
+
+  // The delivered keys left are cancelled at the upstream: they move to their
+  // own category, out of every other list, and can be moved back if mistaken.
+  const left = await keyRows.count();
+  expect(left).toBeGreaterThan(0);
+  await page.getByRole("checkbox", { name: "选择本页 Key" }).check();
+  await bar.getByRole("button", { name: "标记为已在上游注销" }).click();
+  await page
+    .getByRole("dialog", { name: `标记为已在上游注销 ${left} 个 Key？` })
+    .getByRole("button", { name: "标记为已注销" })
+    .click();
+  await expect(page.getByText("没有符合条件的 Key")).toBeVisible();
+  await pickStatus("全部状态");
+  await expect(
+    page.getByText(`另有 ${left} 个已在上游注销的 Key 不在这个列表里`),
+  ).toBeVisible();
+  await expect(keyRows.filter({ hasText: "已注销" })).toHaveCount(0);
+  await page
+    .locator(".ant-select")
+    .filter({ has: page.getByRole("combobox", { name: "按状态筛选" }) })
+    .click();
+  await page
+    .locator(`.ant-select-item-option[title="已注销（${left}）"]`)
+    .click();
+  await expect(keyRows).toHaveCount(left);
+  await expect(keyRows.filter({ hasNotText: "已注销" })).toHaveCount(0);
+  await keyRows.first().getByRole("checkbox").check();
+  await expect(bar.getByRole("button", { name: "撤销注销标记" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "停用所选" })).toHaveCount(0);
+  await settle();
+  const a11yRevoked = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11yRevoked.violations).toEqual([]);
+  await bar.getByRole("button", { name: "撤销注销标记" }).click();
+  await page
+    .getByRole("dialog", { name: "撤销注销标记 1 个 Key？" })
+    .getByRole("button", { name: "撤销标记" })
+    .click();
+  await expect(keyRows).toHaveCount(left - 1);
 });
 
 test("发布大众版：显示将要构建的提交，未提交的改动不进包，源码目录不被改动", async () => {
