@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Modal, Progress, Space, Switch } from "antd";
+import { Alert, Button, Modal, Progress, Space, Switch, Tooltip } from "antd";
 import { CloudDownloadOutlined } from "@ant-design/icons";
 import { call } from "./api";
 import { time, useActions, useData } from "./ui";
@@ -107,19 +107,26 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
 }
 
 // Rail line when a newer version is waiting; opens the offer.
-export function UpdateBadge() {
+export function UpdateBadge({ tooltip }: { tooltip?: boolean }) {
   const u = useUpdateStatus().data;
   const [open, setOpen] = useState(false);
   if (!u?.available || !u.version) return null;
   return (
     <>
-      <button
-        type="button"
-        className="update-badge"
-        onClick={() => setOpen(true)}
+      <Tooltip
+        title={tooltip ? `有新版本 ${u.version}` : undefined}
+        placement="right"
       >
-        <CloudDownloadOutlined aria-hidden="true" /> 有新版本 {u.version}
-      </button>
+        <button
+          type="button"
+          className="update-badge"
+          aria-label={`有新版本 ${u.version}`}
+          onClick={() => setOpen(true)}
+        >
+          <CloudDownloadOutlined aria-hidden="true" />
+          <span className="rail-label">有新版本 {u.version}</span>
+        </button>
+      </Tooltip>
       <Modal
         open={open}
         title="软件更新"

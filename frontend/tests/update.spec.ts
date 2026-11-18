@@ -83,13 +83,15 @@ test("软件更新：未设置地址时提示完整包；点一次下载并校�
   expect(dialogA11y.violations).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  // Closing with the keyboard returns focus to the rail line, which keeps the
-  // rail open over the page; a mouse user is not there, so leave it.
-  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
-  await expect(page.locator(".rail .rail-label").first()).toHaveCSS(
-    "color",
-    "rgba(0, 0, 0, 0)",
-  );
+  // The rail stays open, so the rail line still reads in full.
+  await expect(page.locator(".update-badge")).toContainText("有新版本 9.9.9");
+  // The button beside the wordmark collapses it to icons and back.
+  const toggle = page.getByRole("button", { name: "收起侧栏" });
+  await toggle.click();
+  await expect(page.locator(".rail")).toHaveCSS("width", "64px");
+  await expect(page.locator(".update-badge .rail-label")).toBeHidden();
+  await page.getByRole("button", { name: "展开侧栏" }).click();
+  await expect(page.locator(".update-badge .rail-label")).toBeVisible();
 
   // One click: no second confirmation. It downloads, verifies and goes on to
   // the restart, which the QA instance refuses.

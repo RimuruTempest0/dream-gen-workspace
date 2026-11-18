@@ -14,6 +14,8 @@ import {
   SettingOutlined,
   FileTextOutlined,
   LoadingOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   SlidersOutlined,
   StarOutlined,
 } from "@ant-design/icons";
@@ -117,7 +119,22 @@ export default function App() {
   const qc = useQueryClient();
   const { modal, notification } = AntApp.useApp();
   const summary = useData<Summary>(["summary"], "Dashboard", [], 4000);
-  const [railClosed, setRailClosed] = useState(false);
+  // The rail stays open; the user collapses it with the button beside the
+  // wordmark, and the choice is kept for the next start.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("rail-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleRail = () =>
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem("rail-collapsed", c ? "0" : "1");
+      } catch {}
+      return !c;
+    });
   const inSystem = systemTabs.some((t) => t[0] === loc.pathname);
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -153,42 +170,61 @@ export default function App() {
     };
   }, []);
   return (
-    <div className="shell">
-      <aside
-        className={railClosed ? "rail rail-closed" : "rail"}
-        onClick={() => setRailClosed(true)}
-        onMouseLeave={() => setRailClosed(false)}
-      >
+    <div className={collapsed ? "shell is-collapsed" : "shell"}>
+      <aside className="rail">
         <div className="rail-brand">
           <svg className="rail-mark" viewBox="0 0 28 28" aria-hidden="true">
             <circle cx="14" cy="14" r="12.5" />
             <path d="M14 1.5a12.5 12.5 0 0 1 0 25c4-3.5 6-7.7 6-12.5s-2-9-6-12.5z" />
           </svg>
           <span className="rail-wordmark">生图工作台</span>
+          <Tooltip
+            title={collapsed ? "展开侧栏" : "收起侧栏"}
+            placement="right"
+          >
+            <button
+              type="button"
+              className="rail-toggle"
+              aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+              aria-expanded={!collapsed}
+              onClick={toggleRail}
+            >
+              {collapsed ? (
+                <MenuUnfoldOutlined aria-hidden="true" />
+              ) : (
+                <MenuFoldOutlined aria-hidden="true" />
+              )}
+            </button>
+          </Tooltip>
         </div>
         <nav aria-label="主导航">
           {links.map((l, i) =>
             l ? (
-              <NavLink
+              <Tooltip
                 key={l[0]}
-                to={l[0]}
-                end
-                className={({ isActive }) =>
-                  "rail-item" +
-                  (isActive || (l[0] === "/settings" && inSystem)
-                    ? " active"
-                    : "")
-                }
-                aria-describedby={
-                  l[0] === "/" ? "smart-progress-status" : undefined
-                }
+                title={collapsed ? l[1] : undefined}
+                placement="right"
               >
-                {l[2]}
-                <span className="rail-label">{l[1]}</span>
-                {l[0] === "/tasks" && !!summary.data?.active && (
-                  <span className="count">{summary.data.active}</span>
-                )}
-              </NavLink>
+                <NavLink
+                  to={l[0]}
+                  end
+                  className={({ isActive }) =>
+                    "rail-item" +
+                    (isActive || (l[0] === "/settings" && inSystem)
+                      ? " active"
+                      : "")
+                  }
+                  aria-describedby={
+                    l[0] === "/" ? "smart-progress-status" : undefined
+                  }
+                >
+                  {l[2]}
+                  <span className="rail-label">{l[1]}</span>
+                  {l[0] === "/tasks" && !!summary.data?.active && (
+                    <span className="count">{summary.data.active}</span>
+                  )}
+                </NavLink>
+              </Tooltip>
             ) : (
               <div key={i} className="rail-gap" />
             ),
@@ -196,10 +232,10 @@ export default function App() {
         </nav>
         <div className="rail-foot">
           <SmartProgressRing />
-          <LicenseBadge />
-          <UpdateBadge />
+          <LicenseBadge tooltip={collapsed} />
+          <UpdateBadge tooltip={collapsed} />
           <small className="rail-version">
-            版本 {summary.data?.version || "0.7.38"}，数据保存在本机
+            版本 {summary.data?.version || "0.7.39"}，数据保存在本机
           </small>
         </div>
       </aside>

@@ -1,5 +1,6 @@
-/* 0.7.20 app shell: a narrow icon rail that widens over the page on hover or
-   keyboard focus. The admin tool keeps the fixed sidebar in shell.css. */
+/* App shell (0.7.39): the rail is open by default and pushes the page. The
+   button beside the wordmark collapses it to icons; the choice is kept. The
+   admin tool keeps the fixed sidebar in shell.css. */
 body {
   background: var(--background);
   color: var(--text);
@@ -11,37 +12,36 @@ h1 {
   letter-spacing: 0.01em;
 }
 .shell {
+  --rail-w: 216px;
   min-height: 100vh;
 }
+.shell.is-collapsed {
+  --rail-w: 64px;
+}
 .shell-main {
-  margin-left: 60px;
+  margin-left: var(--rail-w);
   min-width: 0;
+  transition: margin-left var(--motion-base) var(--ease-out);
 }
 .rail {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 20;
-  width: 60px;
+  width: var(--rail-w);
   display: flex;
   flex-direction: column;
-  padding: 14px 10px;
+  padding: 14px 12px;
   overflow: hidden;
   background: var(--background);
   border-right: 1px solid var(--border);
-  transition: width var(--motion-base) var(--ease-out) var(--motion-instant);
-}
-/* Open on hover or keyboard focus. After a click the rail stays closed until
-   the pointer leaves, so it never covers the page it just opened. */
-.rail:not(.rail-closed):hover,
-.rail:has(:focus-visible) {
-  width: 216px;
+  transition: width var(--motion-base) var(--ease-out);
 }
 .rail-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   height: 40px;
-  padding: 0 6px;
+  padding: 0 0 0 6px;
   margin-bottom: 18px;
   white-space: nowrap;
 }
@@ -59,8 +59,50 @@ h1 {
   fill: var(--text);
 }
 .rail-wordmark {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   font: 600 17px/1 var(--serif);
   letter-spacing: 0.04em;
+}
+.rail-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-instant) var(--ease-out),
+    color var(--motion-instant) var(--ease-out);
+}
+.rail-toggle:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.rail-toggle:focus-visible {
+  outline-offset: -2px;
+}
+/* Collapsed: the button takes the mark's place, so the rail keeps one icon
+   column and the way back out is where the way in was. */
+.is-collapsed .rail-brand {
+  justify-content: center;
+  padding: 0;
+}
+.is-collapsed .rail-mark,
+.is-collapsed .rail-wordmark {
+  display: none;
+}
+.is-collapsed .rail-toggle {
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
 }
 .rail nav {
   display: flex;
@@ -72,53 +114,59 @@ h1 {
   margin: 10px 8px;
   background: var(--border);
 }
-.rail-item {
+.rail-item,
+.rail .license-badge,
+.rail .update-badge {
   position: relative;
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 14px;
   flex: none;
-  height: 40px;
+  min-height: 40px;
+  margin: 0;
   padding: 0 10px;
+  border: 0;
   border-radius: 8px;
+  background: none;
   color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
   text-decoration: none;
   white-space: nowrap;
+  overflow: hidden;
 }
 .rail-item > .anticon,
-.rail-item > .nav-progress-visual {
+.rail-item > .nav-progress-visual,
+.rail .license-badge > .anticon,
+.rail .update-badge > .anticon {
   flex: none;
+  display: inline-flex;
   width: 20px;
   justify-content: center;
   font-size: 18px;
 }
-.rail-label,
-.rail-wordmark,
-.rail .license-badge,
-.rail .update-badge {
-  transition: color var(--motion-instant) var(--ease-out) var(--motion-instant);
+/* Labels sit on the icon's line and end in an ellipsis instead of wrapping
+   under it; the full text is in the link's name and, collapsed, a tooltip. */
+.rail-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.rail .rail-label,
-.rail .rail-wordmark {
-  color: transparent;
+.is-collapsed .rail-label,
+.is-collapsed .rail-version {
+  display: none;
 }
-.rail:not(.rail-closed):hover .rail-label,
-.rail:has(:focus-visible) .rail-label,
-.rail:not(.rail-closed):hover .rail-wordmark,
-.rail:has(:focus-visible) .rail-wordmark {
-  color: inherit;
+.is-collapsed .rail-item,
+.is-collapsed .rail .license-badge,
+.is-collapsed .rail .update-badge {
+  justify-content: center;
+  padding: 0;
 }
-.rail .license-badge,
-.rail .update-badge {
-  width: 40px;
-}
-.rail:not(.rail-closed):hover .license-badge,
-.rail:has(:focus-visible) .license-badge,
-.rail:not(.rail-closed):hover .update-badge,
-.rail:has(:focus-visible) .update-badge {
-  width: auto;
-}
-.rail-item:hover {
+.rail-item:hover,
+.rail .license-badge:hover,
+.rail .update-badge:hover {
   background: var(--surface);
   color: var(--text);
 }
@@ -126,10 +174,12 @@ h1 {
   background: var(--soft);
   color: var(--text);
 }
-.rail-item:focus-visible {
+.rail-item:focus-visible,
+.rail .license-badge:focus-visible,
+.rail .update-badge:focus-visible {
   outline-offset: -2px;
 }
-/* The unfinished-task count sits on the icon so it shows on the narrow rail. */
+/* The unfinished-task count sits on the icon so it also shows collapsed. */
 .rail-item .count {
   position: absolute;
   left: 24px;
@@ -141,9 +191,14 @@ h1 {
   color: var(--background);
   border-radius: 8px;
   line-height: 16px;
+  font-size: 11px;
+}
+.is-collapsed .rail-item .count {
+  left: 26px;
 }
 .rail-foot {
   margin-top: auto;
+  padding-top: 10px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -154,38 +209,28 @@ h1 {
 }
 .rail .license-badge,
 .rail .update-badge {
-  flex: none;
-  gap: 14px;
-  height: 40px;
-  margin: 0;
-  padding: 0 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  background: none;
-  font-size: 12px;
+  font-size: 13px;
 }
-.rail .license-badge .anticon,
-.rail .update-badge .anticon {
-  flex: none;
-  width: 20px;
-  justify-content: center;
-  font-size: 18px;
+.rail .license-badge.license-trial {
+  color: var(--text);
 }
-.rail .license-badge:hover,
-.rail .update-badge:hover {
-  background: var(--surface);
+.rail .license-badge.license-active {
+  color: var(--success);
+}
+.rail .license-badge.license-invalid,
+.rail .license-badge.license-mismatch,
+.rail .license-badge.license-expired {
+  color: var(--danger);
+}
+.rail .update-badge {
+  color: var(--text);
 }
 .rail-version {
   padding: 8px 10px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  opacity: 0;
-  transition: opacity var(--motion-instant) var(--ease-out)
-    var(--motion-instant);
-}
-.rail:not(.rail-closed):hover .rail-version,
-.rail:has(:focus-visible) .rail-version {
-  opacity: 1;
 }
 /* Tabs shared by the four system pages. */
 .system-tabs {

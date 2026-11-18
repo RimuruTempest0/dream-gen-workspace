@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { App as AntApp, Alert, Button, Input, Progress, Tag } from "antd";
+import {
+  App as AntApp,
+  Alert,
+  Button,
+  Input,
+  Progress,
+  Tag,
+  Tooltip,
+} from "antd";
 import { SafetyCertificateOutlined } from "@ant-design/icons";
 import { call } from "./api";
 import { dateTime, notImages, useActions, useData, time } from "./ui";
@@ -32,7 +40,7 @@ export function useLicense() {
 }
 
 // Sidebar line: trial images left, activated, or a licence problem.
-export function LicenseBadge() {
+export function LicenseBadge({ tooltip }: { tooltip?: boolean }) {
   const l = useLicense().data;
   if (!l || l.mode === "developer") return null;
   const text =
@@ -46,13 +54,16 @@ export function LicenseBadge() {
           ? "授权已到期"
           : "授权异常";
   return (
-    <Link
-      to="/settings#license"
-      className={`license-badge license-${l.mode}`}
-      aria-label={`授权状态：${text}`}
-    >
-      <SafetyCertificateOutlined aria-hidden="true" /> {text}
-    </Link>
+    <Tooltip title={tooltip ? text : undefined} placement="right">
+      <Link
+        to="/settings#license"
+        className={`license-badge license-${l.mode}`}
+        aria-label={`授权状态：${text}`}
+      >
+        <SafetyCertificateOutlined aria-hidden="true" />
+        <span className="rail-label">{text}</span>
+      </Link>
+    </Tooltip>
   );
 }
 

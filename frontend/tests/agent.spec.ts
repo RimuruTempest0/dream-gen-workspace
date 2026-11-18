@@ -759,11 +759,15 @@ test("native agent requests necessary materials and automatically generates twel
   await expect
     .poll(async () => (await enlarged.boundingBox())?.width ?? 0)
     .toBeGreaterThan(200);
-  // It opens beside the list and leaves the file names readable.
+  // It opens beside the list (right, or left when the window has no room on
+  // the right) and leaves the file names readable.
   const row = (await pickerOption.boundingBox())!;
   await expect
-    .poll(async () => (await enlarged.boundingBox())!.x)
-    .toBeGreaterThanOrEqual(row.x + row.width);
+    .poll(async () => {
+      const b = (await enlarged.boundingBox())!;
+      return b.x >= row.x + row.width || b.x + b.width <= row.x;
+    })
+    .toBe(true);
   await page.screenshot({
     path: path.resolve("../docs/reference-picker-0.6.21.png"),
   });
