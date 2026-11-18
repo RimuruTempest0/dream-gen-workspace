@@ -28,6 +28,7 @@ import {
 import { useData, useActions, DataState, Header } from "../ui";
 import { LicensePanel, useLicense } from "../License";
 import { UpdatePanel } from "../Updates";
+import { LanguagePanel } from "../i18n/LanguageSwitch";
 import { ShopRules } from "../ShopRules";
 import { GatewayFailover, GatewayRow } from "../Gateways";
 import {
@@ -197,6 +198,7 @@ export function Settings() {
           )
         }
       />
+      <LanguagePanel />
       <LicensePanel />
       <UpdatePanel />
       <section className="panel">

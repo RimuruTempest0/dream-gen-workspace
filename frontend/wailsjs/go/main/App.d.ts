@@ -110,6 +110,8 @@ export function ImportSkill(arg1:string,arg2:boolean):Promise<core.SkillRecord>;
 
 export function InstallUpdate():Promise<void>;
 
+export function InterfaceLanguage():Promise<string>;
+
 export function LLMMonitor(arg1:core.MonitorQuery):Promise<core.LLMMonitorResult>;
 
 export function LicenseStatus():Promise<core.LicenseStatus>;
@@ -183,6 +185,8 @@ export function SetGatewaySettings(arg1:core.GatewaySettings):Promise<void>;
 export function SetGuideMode(arg1:boolean):Promise<void>;
 
 export function SetImageConcurrency(arg1:number):Promise<void>;
+
+export function SetInterfaceLanguage(arg1:string):Promise<void>;
 
 export function SetShopRuleEnabled(arg1:string,arg2:boolean):Promise<void>;
 

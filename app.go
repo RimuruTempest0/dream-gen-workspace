@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"imageworkbench/internal/core"
+	"imageworkbench/internal/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,20 @@ func (a *App) ForceQuit() {
 	runtime.Quit(a.ctx)
 }
 func (a *App) Dashboard() (core.Summary, error) { return a.service.Dashboard() }
+
+// InterfaceLanguage is the saved interface language (zh-CN, en, vi, ja, ko).
+func (a *App) InterfaceLanguage() string { return a.service.Language() }
+
+// SetInterfaceLanguage saves the interface language and renames the window.
+func (a *App) SetInterfaceLanguage(code string) error {
+	if e := a.service.SetLanguage(code); e != nil {
+		return e
+	}
+	if a.ctx != nil {
+		runtime.WindowSetTitle(a.ctx, i18n.AppName(code))
+	}
+	return nil
+}
 func (a *App) OpenDataDirectory() error         { return openDirectory(a.service.Root()) }
 func (a *App) ChooseDataDirectory() (string, error) {
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择新的保存位置（空文件夹）", DefaultDirectory: a.service.Root()})

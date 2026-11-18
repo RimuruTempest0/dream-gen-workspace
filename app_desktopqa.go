@@ -12,7 +12,14 @@ import (
 )
 
 // Isolate desktop test files without deleting data or exposing a reset API in shipping builds.
-func (a *App) ResetDesktopQA() error {
+// The fresh data directory starts as on a Chinese Windows.
+func (a *App) ResetDesktopQA() error { return a.ResetDesktopQAWithSystemLanguage("zh-CN") }
+
+// ResetDesktopQAWithSystemLanguage is ResetDesktopQA as on a Windows whose UI
+// language is tag (for example "ja-JP" or "de-DE"): the first start of the
+// fresh data directory picks the interface language from it.
+func (a *App) ResetDesktopQAWithSystemLanguage(tag string) error {
+	core.SetTestSystemLanguage(tag)
 	if filepath.Base(a.configRoot) != "desktop-qa" {
 		return errors.New("仅限独立桌面 QA 实例")
 	}
