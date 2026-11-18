@@ -91,7 +91,11 @@ if($refreshRuntime){
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot "build\bin\ImageWorkbench-$Version.exe") -Destination (Join-Path $releaseRoot 'ImageWorkbench.exe') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'build\bin\product-browser.exe') -Destination (Join-Path $releaseRoot 'product-browser.exe') -Force
-Copy-Item -LiteralPath 'docs\使用说明.txt' -Destination (Join-Path $releaseRoot '使用说明.txt') -Force
+# 《使用说明》 in each display language, named in its own language (same list as
+# Manuals in internal/update, which packcheck allows). Update packages carry only
+# the Chinese one: versions before 0.8.0 refuse an update with any other file.
+$manuals = @('使用说明.txt','User Guide.txt','Hướng dẫn sử dụng.txt','使い方ガイド.txt','사용 설명서.txt')
+foreach ($manual in $manuals) { Copy-Item -LiteralPath (Join-Path 'docs' $manual) -Destination (Join-Path $releaseRoot $manual) -Force }
 $agentTarget = Join-Path $releaseRoot 'agent\claude-code'
 New-Item -ItemType Directory -Force -Path $agentTarget | Out-Null
 foreach ($file in @('claude.exe','version.json','LICENSE.md')) { Copy-Item -LiteralPath (Join-Path $ClaudeSource $file) -Destination (Join-Path $agentTarget $file) -Force }
@@ -99,7 +103,7 @@ $manifest = @{version=$Version;platform='windows-x64';runtime=(Get-Item $runtime
 if ($ProductLine) { $manifest.productLine = $ProductLine }
 $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $releaseRoot 'version.json') -Encoding utf8
 # Only explicit shipping files; data/cache and development fixtures never enter the ZIP.
-$shipping = @((Join-Path $releaseRoot 'ImageWorkbench.exe'),(Join-Path $releaseRoot 'product-browser.exe'),$runtimeTarget,(Join-Path $releaseRoot 'agent'),(Join-Path $releaseRoot '使用说明.txt'),(Join-Path $releaseRoot 'version.json'))
+$shipping = @((Join-Path $releaseRoot 'ImageWorkbench.exe'),(Join-Path $releaseRoot 'product-browser.exe'),$runtimeTarget,(Join-Path $releaseRoot 'agent'),(Join-Path $releaseRoot 'version.json')) + @($manuals | ForEach-Object { Join-Path $releaseRoot $_ })
 # Customer builds (admin tool) pass their own ZIP path so the generic package is not replaced.
 $zipPath = if ($ZipPath) { [IO.Path]::GetFullPath((Join-Path $projectRoot $ZipPath)) } else { Join-Path $projectRoot "release\ImageWorkbench-portable-x64-$Version.zip" }
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $zipPath) | Out-Null

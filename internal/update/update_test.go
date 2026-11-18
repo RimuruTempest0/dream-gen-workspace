@@ -64,7 +64,7 @@ func TestVersionRules(t *testing.T) {
 }
 
 func TestAllowedEntries(t *testing.T) {
-	for _, ok := range []string{"ImageWorkbench.exe", "product-browser.exe", "使用说明.txt", "version.json", "runtime/msedgewebview2.exe", "agent/claude-code/claude.exe"} {
+	for _, ok := range []string{"ImageWorkbench.exe", "product-browser.exe", "使用说明.txt", "User Guide.txt", "Hướng dẫn sử dụng.txt", "使い方ガイド.txt", "사용 설명서.txt", "version.json", "runtime/msedgewebview2.exe", "agent/claude-code/claude.exe"} {
 		if !AllowedEntry(ok) {
 			t.Fatal("refused", ok)
 		}
@@ -242,5 +242,33 @@ func TestProductLinesDoNotAcceptEachOther(t *testing.T) {
 	m.Line = "Creative Line"
 	if _, e := Sign(m, priv); e == nil {
 		t.Fatal("malformed line name signed")
+	}
+}
+
+// Every 《使用说明》 the package ships exists in docs/, matches the Chinese one
+// line for line, and the non-Chinese ones name the software Image Workbench.
+func TestManualsExistInEveryLanguage(t *testing.T) {
+	lines := func(name string) []string {
+		b, e := os.ReadFile(filepath.Join("..", "..", "docs", name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		return strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+	}
+	zh := lines(Manuals[0])
+	for _, name := range Manuals[1:] {
+		got := lines(name)
+		if len(got) != len(zh) {
+			t.Errorf("%s has %d lines, the Chinese manual %d", name, len(got), len(zh))
+		}
+		for i := range min(len(got), len(zh)) {
+			if (got[i] == "") != (zh[i] == "") {
+				t.Errorf("%s line %d: paragraph breaks differ from the Chinese manual", name, i+1)
+			}
+		}
+		text := strings.Join(got, "\n")
+		if !strings.HasPrefix(text, "Image Workbench") || strings.Contains(text, "生图工作台") {
+			t.Errorf("%s must name the software Image Workbench", name)
+		}
 	}
 }

@@ -986,3 +986,30 @@ func TestBuiltinSkillSelectionPerCustomer(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageCarriesManualsTheBuildHas(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"ImageWorkbench.exe", "使用说明.txt", "User Guide.txt", "사용 설명서.txt"} {
+		if e := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "p.zip")
+	if e := writeZipOf(dir, path, []string{"ImageWorkbench.exe", "使用说明.txt"}); e != nil {
+		t.Fatal(e)
+	}
+	z, e := zip.OpenReader(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer z.Close()
+	var got []string
+	for _, f := range z.File {
+		got = append(got, f.Name)
+	}
+	slices.Sort(got)
+	want := []string{"ImageWorkbench.exe", "User Guide.txt", "使用说明.txt", "사용 설명서.txt"}
+	if !slices.Equal(got, want) {
+		t.Fatal(got)
+	}
+}
