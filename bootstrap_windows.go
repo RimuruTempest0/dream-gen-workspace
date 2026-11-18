@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"golang.org/x/sys/windows"
+	"imageworkbench/internal/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,9 +43,17 @@ func claimInstance() (func(), bool, error) {
 	handle, e := windows.CreateMutex(nil, false, name)
 	if e == windows.ERROR_ALREADY_EXISTS {
 		windows.CloseHandle(handle)
-		title, _ := windows.UTF16PtrFromString("生图工作台")
 		u := syscall.NewLazyDLL("user32.dll")
-		hwnd, _, _ := u.NewProc("FindWindowW").Call(0, uintptr(unsafe.Pointer(title)))
+		// The window is titled in the interface language: 生图工作台 or Image Workbench.
+		var hwnd uintptr
+		for _, name := range []string{i18n.AppName(i18n.ZhCN), i18n.AppName(i18n.En)} {
+			title, _ := windows.UTF16PtrFromString(name)
+			hwnd, _, _ = u.NewProc("FindWindowW").Call(0, uintptr(unsafe.Pointer(title)))
+			runtime.KeepAlive(title)
+			if hwnd != 0 {
+				break
+			}
+		}
 		if hwnd != 0 {
 			u.NewProc("ShowWindow").Call(hwnd, 9)
 			u.NewProc("SetForegroundWindow").Call(hwnd)

@@ -1,0 +1,26 @@
+{
+  "about": "Fixed-term glossary for the five interface languages. Source of the terms: CONTEXT.md. Any text-table string whose zh-CN text contains a term must use the listed translation in every other language (case-insensitive). Add a term here before using a new fixed term in the tables.",
+  "terms": [
+    { "zh-CN": "生图工作台", "en": "Image Workbench", "vi": "Image Workbench", "ja": "Image Workbench", "ko": "Image Workbench", "note": "Program name; the brand name is never translated." },
+    { "zh-CN": "界面语言", "en": "display language", "vi": "ngôn ngữ giao diện", "ja": "表示言語", "ko": "표시 언어", "note": "The language the customer picked for the program." },
+    { "zh-CN": "对话语言", "en": "conversation language", "vi": "ngôn ngữ trò chuyện", "ja": "会話言語", "ko": "대화 언어", "note": "Language of AI text written for the customer; follows the display language." },
+    { "zh-CN": "生图提示词", "en": "image prompt", "vi": "câu lệnh tạo ảnh", "ja": "画像プロンプト", "ko": "이미지 프롬프트", "note": "Text the AI writes for the image model." },
+    { "zh-CN": "图中文字", "en": "text in the image", "vi": "chữ trong ảnh", "ja": "画像内の文字", "ko": "이미지 속 글자", "note": "Words painted into the picture; never translated." },
+    { "zh-CN": "心境引导", "en": "mood guide", "vi": "dẫn dắt tâm trạng", "ja": "心境ガイド", "ko": "심경 가이드", "note": "The few picks that let the user recognise their mood." },
+    { "zh-CN": "心境", "en": "mood", "vi": "tâm trạng", "ja": "心境", "ko": "심경", "note": "Feeling now plus how the picture should treat the user." },
+    { "zh-CN": "情绪", "en": "feeling", "vi": "cảm xúc", "ja": "気持ち", "ko": "감정", "note": "First half of the mood." },
+    { "zh-CN": "期待", "en": "hope", "vi": "mong muốn", "ja": "願い", "ko": "기대", "note": "Second half of the mood: stay with me / soothe me / lift me." },
+    { "zh-CN": "引导模式", "en": "guide mode", "vi": "chế độ dẫn dắt", "ja": "ガイドモード", "ko": "가이드 모드", "note": "Switch in Pro mode that shows the mood guide." },
+    { "zh-CN": "对比出图", "en": "side-by-side", "vi": "so sánh hai ảnh", "ja": "見比べ生成", "ko": "비교 생성", "note": "One realistic and one painterly image for the same mood." },
+    { "zh-CN": "画法", "en": "rendering", "vi": "lối vẽ", "ja": "描き方", "ko": "표현 방식", "note": "Realistic (photo) or painterly; not 'style'." },
+    { "zh-CN": "再靠近一点", "en": "a little closer", "vi": "gần thêm chút nữa", "ja": "もう少し近く", "ko": "조금 더 가까이", "note": "Re-make an image changing one direction only." },
+    { "zh-CN": "形体", "en": "form", "vi": "hình khối", "ja": "形体", "ko": "형체", "note": "Half of a concept: what is in the picture (from architecture)." },
+    { "zh-CN": "立场", "en": "stance", "vi": "lập trường", "ja": "立場", "ko": "입장", "note": "Other half of a concept: how to look at it (an -ism)." },
+    { "zh-CN": "概念", "en": "concept", "vi": "khái niệm", "ja": "コンセプト", "ko": "콘셉트", "note": "One form with one stance." },
+    { "zh-CN": "开源版", "en": "open-source edition", "vi": "bản mã nguồn mở", "ja": "オープンソース版", "ko": "오픈소스판", "note": "Delivery without a license file; the customer sets up services." },
+    { "zh-CN": "托管版", "en": "hosted edition", "vi": "bản dịch vụ", "ja": "ホスト版", "ko": "호스팅판", "note": "Delivery with a license file; lines and keys come from the provider." },
+    { "zh-CN": "授权文件", "en": "license file", "vi": "tệp giấy phép", "ja": "ライセンスファイル", "ko": "라이선스 파일", "note": "Signed customer.dat." },
+    { "zh-CN": "一键更新", "en": "one-click update", "vi": "cập nhật một chạm", "ja": "ワンクリック更新", "ko": "원클릭 업데이트", "note": "Download, verify, replace and restart in one click." },
+    { "zh-CN": "更新说明", "en": "update notes", "vi": "ghi chú cập nhật", "ja": "更新内容", "ko": "업데이트 안내", "note": "What changed, shown during a one-click update." }
+  ]
+}

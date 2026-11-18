@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -54,6 +55,8 @@ type Service struct {
 	// llmCallsSaved counts LLM call records written; old ones are pruned now and then.
 	llmCallsSaved int
 	workers       sync.WaitGroup
+	// lang is the interface language (string); see language.go.
+	lang atomic.Value
 }
 
 const (
@@ -112,8 +115,14 @@ func NewService(root string) (*Service, error) {
 	if e != nil {
 		return nil, e
 	}
+	lang, e := loadLanguage(st)
+	if e != nil {
+		st.Close()
+		return nil, e
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{store: st, provider: NewProvider(), ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), allowLocalProduct: qaLocalProduct}
+	s.lang.Store(lang)
 	tasks, e := List[Task](st, "task")
 	if e != nil {
 		st.Close()
