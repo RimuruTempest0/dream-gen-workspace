@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   NavLink,
   Navigate,
@@ -24,7 +24,7 @@ import { call, type Summary } from "./api";
 import { useData, coalesce } from "./ui";
 import { TemplatesPage } from "./Templates";
 import { SmartImages } from "./SmartImages";
-import { runStepNames } from "./RunSteps";
+import { runStepName } from "./RunSteps";
 import { LicenseBadge } from "./License";
 import { UpdateBadge } from "./Updates";
 import { Logs } from "./Logs";
@@ -33,6 +33,8 @@ import { Workbench } from "./pages/Workbench";
 import { Tasks } from "./pages/Tasks";
 import { Assets } from "./pages/Assets";
 import { Settings } from "./pages/Settings";
+import { appName, t, type MessageKey } from "./i18n";
+import { RailLanguageSwitch } from "./i18n/LanguageSwitch";
 
 // Shows the newest smart-generation run while it is unfinished: a ring filled by
 // finished images, a spinner while analyzing, a dot while waiting for input.
@@ -47,12 +49,17 @@ function SmartProgressRing() {
   if (!p?.runID) return null;
   const label =
     p.state === "analyzing"
-      ? `正在分析${p.step ? "：" + runStepNames[p.step] : ""}`
+      ? p.step
+        ? t("shell.progress.analyzingStep", { step: runStepName(p.step) })
+        : t("shell.progress.analyzing")
       : p.state === "needs_input"
-        ? "等待补充资料"
-        : p.state === "paused"
-          ? `已暂停，已完成 ${p.done} / ${p.total} 张`
-          : `生成中，已完成 ${p.done} / ${p.total} 张`;
+        ? t("shell.progress.needsInput")
+        : t(
+            p.state === "paused"
+              ? "shell.progress.paused"
+              : "shell.progress.generating",
+            { done: p.done, total: p.total },
+          );
   // The link keeps its plain name; this text is its description (aria-describedby).
   return (
     <Tooltip title={label} placement="right">
@@ -81,38 +88,44 @@ function SmartProgressRing() {
   );
 }
 // The four system pages share one entry in the rail and this row of tabs.
-const systemTabs = [
-  ["/settings", "连接"],
-  ["/monitor/gateways", "服务状态"],
-  ["/monitor/llm", "模型状态"],
-  ["/logs", "日志"],
-] as const;
+// Labels are text keys: t() runs at render, in the current language.
+const systemTabs: readonly (readonly [string, MessageKey])[] = [
+  ["/settings", "shell.system.connections"],
+  ["/monitor/gateways", "shell.system.gateways"],
+  ["/monitor/llm", "shell.system.llm"],
+  ["/logs", "shell.system.logs"],
+];
 function SystemTabs() {
   return (
-    <nav className="system-tabs" aria-label="系统">
+    <nav className="system-tabs" aria-label={t("shell.nav.system")}>
       {systemTabs.map(([path, label]) => (
         <NavLink key={path} to={path} end>
-          {label}
+          {t(label)}
         </NavLink>
       ))}
     </nav>
   );
 }
 // Three groups: make, keep, run. A null entry draws the divider between groups.
-const links = [
-  ["/", "创作", <StarOutlined aria-hidden="true" />],
-  ["/pro", "专业模式", <SlidersOutlined aria-hidden="true" />],
-  ["/templates", "模板", <FileTextOutlined aria-hidden="true" />],
+type RailLink = readonly [string, MessageKey, ReactNode];
+const links: readonly (RailLink | null)[] = [
+  ["/", "shell.nav.create", <StarOutlined aria-hidden="true" />],
+  ["/pro", "shell.nav.pro", <SlidersOutlined aria-hidden="true" />],
+  [
+    "/templates",
+    "shell.nav.templates",
+    <FileTextOutlined aria-hidden="true" />,
+  ],
   null,
-  ["/tasks", "生成记录", <ClockCircleOutlined aria-hidden="true" />],
-  ["/assets", "作品与素材", <AppstoreOutlined aria-hidden="true" />],
+  ["/tasks", "shell.nav.tasks", <ClockCircleOutlined aria-hidden="true" />],
+  ["/assets", "shell.nav.assets", <AppstoreOutlined aria-hidden="true" />],
   null,
-  ["/settings", "系统", <SettingOutlined aria-hidden="true" />],
-] as const;
+  ["/settings", "shell.nav.system", <SettingOutlined aria-hidden="true" />],
+];
 function pageName(path: string) {
-  const tab = systemTabs.find((t) => t[0] === path);
-  if (tab) return tab[1];
-  return links.find((l) => l && l[0] === path)?.[1] || "创作";
+  const tab = systemTabs.find((s) => s[0] === path);
+  if (tab) return t(tab[1]);
+  return t(links.find((l) => l && l[0] === path)?.[1] || "shell.nav.create");
 }
 export default function App() {
   const loc = useLocation();
@@ -135,12 +148,12 @@ export default function App() {
       } catch {}
       return !c;
     });
-  const inSystem = systemTabs.some((t) => t[0] === loc.pathname);
+  const inSystem = systemTabs.some((s) => s[0] === loc.pathname);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
   useEffect(() => {
-    document.title = `${pageName(loc.pathname)} · ImageWorkbench`;
+    document.title = `${pageName(loc.pathname)} · ${appName()}`;
   }, [loc.pathname]);
   useEffect(() => {
     const refresh = coalesce(() => {
@@ -151,17 +164,19 @@ export default function App() {
     const off = window.runtime?.EventsOn("tasks:changed", refresh);
     const close = window.runtime?.EventsOn("app:close-requested", () =>
       modal.confirm({
-        title: "退出并暂停本地执行？",
-        content:
-          "未提交任务会暂停。平台已收到的任务可能继续生成或扣费，重启后请核对结果。最小化窗口可继续执行。",
-        okText: "退出应用",
-        cancelText: "继续运行",
+        title: t("shell.close.title"),
+        content: t("shell.close.content"),
+        okText: t("shell.close.ok"),
+        cancelText: t("shell.close.cancel"),
         autoFocusButton: "cancel",
         onOk: () => call("ForceQuit"),
       }),
     );
     const err = window.runtime?.EventsOn("files:error", (message: string) =>
-      notification.error({ message: "参考图未导入", description: message }),
+      notification.error({
+        message: t("shell.drop.failed"),
+        description: message,
+      }),
     );
     return () => {
       off?.();
@@ -177,15 +192,17 @@ export default function App() {
             <circle cx="14" cy="14" r="12.5" />
             <path d="M14 1.5a12.5 12.5 0 0 1 0 25c4-3.5 6-7.7 6-12.5s-2-9-6-12.5z" />
           </svg>
-          <span className="rail-wordmark">生图工作台</span>
+          <span className="rail-wordmark">{appName()}</span>
           <Tooltip
-            title={collapsed ? "展开侧栏" : "收起侧栏"}
+            title={t(collapsed ? "shell.rail.expand" : "shell.rail.collapse")}
             placement="right"
           >
             <button
               type="button"
               className="rail-toggle"
-              aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+              aria-label={t(
+                collapsed ? "shell.rail.expand" : "shell.rail.collapse",
+              )}
               aria-expanded={!collapsed}
               onClick={toggleRail}
             >
@@ -197,12 +214,12 @@ export default function App() {
             </button>
           </Tooltip>
         </div>
-        <nav aria-label="主导航">
+        <nav aria-label={t("shell.nav.label")}>
           {links.map((l, i) =>
             l ? (
               <Tooltip
                 key={l[0]}
-                title={collapsed ? l[1] : undefined}
+                title={collapsed ? t(l[1]) : undefined}
                 placement="right"
               >
                 <NavLink
@@ -219,7 +236,7 @@ export default function App() {
                   }
                 >
                   {l[2]}
-                  <span className="rail-label">{l[1]}</span>
+                  <span className="rail-label">{t(l[1])}</span>
                   {l[0] === "/tasks" && !!summary.data?.active && (
                     <span className="count">{summary.data.active}</span>
                   )}
@@ -234,8 +251,11 @@ export default function App() {
           <SmartProgressRing />
           <LicenseBadge tooltip={collapsed} />
           <UpdateBadge tooltip={collapsed} />
+          <RailLanguageSwitch tooltip={collapsed} />
           <small className="rail-version">
-            版本 {summary.data?.version || "0.7.39"}，数据保存在本机
+            {t("shell.rail.version", {
+              version: summary.data?.version || "0.7.39",
+            })}
           </small>
         </div>
       </aside>
@@ -256,8 +276,8 @@ export default function App() {
             <Route
               path="*"
               element={
-                <Empty description="页面不存在">
-                  <NavLink to="/">返回创作</NavLink>
+                <Empty description={t("shell.notFound")}>
+                  <NavLink to="/">{t("shell.notFound.back")}</NavLink>
                 </Empty>
               }
             />

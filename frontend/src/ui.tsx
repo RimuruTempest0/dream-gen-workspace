@@ -22,6 +22,7 @@ import {
 } from "antd";
 import { EyeOutlined, EyeInvisibleOutlined } from "@ant-design/icons";
 import { call, errorText, stateNames, type Asset, type Task } from "./api";
+import { formatDateTime, formatTime } from "./i18n";
 
 export function useData<T>(
   key: unknown[],
@@ -803,22 +804,10 @@ export function ImageViewer({
 }
 /** Date and time with the year, for dates that matter beyond this year (expiry). */
 export function dateTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatDateTime(value);
 }
 
+/** Month, day and time in the interface language. */
 export function time(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatTime(value);
 }

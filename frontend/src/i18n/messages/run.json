@@ -1,0 +1,42 @@
+{
+  "zh-CN": {
+    "run.step.prepare": "准备素材",
+    "run.step.product": "读取商品页",
+    "run.step.images": "保存商品图",
+    "run.step.references": "分析资料和参考图",
+    "run.step.plan": "规划套图",
+    "run.step.submit": "提交生成"
+  },
+  "en": {
+    "run.step.prepare": "Preparing materials",
+    "run.step.product": "Reading the product page",
+    "run.step.images": "Saving product images",
+    "run.step.references": "Analyzing details and references",
+    "run.step.plan": "Planning the image set",
+    "run.step.submit": "Submitting"
+  },
+  "vi": {
+    "run.step.prepare": "Chuẩn bị tư liệu",
+    "run.step.product": "Đọc trang sản phẩm",
+    "run.step.images": "Lưu ảnh sản phẩm",
+    "run.step.references": "Phân tích tư liệu và ảnh tham chiếu",
+    "run.step.plan": "Lên kế hoạch bộ ảnh",
+    "run.step.submit": "Gửi yêu cầu tạo ảnh"
+  },
+  "ja": {
+    "run.step.prepare": "素材を準備",
+    "run.step.product": "商品ページを読み込み",
+    "run.step.images": "商品画像を保存",
+    "run.step.references": "資料と参考画像を分析",
+    "run.step.plan": "画像セットを計画",
+    "run.step.submit": "生成を送信"
+  },
+  "ko": {
+    "run.step.prepare": "소재 준비",
+    "run.step.product": "상품 페이지 읽기",
+    "run.step.images": "상품 이미지 저장",
+    "run.step.references": "자료와 참고 이미지 분석",
+    "run.step.plan": "이미지 세트 계획",
+    "run.step.submit": "생성 요청"
+  }
+}

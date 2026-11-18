@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckOutlined, LoadingOutlined } from "@ant-design/icons";
 import type { AgentRun, RunProgress, RunStep } from "./agent-api";
+import { t, type MessageKey } from "./i18n";
 
-export const runStepNames: Record<RunStep, string> = {
-  prepare: "准备素材",
-  product: "读取商品页",
-  images: "保存商品图",
-  references: "分析资料和参考图",
-  plan: "规划套图",
-  submit: "提交生成",
+const runStepKeys: Record<RunStep, MessageKey> = {
+  prepare: "run.step.prepare",
+  product: "run.step.product",
+  images: "run.step.images",
+  references: "run.step.references",
+  plan: "run.step.plan",
+  submit: "run.step.submit",
 };
+export function runStepName(step: RunStep): string {
+  return runStepKeys[step] ? t(runStepKeys[step]) : "";
+}
 
 // A reply with no new text for this long says so, to tell slow from stuck.
 const replyQuietMS = 30_000;
@@ -17,7 +21,7 @@ const replyQuietMS = 30_000;
 export function runStepLabel(p: RunProgress) {
   return p.step === "product" && p.productVia === "browser"
     ? "正在用浏览器读取商品页"
-    : runStepNames[p.step] || "处理中";
+    : runStepName(p.step) || "处理中";
 }
 
 function span(ms: number) {
@@ -103,7 +107,7 @@ export function RunSteps({ run }: { run: AgentRun }) {
                   <span className="run-step-dot" />
                 )}
               </span>
-              <strong>{runStepNames[step]}</strong>
+              <strong>{runStepName(step)}</strong>
               {(detail || active) && (
                 <small>
                   {detail}
