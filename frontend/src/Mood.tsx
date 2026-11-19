@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { useData } from "./ui";
 import { MoodGlyph } from "./MoodGlyphs";
+import { t, useI18n, type MessageKey } from "./i18n";
 
 // ---- mood guide (0.7.26) -----------------------------------------------------
 // The user does not describe a feeling: they pick a weather, a time of day, a
@@ -17,16 +18,28 @@ import { MoodGlyph } from "./MoodGlyphs";
 // into the image's atmosphere at generation time.
 
 type StepKey = keyof MoodChoice;
-const steps: { key: StepKey; name: string; title: string }[] = [
-  { key: "weather", name: "天气", title: "此刻更像哪种天气？" },
-  { key: "time", name: "时刻", title: "更像一天里的什么时候？" },
-  { key: "distance", name: "远近", title: "你想离它多远？" },
-  { key: "expectation", name: "期待", title: "你希望这张图怎样？" },
+// Text keys, read with t() at render time.
+const steps: { key: StepKey; name: MessageKey; title: MessageKey }[] = [
+  { key: "weather", name: "mood.step.weather", title: "mood.question.weather" },
+  { key: "time", name: "mood.step.time", title: "mood.question.time" },
+  {
+    key: "distance",
+    name: "mood.step.distance",
+    title: "mood.question.distance",
+  },
+  {
+    key: "expectation",
+    name: "mood.step.expectation",
+    title: "mood.question.expectation",
+  },
 ];
 const confirmStep = steps.length;
 
+// The backend serves the options in the interface language (0.8.0), so the
+// cached library is per language.
 export function useMoods() {
-  return useData<MoodLibrary>(["moods"], "ListMoods");
+  const { lang } = useI18n();
+  return useData<MoodLibrary>(["moods", lang], "ListMoods");
 }
 
 function optionsOf(lib: MoodLibrary, key: StepKey): MoodOption[] {
@@ -50,9 +63,18 @@ export function moodLabel(lib: MoodLibrary | undefined, m?: MoodChoice) {
 
 // The plain sentence on the confirmation screen, built locally from the phrases.
 export function moodSentence(lib: MoodLibrary, m: MoodChoice) {
-  const [w, t, d, e] = steps.map((s) => find(lib, s.key, m[s.key]));
-  if (!w || !t || !d || !e) return "";
-  return `此刻像一个${t.phrase}，${w.phrase}。你想${d.phrase}，让这张图${e.phrase}。`;
+  const [w, tm, d, e] = steps.map((s) => find(lib, s.key, m[s.key]));
+  if (!w || !tm || !d || !e) return "";
+  const parts: Record<string, string> = {
+    time: tm.phrase,
+    weather: w.phrase,
+    distance: d.phrase,
+    expectation: e.phrase,
+  };
+  return lib.sentence.replace(
+    /\{(\w+)\}/g,
+    (all, k: string) => parts[k] ?? all,
+  );
 }
 
 // Above the concept entry while the guide mode is on.
@@ -86,8 +108,8 @@ export function MoodBar({
             <MoodGlyph id="thin-cloud" />
           </span>
           <span className="mood-entry-copy">
-            <strong>心境</strong>
-            <span>挑几样东西，让图更像此刻的你</span>
+            <strong>{t("mood.name")}</strong>
+            <span>{t("mood.entry.hint")}</span>
           </span>
           <ArrowRightOutlined aria-hidden="true" />
         </button>
@@ -99,7 +121,7 @@ export function MoodBar({
         <MoodGlyph id={mood!.weather} />
       </span>
       <span className="mood-current">
-        <span className="mood-current-kicker">心境</span>
+        <span className="mood-current-kicker">{t("mood.name")}</span>
         <strong>{label}</strong>
       </span>
       <span className="mood-bar-actions">
@@ -110,10 +132,10 @@ export function MoodBar({
           disabled={disabled}
           aria-haspopup="dialog"
         >
-          更换
+          {t("mood.change")}
         </Button>
         <Button size="small" onClick={onClear}>
-          清除
+          {t("mood.clear")}
         </Button>
       </span>
     </div>
@@ -188,11 +210,11 @@ export function MoodGuide({
   const body = library.error ? (
     <Alert
       type="error"
-      message="选项读取失败"
+      message={t("mood.loadFailed")}
       description={errorText(library.error)}
     />
   ) : !lib ? (
-    <p className="mood-loading">正在读取</p>
+    <p className="mood-loading">{t("mood.loading")}</p>
   ) : current ? (
     <section
       className={`mood-step mood-step-${entry}`}
@@ -204,7 +226,7 @@ export function MoodGuide({
         {String(steps.length).padStart(2, "0")}
       </p>
       <h3 id="mood-q" className="mood-question" ref={heading} tabIndex={-1}>
-        {current.title}
+        {t(current.title)}
       </h3>
       <div
         className={`mood-options mood-options-${optionsOf(lib, current.key).length}`}
@@ -231,12 +253,12 @@ export function MoodGuide({
       aria-labelledby="mood-q"
     >
       <p className="mood-kicker" aria-hidden="true">
-        就是这样吗
+        {t("mood.confirm.kicker")}
       </p>
       <h3 id="mood-q" className="mood-sentence" ref={heading} tabIndex={-1}>
         {moodSentence(lib, draft)}
       </h3>
-      <ul className="mood-picks" aria-label="已选，点一项可以改">
+      <ul className="mood-picks" aria-label={t("mood.picks")}>
         {steps.map((s, i) => {
           const o = find(lib, s.key, draft[s.key]);
           return (
@@ -248,10 +270,13 @@ export function MoodGuide({
                   setRevisit(true);
                   goto(i);
                 }}
-                aria-label={`${s.name}：${o?.name}，点按更改`}
+                aria-label={t("mood.pick.change", {
+                  step: t(s.name),
+                  name: o?.name ?? "",
+                })}
               >
                 <MoodGlyph id={o?.id || ""} />
-                <span className="mood-pick-step">{s.name}</span>
+                <span className="mood-pick-step">{t(s.name)}</span>
                 <span className="mood-pick-name">{o?.name}</span>
               </button>
             </li>
@@ -268,7 +293,7 @@ export function MoodGuide({
           icon={<ArrowLeftOutlined aria-hidden="true" />}
           onClick={() => goto(step - 1)}
         >
-          上一步
+          {t("mood.back")}
         </Button>
       ) : step === confirmStep ? (
         <Button
@@ -279,7 +304,7 @@ export function MoodGuide({
             goto(0);
           }}
         >
-          重新挑
+          {t("mood.restart")}
         </Button>
       ) : (
         <span />
@@ -293,10 +318,10 @@ export function MoodGuide({
             onApply(draft);
           }}
         >
-          就用这个心境
+          {t("mood.apply")}
         </Button>
       ) : (
-        <span className="mood-footer-note">点一下就到下一步</span>
+        <span className="mood-footer-note">{t("mood.next.note")}</span>
       )}
     </div>
   );
@@ -310,9 +335,9 @@ export function MoodGuide({
       placement="right"
       width={560}
       rootClassName="mood-guide"
-      aria-label="心境引导"
+      aria-label={t("mood.guide")}
       title={
-        <nav aria-label="心境引导步骤">
+        <nav aria-label={t("mood.guide.steps")}>
           <ol className="mood-progress">
             {steps.map((s, i) => {
               const reachable = !!draft[s.key] || i <= step;
@@ -330,7 +355,7 @@ export function MoodGuide({
                     }}
                   >
                     <span className="mood-progress-line" aria-hidden="true" />
-                    {s.name}
+                    {t(s.name)}
                   </button>
                 </li>
               );
@@ -345,7 +370,7 @@ export function MoodGuide({
                 onClick={() => goto(confirmStep)}
               >
                 <span className="mood-progress-line" aria-hidden="true" />
-                确认
+                {t("mood.step.confirm")}
               </button>
             </li>
           </ol>
@@ -365,7 +390,7 @@ export function MoodTags({ task }: { task: Task }) {
   const rendering = lib?.renderings.find((r) => r.id === task.rendering);
   return (
     <>
-      <span className="mood-tag" title="心境">
+      <span className="mood-tag" title={t("mood.name")}>
         {task.mood}
       </span>
       {rendering && <span className="mood-tag">{rendering.name}</span>}
@@ -386,9 +411,9 @@ export function MoodNudges({
   if (!lib) return null;
   const pairs = [0, 2, 4].map((i) => lib.nudges.slice(i, i + 2));
   return (
-    <div className="mood-nudges" role="group" aria-label="再靠近一点">
+    <div className="mood-nudges" role="group" aria-label={t("mood.nudges")}>
       <span className="mood-nudges-title" aria-hidden="true">
-        再靠近一点
+        {t("mood.nudges")}
       </span>
       {pairs.map((pair) => (
         <span className="mood-nudge-pair" key={pair[0]?.id}>

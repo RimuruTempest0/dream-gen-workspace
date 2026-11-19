@@ -12,15 +12,23 @@ import {
 } from "./api";
 import { useData } from "./ui";
 import { ConceptGlyph } from "./ConceptGlyphs";
+import { t, useI18n, type MessageKey } from "./i18n";
 
 // ---- concept stage (0.7.18) ---------------------------------------------------
 // A form and one to three stances; the backend's LLM writes them into the prompt.
 
-const strengths = [
-  { value: 0, label: "点缀" },
-  { value: 1, label: "平衡" },
-  { value: 2, label: "主导" },
+const strengths: { value: number; label: MessageKey }[] = [
+  { value: 0, label: "concept.strength.accent" },
+  { value: 1, label: "concept.strength.balanced" },
+  { value: 2, label: "concept.strength.dominant" },
 ];
+
+// The backend serves names in the interface language (0.8.0), so the cached
+// library is per language.
+export function useConceptLibrary() {
+  const { lang } = useI18n();
+  return useData<ConceptLibrary>(["concepts", lang], "ListConcepts");
+}
 
 // "巨物 × 浪漫主义 / 极简主义" for the labels of one compose.
 export function conceptSummary(labels: string[]) {
@@ -62,14 +70,14 @@ export function ConceptBar({
             <ConceptGlyph id="vault" />
           </span>
           <span className="concept-entry-copy">
-            <strong>概念</strong>
-            <span>给画面一个形体和立场</span>
+            <strong>{t("concept.name")}</strong>
+            <span>{t("concept.entry.hint")}</span>
           </span>
           <ArrowRightOutlined aria-hidden="true" />
         </button>
         {canUndo && (
           <Button type="link" size="small" onClick={onUndo}>
-            撤销改写
+            {t("concept.undo")}
           </Button>
         )}
       </div>
@@ -80,13 +88,13 @@ export function ConceptBar({
         <ConceptGlyph id="vault" />
       </span>
       <span className="concept-current">
-        <span className="concept-current-kicker">概念</span>
+        <span className="concept-current-kicker">{t("concept.name")}</span>
         <strong>{conceptSummary(labels)}</strong>
       </span>
       <span className="concept-bar-actions">
         {canUndo && (
           <Button type="link" size="small" onClick={onUndo}>
-            撤销改写
+            {t("concept.undo")}
           </Button>
         )}
         <Button
@@ -96,10 +104,10 @@ export function ConceptBar({
           disabled={disabled}
           aria-haspopup="dialog"
         >
-          更换
+          {t("concept.change")}
         </Button>
         <Button size="small" onClick={onClear}>
-          清除
+          {t("concept.clear")}
         </Button>
       </span>
     </div>
@@ -127,7 +135,10 @@ function ConceptCard({
     >
       <ConceptGlyph id={concept.id} />
       <span className="concept-card-name">{concept.name}</span>
-      <span className="concept-card-en">{concept.en}</span>
+      {/* The English subtitle, unless the name already is it. */}
+      {concept.en.toLowerCase() !== concept.name.toLowerCase() && (
+        <span className="concept-card-en">{concept.en}</span>
+      )}
       {selected && order !== undefined && (
         <span className="concept-card-order" aria-hidden="true">
           {order}
@@ -168,7 +179,7 @@ export function ConceptStage({
   // now; it joins the mood's rewrite at generation time.
   onPick?: (choice: ConceptChoice) => void;
 }) {
-  const library = useData<ConceptLibrary>(["concepts"], "ListConcepts");
+  const library = useConceptLibrary();
   const [form, setForm] = useState("");
   const [stances, setStances] = useState<string[]>([]);
   const [strength, setStrength] = useState<number | null>(null);
@@ -243,7 +254,7 @@ export function ConceptStage({
         <span className="concept-times" aria-hidden="true">
           ×
         </span>
-        <span className="sr-only">与</span>
+        <span className="sr-only">{t("concept.and")}</span>
         {stanceCards.map((c) => c.name).join(" / ")}
       </>
     ) : formCard ? (
@@ -252,10 +263,14 @@ export function ConceptStage({
         <span className="concept-times" aria-hidden="true">
           ×
         </span>
-        <span className="concept-placeholder">选一个立场</span>
+        <span className="concept-placeholder">
+          {t("concept.placeholder.stance")}
+        </span>
       </>
     ) : (
-      <span className="concept-placeholder">选一个形体，再选一到三个立场</span>
+      <span className="concept-placeholder">
+        {t("concept.placeholder.form")}
+      </span>
     );
   const footer = (
     <div className="concept-footer">
@@ -280,16 +295,19 @@ export function ConceptStage({
         <Alert
           type="error"
           showIcon
-          message="改写没有成功，提示词未改动"
+          message={t("concept.failed")}
           description={error}
         />
       )}
       <div className="concept-actions">
         <div className="concept-strength">
-          <span id="concept-strength-label">概念强度</span>
+          <span id="concept-strength-label">{t("concept.strength")}</span>
           <Segmented
             aria-labelledby="concept-strength-label"
-            options={strengths}
+            options={strengths.map((s) => ({
+              value: s.value,
+              label: t(s.label),
+            }))}
             value={level}
             onChange={(v) => setStrength(Number(v))}
           />
@@ -305,23 +323,18 @@ export function ConceptStage({
           onClick={compose}
         >
           {onPick
-            ? "选用这个概念"
+            ? t("concept.use")
             : busy
-              ? "正在改写…"
+              ? t("concept.busy")
               : stanceCards.length > 1
-                ? `生成 ${stanceCards.length} 条对比提示词`
-                : "融入提示词"}
+                ? t("concept.compare", { n: stanceCards.length })
+                : t("concept.blend")}
         </Button>
       </div>
       {onPick ? (
-        <p className="concept-note">
-          选用后提示词不变：生成时由 AI 模型把概念和心境一起写进提示词。
-        </p>
+        <p className="concept-note">{t("concept.note.pick")}</p>
       ) : (
-        <p className="concept-note">
-          由 AI 模型改写提示词，不生成图片、不产生生图费用；未配置 AI 模型
-          时直接附加概念要点。
-        </p>
+        <p className="concept-note">{t("concept.note.compose")}</p>
       )}
     </div>
   );
@@ -335,14 +348,12 @@ export function ConceptStage({
       placement="right"
       width={720}
       rootClassName="concept-stage"
-      aria-label="概念台"
+      aria-label={t("concept.stage")}
       title={
         <div className="concept-stage-heading">
-          <span className="concept-stage-title">概念台</span>
+          <span className="concept-stage-title">{t("concept.stage")}</span>
           <span className="concept-stage-sub">
-            {onPick
-              ? "Concept stage · 选一个形体，配一个立场"
-              : "Concept stage · 选一个形体，配一到三个立场"}
+            {onPick ? t("concept.stage.sub.one") : t("concept.stage.sub.many")}
           </span>
         </div>
       }
@@ -351,16 +362,16 @@ export function ConceptStage({
       {library.error ? (
         <Alert
           type="error"
-          message="概念库读取失败"
+          message={t("concept.loadFailed")}
           description={errorText(library.error)}
         />
       ) : !lib ? (
-        <p className="concept-loading">正在读取概念库</p>
+        <p className="concept-loading">{t("concept.loading")}</p>
       ) : (
         <>
           <section className="concept-section" aria-labelledby="concept-picks">
             <h3 id="concept-picks" className="concept-section-title">
-              精选组合
+              {t("concept.picks")}
             </h3>
             <div className="concept-picks">
               {lib.picks.map((p) => {
@@ -394,8 +405,8 @@ export function ConceptStage({
                 className="concept-pick concept-random"
                 onClick={random}
               >
-                <strong>随机一组</strong>
-                <span>换个思路</span>
+                <strong>{t("concept.random")}</strong>
+                <span>{t("concept.random.hint")}</span>
               </button>
             </div>
           </section>
@@ -405,14 +416,14 @@ export function ConceptStage({
               aria-labelledby="concept-forms"
             >
               <h3 id="concept-forms" className="concept-section-title">
-                形体 <span>选 1 个</span>
+                {t("concept.forms")} <span>{t("concept.pickOne")}</span>
               </h3>
               {groupsOf(lib.forms).map((g) => (
                 <div
                   className="concept-group"
                   key={g.group}
                   role="group"
-                  aria-label={"形体 · " + g.group}
+                  aria-label={t("concept.formGroup", { group: g.group })}
                 >
                   <span className="concept-group-name" aria-hidden="true">
                     {g.group}
@@ -438,14 +449,17 @@ export function ConceptStage({
               aria-labelledby="concept-stances"
             >
               <h3 id="concept-stances" className="concept-section-title">
-                立场 <span>{onPick ? "选 1 个" : "最多 3 个"}</span>
+                {t("concept.stances")}{" "}
+                <span>
+                  {onPick ? t("concept.pickOne") : t("concept.upToThree")}
+                </span>
               </h3>
               {groupsOf(lib.stances).map((g) => (
                 <div
                   className="concept-group"
                   key={g.group}
                   role="group"
-                  aria-label={"立场 · " + g.group}
+                  aria-label={t("concept.stanceGroup", { group: g.group })}
                 >
                   <span className="concept-group-name" aria-hidden="true">
                     {g.group}

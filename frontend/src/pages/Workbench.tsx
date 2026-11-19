@@ -60,7 +60,7 @@ import {
 import { TemplateBar, type TemplateMode } from "../Templates";
 import { LicenseNotice } from "../License";
 import { gatewayLabel, useGateways } from "../Gateways";
-import { ConceptBar, ConceptStage } from "../Concepts";
+import { ConceptBar, ConceptStage, useConceptLibrary } from "../Concepts";
 import { MoodBar, MoodGuide, MoodNudges, MoodTags } from "../Mood";
 
 // What the prompt box held before a concept rewrite, and what the rewrite put there.
@@ -120,7 +120,7 @@ export function Workbench() {
   const guideOn = !!guideMode.data;
   const [guideOpen, setGuideOpen] = useState(false);
   const moodEntry = useRef<HTMLButtonElement>(null);
-  const conceptLib = useData<ConceptLibrary>(["concepts"], "ListConcepts");
+  const conceptLib = useConceptLibrary();
   useEffect(() => {
     if (ready)
       latestDraft.current = {

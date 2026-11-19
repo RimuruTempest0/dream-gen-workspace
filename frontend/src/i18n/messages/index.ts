@@ -6,11 +6,15 @@
 // both lines). internal/i18n/messages_test.go checks every table.
 import shell from "./shell.json";
 import run from "./run.json";
+import mood from "./mood.json";
+import concept from "./concept.json";
 
 // prettier-ignore
 export const areas = [
   shell,
   run,
+  mood,
+  concept,
 ] as const;
 
 type Area = (typeof areas)[number];

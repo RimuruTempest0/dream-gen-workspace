@@ -41,6 +41,9 @@ type MoodLibrary struct {
 	Expectation []MoodOption `json:"expectation"`
 	Renderings  []MoodOption `json:"renderings"`
 	Nudges      []MoodOption `json:"nudges"`
+	// Sentence is the confirmation screen's template with {time} {weather}
+	// {distance} {expectation}, filled with the options' phrases.
+	Sentence string `json:"sentence"`
 }
 
 // MoodChoice is the mood the user picked (option IDs).
@@ -180,16 +183,10 @@ var moodNudges = []MoodOption{
 	{ID: "farther", Name: "更远", Short: "更远", Rules: "镜头往后退一步：主体在画面里更小，露出更多周围的环境和天空。"},
 }
 
-// ListMoods returns the built-in mood library (compiled in, not stored).
+// ListMoods returns the built-in mood library (compiled in, not stored) in the
+// current interface language.
 func (s *Service) ListMoods() MoodLibrary {
-	return MoodLibrary{
-		Weather:     append([]MoodOption{}, moodWeather...),
-		Time:        append([]MoodOption{}, moodTime...),
-		Distance:    append([]MoodOption{}, moodDistance...),
-		Expectation: append([]MoodOption{}, moodExpectation...),
-		Renderings:  append([]MoodOption{}, moodRenderings...),
-		Nudges:      append([]MoodOption{}, moodNudges...),
-	}
+	return moodLibraryIn(s.Language())
 }
 
 func findMood(list []MoodOption, id string) (MoodOption, bool) {
@@ -240,13 +237,7 @@ func resolveConceptChoice(c *ConceptChoice) (*conceptParts, error) {
 }
 
 // moodLabel is the short label shown on results: "细雨 · 深夜 · 很远 · 缓一缓".
-func moodLabel(m MoodChoice) string {
-	p, e := resolveMood(m)
-	if e != nil {
-		return ""
-	}
-	return strings.Join([]string{p.weather.Short, p.time.Short, p.distance.Short, p.expectation.Short}, " · ")
-}
+func moodLabel(m MoodChoice) string { return moodLabelIn(m, "zh-CN") }
 
 const (
 	rewordMood = "mood"
@@ -381,9 +372,11 @@ func (s *Service) moodLLMLocked(t Task) (Connection, string, bool) {
 // appended.
 func (s *Service) prepareMoodTask(t *Task, m moodParts, concept *conceptParts, llm bool) {
 	t.BasePrompt = t.Prompt
-	t.Mood = moodLabel(*t.MoodChoice)
+	// Stored labels keep the language they were written in (ADR 0004).
+	lang := s.Language()
+	t.Mood = moodLabelIn(*t.MoodChoice, lang)
 	if concept != nil {
-		t.Concept = concept.form.Name + " × " + concept.stance.Name
+		t.Concept = conceptLabelIn(concept.form, concept.stance, lang)
 	}
 	if llm {
 		t.Rewording, t.RewordFor = true, rewordMood
@@ -486,7 +479,7 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	t := freshAttempt(source, c)
 	t.References = []string{in.AssetID}
 	t.Prompt = nudgePrompt(source.Prompt, nudge.Rules)
-	t.NudgeOf, t.Nudge = source.ID, nudge.Name
+	t.NudgeOf, t.Nudge = source.ID, moodIn(nudge, s.Language()).Name
 	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
 		return "", e
 	}
