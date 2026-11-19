@@ -65,6 +65,9 @@ export type MoodLibrary = {
   expectation: MoodOption[];
   renderings: MoodOption[];
   nudges: MoodOption[];
+  // The confirmation sentence in the interface language, with {time}
+  // {weather} {distance} {expectation} for the options' phrases.
+  sentence: string;
 };
 export type NudgeInput = {
   requestID: string;

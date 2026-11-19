@@ -221,13 +221,10 @@ var conceptPicks = []ConceptPick{
 	{Name: "秩序", Form: "hive", Stance: "constructivism"},
 }
 
-// ListConcepts returns the built-in library (compiled in, not stored in the data folder).
+// ListConcepts returns the built-in library (compiled in, not stored in the
+// data folder) in the current interface language.
 func (s *Service) ListConcepts() ConceptLibrary {
-	return ConceptLibrary{
-		Forms:   append([]Concept{}, conceptForms...),
-		Stances: append([]Concept{}, conceptStances...),
-		Picks:   append([]ConceptPick{}, conceptPicks...),
-	}
+	return conceptLibraryIn(s.Language())
 }
 
 func findConcept(list []Concept, id string) (Concept, bool) {
@@ -350,7 +347,7 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 	single := len(stances) == 1
 	result := ConceptResult{Prompts: make([]string, len(stances)), Labels: make([]string, len(stances))}
 	for i, st := range stances {
-		result.Labels[i] = form.Name + " × " + st.Name
+		result.Labels[i] = conceptLabelIn(form, st, lang)
 	}
 
 	// Same licence check as the start of a smart generation: an expired or invalid

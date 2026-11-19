@@ -17,6 +17,8 @@ import monitor from "./monitor.json";
 import logs from "./logs.json";
 import templates from "./templates.json";
 import shopRules from "./shopRules.json";
+import mood from "./mood.json";
+import concept from "./concept.json";
 
 // prettier-ignore
 export const areas = [
@@ -33,6 +35,8 @@ export const areas = [
   logs,
   templates,
   shopRules,
+  mood,
+  concept,
 ] as const;
 
 type Area = (typeof areas)[number];
