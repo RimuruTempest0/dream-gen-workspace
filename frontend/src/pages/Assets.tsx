@@ -24,6 +24,7 @@ import {
   assetLabel,
   time,
 } from "../ui";
+import { t } from "../i18n";
 
 export function Assets() {
   const downloads = useImageDownloads();
@@ -76,11 +77,11 @@ export function Assets() {
     await actions.run(async () => {
       const path = await call<string>(
         "ChooseExportPath",
-        `素材-${ids.length}张.zip`,
+        t("assets.zipName", { count: String(ids.length) }),
       );
       if (!path) return;
       const count = await call<number>("ExportAssetsToPath", ids, path);
-      notification.success({ message: `已导出素材 ZIP（${count} 张）` });
+      notification.success({ message: t("assets.exported", { count }) });
     });
   }
   async function useReference(a: Asset) {
@@ -99,13 +100,10 @@ export function Assets() {
   }
   return (
     <>
-      <Header
-        title="作品与素材"
-        sub="生成的图片和参考图都保存在本机，随时预览、导出或再次使用。"
-      />
+      <Header title={t("shell.nav.assets")} sub={t("assets.sub")} />
       <section className="panel works-panel">
         <div className="panel-heading">
-          <h2>{q.data?.total || 0} 张本地图片</h2>
+          <h2>{t("assets.count", { count: q.data?.total || 0 })}</h2>
           <Space wrap>
             {!selecting && (
               <Button
@@ -113,7 +111,7 @@ export function Assets() {
                 disabled={!items.length}
                 onClick={() => setSelecting(true)}
               >
-                批量管理
+                {t("assets.batch")}
               </Button>
             )}
           </Space>
@@ -122,9 +120,11 @@ export function Assets() {
           <div
             className="asset-batch-bar"
             role="toolbar"
-            aria-label="批量管理素材"
+            aria-label={t("assets.batchBar")}
           >
-            <strong aria-live="polite">已选 {chosen.length} 张</strong>
+            <strong aria-live="polite">
+              {t("assets.picked", { count: chosen.length })}
+            </strong>
             <Button
               size="small"
               onClick={() =>
@@ -133,7 +133,9 @@ export function Assets() {
                 )
               }
             >
-              {allPicked ? "取消全选" : `全选已加载（${items.length} 张）`}
+              {allPicked
+                ? t("assets.unselectAll")
+                : t("assets.selectAll", { count: items.length })}
             </Button>
             <Button
               size="small"
@@ -141,7 +143,7 @@ export function Assets() {
               disabled={!chosen.length || actions.busy}
               onClick={exportChosen}
             >
-              导出 ZIP
+              {t("assets.exportZip")}
             </Button>
             <Button
               size="small"
@@ -150,8 +152,8 @@ export function Assets() {
               disabled={!chosen.length || actions.busy}
               onClick={() =>
                 actions.confirm(
-                  `移除 ${ids.length} 张图片？`,
-                  "图片会从列表隐藏，文件和任务引用仍保留。",
+                  t("assets.removeMany", { count: ids.length }),
+                  t("assets.removeBody"),
                   async () => {
                     setLeaving(new Set(ids));
                     try {
@@ -168,20 +170,20 @@ export function Assets() {
                 )
               }
             >
-              移除
+              {t("assets.remove")}
             </Button>
             <Button size="small" type="text" onClick={stopSelecting}>
-              完成
+              {t("assets.done")}
             </Button>
           </div>
         )}
         <DataState
           query={q}
           empty={!q.data?.items.length}
-          emptyText="还没有本地图片"
+          emptyText={t("assets.empty")}
           action={
             <Button type="primary" onClick={() => nav("/")}>
-              去生成图片
+              {t("assets.goGenerate")}
             </Button>
           }
         >
@@ -199,7 +201,7 @@ export function Assets() {
                   <button
                     className="image-button asset-pick"
                     onClick={() => toggle(a.id)}
-                    aria-label={`选择 ${assetLabel(a)}`}
+                    aria-label={t("assets.select", { name: assetLabel(a) })}
                     aria-pressed={picked.has(a.id)}
                   >
                     <AssetImage id={a.id} />
@@ -211,7 +213,7 @@ export function Assets() {
                   <button
                     className="image-button"
                     onClick={() => setDetail(a)}
-                    aria-label={`预览 ${assetLabel(a)}`}
+                    aria-label={t("assets.preview", { name: assetLabel(a) })}
                   >
                     <AssetImage id={a.id} />
                   </button>
@@ -222,17 +224,19 @@ export function Assets() {
                   </strong>
                   <small>
                     {a.width} × {a.height} ·{" "}
-                    {a.kind === "reference" ? "参考图" : "生成图片"}
+                    {a.kind === "reference"
+                      ? t("assets.reference")
+                      : t("assets.generated")}
                   </small>
                   <Space className="asset-card-actions">
                     <Button size="small" onClick={() => useReference(a)}>
-                      作为参考图
+                      {t("assets.asRef")}
                     </Button>
-                    <Tooltip title="导出原图">
+                    <Tooltip title={t("assets.exportOriginal")}>
                       <Button
                         size="small"
                         icon={<DownloadOutlined aria-hidden="true" />}
-                        aria-label="导出原图"
+                        aria-label={t("assets.exportOriginal")}
                         onClick={() =>
                           actions.run(
                             () =>
@@ -257,14 +261,14 @@ export function Assets() {
                 onClick={() => pages.fetchNextPage()}
                 loading={q.isFetching}
               >
-                加载更多
+                {t("assets.loadMore")}
               </Button>
             </div>
           )}
         </DataState>
       </section>
       <Modal
-        title="图片详情"
+        title={t("assets.detail")}
         open={!!detail}
         onCancel={() => setDetail(null)}
         footer={null}
@@ -282,15 +286,15 @@ export function Assets() {
                 disabled={downloads.busy}
                 onClick={() => downloads.downloadAsset(detail.id)}
               >
-                导出原图
+                {t("assets.exportOriginal")}
               </Button>
               <Button
                 danger
                 icon={<DeleteOutlined aria-hidden="true" />}
                 onClick={() =>
                   actions.confirm(
-                    "移除这张图片？",
-                    "图片会从列表隐藏，文件和任务引用仍保留。",
+                    t("assets.removeOne"),
+                    t("assets.removeBody"),
                     async () => {
                       await call(
                         "UpdateAsset",
@@ -304,7 +308,7 @@ export function Assets() {
                   )
                 }
               >
-                移除
+                {t("assets.remove")}
               </Button>
             </Space>
           </>

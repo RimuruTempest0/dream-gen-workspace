@@ -19,6 +19,9 @@ import templates from "./templates.json";
 import shopRules from "./shopRules.json";
 import mood from "./mood.json";
 import concept from "./concept.json";
+import workbench from "./workbench.json";
+import tasks from "./tasks.json";
+import assets from "./assets.json";
 
 // prettier-ignore
 export const areas = [
@@ -37,6 +40,9 @@ export const areas = [
   shopRules,
   mood,
   concept,
+  workbench,
+  tasks,
+  assets,
 ] as const;
 
 type Area = (typeof areas)[number];
