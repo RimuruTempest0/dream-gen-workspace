@@ -1936,6 +1936,7 @@ export namespace core {
 	    available: boolean;
 	    version?: string;
 	    notes?: string;
+	    notesLang?: string;
 	    size?: number;
 	    stage?: string;
 	    installing?: boolean;
@@ -1957,6 +1958,7 @@ export namespace core {
 	        this.available = source["available"];
 	        this.version = source["version"];
 	        this.notes = source["notes"];
+	        this.notesLang = source["notesLang"];
 	        this.size = source["size"];
 	        this.stage = source["stage"];
 	        this.installing = source["installing"];

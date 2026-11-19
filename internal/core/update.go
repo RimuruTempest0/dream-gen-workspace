@@ -71,6 +71,7 @@ type UpdateStatus struct {
 	Available  bool   `json:"available"`
 	Version    string `json:"version,omitempty"`
 	Notes      string `json:"notes,omitempty"`
+	NotesLang  string `json:"notesLang,omitempty"` // language of Notes: zh-CN or en
 	Size       int64  `json:"size,omitempty"`
 	Stage      string `json:"stage,omitempty"` // downloading, ready
 	Installing bool   `json:"installing,omitempty"` // one-click update under way
@@ -124,6 +125,11 @@ func (s *Service) UpdateStatus() UpdateStatus {
 	defer s.mu.Unlock()
 	st := s.upd.status
 	st.Supported, st.Current, st.Installing = s.updateSupportedLocked(), AppVersion, s.upd.auto
+	// The notes follow the interface language at the moment they are shown:
+	// Chinese for zh-CN, English for the others (Chinese when there are none).
+	if st.Version != "" {
+		st.Notes, st.NotesLang = s.upd.manifest.NotesFor(s.Language())
+	}
 	var p updatePrefs
 	_ = s.store.Get("preferences", updatePrefKey, &p)
 	st.AutoCheck = !p.Off
@@ -193,9 +199,9 @@ func (s *Service) CheckForUpdate() (UpdateStatus, error) {
 			s.upd.status.Stage, s.upd.staged = "", ""
 			_ = s.store.appendLog("info", "app", "", "发现新版本 "+m.Version)
 		}
-		s.upd.status.Version, s.upd.status.Notes, s.upd.status.Size = m.Version, m.Notes, m.Size
+		s.upd.status.Version, s.upd.status.Size = m.Version, m.Size
 		if !ok {
-			s.upd.status.Version, s.upd.status.Notes = "", ""
+			s.upd.status.Version = ""
 		}
 	}
 	s.mu.Unlock()

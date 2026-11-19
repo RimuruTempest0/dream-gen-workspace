@@ -43,7 +43,7 @@ func TestCreativeReleaseIsBuiltSignedAndLaidOutForUpload(t *testing.T) {
 		t.Fatalf("notes from the changelog: %q", notes)
 	}
 	var req BuildRequest
-	r, e := a.BuildCreative(context.Background(), "0.7.32", "可以一键更新了", fakeBuilder{update: true, seen: &req}, "", func(string) {})
+	r, e := a.BuildCreative(context.Background(), "0.7.32", "可以一键更新了", "One-click updates are here", fakeBuilder{update: true, seen: &req}, "", func(string) {})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -63,13 +63,13 @@ func TestCreativeReleaseIsBuiltSignedAndLaidOutForUpload(t *testing.T) {
 	}
 	data, _ := os.ReadFile(r.Manifest)
 	m, e := update.Verify(data, []string{a.State().SigningPublicKey}, "creative")
-	if e != nil || m.Version != "0.7.32" || m.Notes != "可以一键更新了" || m.URL != CreativeReleaseURL+filepath.Base(r.UpdateZip) {
+	if e != nil || m.Version != "0.7.32" || m.Notes != "可以一键更新了" || m.NotesEn != "One-click updates are here" || m.URL != CreativeReleaseURL+filepath.Base(r.UpdateZip) {
 		t.Fatal("manifest", m, e)
 	}
 	if _, e = update.Verify(data, []string{a.State().SigningPublicKey}, ""); e == nil {
 		t.Fatal("a delivered e-commerce app would accept the creative manifest")
 	}
-	if got := a.State().Creative; len(got) != 1 || got[0].Version != "0.7.32" {
+	if got := a.State().Creative; len(got) != 1 || got[0].Version != "0.7.32" || got[0].NotesEn != "One-click updates are here" {
 		t.Fatal("release not recorded", got)
 	}
 }
@@ -77,11 +77,14 @@ func TestCreativeReleaseIsBuiltSignedAndLaidOutForUpload(t *testing.T) {
 func TestCreativeReleaseRefusesOtherVersionAndMissingNotes(t *testing.T) {
 	a := open(t)
 	creativeRepo(t, a, "0.7.32")
-	if _, e := a.BuildCreative(context.Background(), "0.7.33", "说明", fakeBuilder{update: true}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "0.7.32") {
+	if _, e := a.BuildCreative(context.Background(), "0.7.33", "说明", "Notes", fakeBuilder{update: true}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "0.7.32") {
 		t.Fatal("version differs from the source:", e)
 	}
-	if _, e := a.BuildCreative(context.Background(), "0.7.32", "  ", fakeBuilder{update: true}, "", func(string) {}); e == nil {
+	if _, e := a.BuildCreative(context.Background(), "0.7.32", "  ", "Notes", fakeBuilder{update: true}, "", func(string) {}); e == nil {
 		t.Fatal("released without notes")
+	}
+	if _, e := a.BuildCreative(context.Background(), "0.7.32", "说明", " ", fakeBuilder{update: true}, "", func(string) {}); e == nil || !strings.Contains(e.Error(), "英文") {
+		t.Fatal("released without English notes:", e)
 	}
 }
 
@@ -118,7 +121,7 @@ func TestBuildsTakeTheirLinesCommitAndIgnoreTheSourceFolder(t *testing.T) {
 		t.Fatal("warned about changes of the other line", logs)
 	}
 	logs = nil
-	if _, e := a.BuildCreative(context.Background(), "0.7.32", "说明", fakeBuilder{update: true, seen: &req}, "", log); e != nil {
+	if _, e := a.BuildCreative(context.Background(), "0.7.32", "说明", "Notes", fakeBuilder{update: true, seen: &req}, "", log); e != nil {
 		t.Fatal(e)
 	}
 	if req.BuildDir != filepath.Join(dir, "build-creative") || strings.Join(prepared, " ") != "ecommerce@aaaa creative@bbbb" {
@@ -154,7 +157,7 @@ func (f builderFunc) Build(context.Context, BuildRequest, func(string)) error { 
 func TestCreativeUpdatePackageWithClaudeCodeIsRefused(t *testing.T) {
 	a := open(t)
 	dir := creativeRepo(t, a, "0.7.32")
-	_, e := a.BuildCreative(context.Background(), "0.7.32", "说明", fakeBuilder{update: true, agentInUpdate: true}, "", func(string) {})
+	_, e := a.BuildCreative(context.Background(), "0.7.32", "说明", "Notes", fakeBuilder{update: true, agentInUpdate: true}, "", func(string) {})
 	if e == nil || !strings.Contains(e.Error(), "Claude Code") {
 		t.Fatal("update package with the agent accepted:", e)
 	}
@@ -170,7 +173,7 @@ func TestCreativeReleaseRefusesPoolKeys(t *testing.T) {
 	a := open(t)
 	dir := creativeRepo(t, a, "0.7.32")
 	stock(t, a, 1, "http://127.0.0.1:1/v1")
-	_, e := a.BuildCreative(context.Background(), "0.7.32", "说明", fakeBuilder{update: true, leak: "sk-prim-a-00-secret"}, "", func(string) {})
+	_, e := a.BuildCreative(context.Background(), "0.7.32", "说明", "Notes", fakeBuilder{update: true, leak: "sk-prim-a-00-secret"}, "", func(string) {})
 	if e == nil || !strings.Contains(e.Error(), "检查未通过") {
 		t.Fatal("package with a pool key accepted:", e)
 	}

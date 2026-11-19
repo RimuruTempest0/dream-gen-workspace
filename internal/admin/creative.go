@@ -35,6 +35,9 @@ type CreativeRelease struct {
 	UpdateZip string `json:"updateZip"`
 	Manifest  string `json:"manifest"`
 	Notes     string `json:"notes"`
+	// NotesEn are the English update notes (admin 1.10.0), shown in every
+	// interface language but Chinese from app 0.8.0 on.
+	NotesEn string `json:"notesEn,omitempty"`
 }
 
 // gitRepoState reports the checked-out branch of repo and the paths with
@@ -103,12 +106,17 @@ func (a *Admin) CreativeNotes(version string) string {
 }
 
 // BuildCreative builds the mass-market line at version, checks both packages and
-// signs update.json. Afterwards release/creative/<version>/ holds the full
+// signs update.json with the Chinese notes and the English notes the provider
+// has read (app 0.8.0 shows them in English, Vietnamese, Japanese and Korean;
+// earlier apps read the Chinese ones only). Afterwards release/creative/<version>/ holds the full
 // package and upload/ with the two files to publish.
-func (a *Admin) BuildCreative(ctx context.Context, version, notes string, builder Builder, localDataDir string, log func(string)) (CreativeRelease, error) {
-	notes = strings.TrimSpace(notes)
+func (a *Admin) BuildCreative(ctx context.Context, version, notes, notesEn string, builder Builder, localDataDir string, log func(string)) (CreativeRelease, error) {
+	notes, notesEn = strings.TrimSpace(notes), strings.TrimSpace(notesEn)
 	if notes == "" {
 		return CreativeRelease{}, errors.New("请填写更新说明，顾客在更新前会看到它")
+	}
+	if notesEn == "" {
+		return CreativeRelease{}, errors.New("请先翻译或填写英文更新说明并看一遍：英语、越南语、日语、韩语界面的顾客看到它")
 	}
 	a.mu.Lock()
 	repo, pub := a.d.RepoRoot, a.d.SigningPublicKey
@@ -154,7 +162,7 @@ func (a *Admin) BuildCreative(ctx context.Context, version, notes string, builde
 	if e := os.MkdirAll(upload, 0o755); e != nil {
 		return CreativeRelease{}, e
 	}
-	r := CreativeRelease{Version: version, At: now(), Notes: notes, UploadDir: upload,
+	r := CreativeRelease{Version: version, At: now(), Notes: notes, NotesEn: notesEn, UploadDir: upload,
 		FullZip:   filepath.Join(out, fmt.Sprintf("ImageWorkbench-%s.zip", version)),
 		UpdateZip: filepath.Join(upload, fmt.Sprintf("ImageWorkbench-update-%s.zip", version)),
 		Manifest:  filepath.Join(upload, "update.json")}
@@ -204,7 +212,7 @@ func (a *Admin) BuildCreative(ctx context.Context, version, notes string, builde
 	if e != nil {
 		return fail(e)
 	}
-	data, e := update.Sign(update.Manifest{Line: CreativeLine, Version: version, Notes: notes, URL: CreativeReleaseURL + filepath.Base(r.UpdateZip), SHA256: sum, Size: info.Size()}, priv)
+	data, e := update.Sign(update.Manifest{Line: CreativeLine, Version: version, Notes: notes, NotesEn: notesEn, URL: CreativeReleaseURL + filepath.Base(r.UpdateZip), SHA256: sum, Size: info.Size()}, priv)
 	if e == nil {
 		_, e = update.Verify(data, []string{pub}, CreativeLine)
 	}
