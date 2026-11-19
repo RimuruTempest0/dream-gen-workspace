@@ -3,7 +3,8 @@
 // system tabs) shows no leftover Chinese outside data, has no horizontal
 // scroll in a narrow window, and passes the axe check. Data here is ASCII;
 // the only Chinese data is stored log text (ADR 0004: written in the language
-// of its moment) and each language's own name in the language switch.
+// of its moment) and each language's own name in the language switch. Checks
+// are soft so one run lists every page's problems.
 import {
   test,
   expect,
@@ -106,15 +107,19 @@ async function expectNoChinese(lang: Lang, where: string) {
     (v, w) => v.split(w).join(""),
     await screenText(),
   );
-  expect(
-    leftovers(lang).filter((p) => text.includes(p)),
-    `${lang} ${where}: Chinese interface text`,
-  ).toEqual([]);
+  expect
+    .soft(
+      leftovers(lang).filter((p) => text.includes(p)),
+      `${lang} ${where}: Chinese interface text`,
+    )
+    .toEqual([]);
   if (lang !== "ja")
-    expect(
-      text.split("\n").filter((l) => han.test(l)),
-      `${lang} ${where}: Han characters`,
-    ).toEqual([]);
+    expect
+      .soft(
+        text.split("\n").filter((l) => han.test(l)),
+        `${lang} ${where}: Han characters`,
+      )
+      .toEqual([]);
 }
 async function a11y(where: string) {
   await page.mouse.move(0, 0);
@@ -126,25 +131,29 @@ async function a11y(where: string) {
   const scan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();
-  expect(
-    scan.violations.map((v) => ({
-      id: v.id,
-      nodes: v.nodes.map((n) => n.target.join(" ")),
-    })),
-    where,
-  ).toEqual([]);
+  expect
+    .soft(
+      scan.violations.map((v) => ({
+        id: v.id,
+        nodes: v.nodes.map((n) => `${n.target.join(" ")}: ${n.failureSummary}`),
+      })),
+      where,
+    )
+    .toEqual([]);
 }
 async function noSideScroll(where: string) {
   await page.setViewportSize({ width: 800, height: 900 });
   await page.waitForTimeout(200);
-  expect(
-    await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth <=
-        document.documentElement.clientWidth,
-    ),
-    `${where} at 800px`,
-  ).toBe(true);
+  expect
+    .soft(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+      `${where} at 800px`,
+    )
+    .toBe(true);
   await page.setViewportSize({ width: 1414, height: 1000 });
 }
 

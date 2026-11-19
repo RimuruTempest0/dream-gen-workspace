@@ -107,6 +107,9 @@ export const antdTheme: ThemeConfig = {
     colorTextDescription: colors.muted,
     colorTextSecondary: colors.muted,
     colorTextDisabled: colors.text,
+    // antd's default placeholder (a quarter of the text colour) is too faint
+    // on the dark surface.
+    colorTextPlaceholder: colors.muted,
     colorBgBase: colors.background,
     colorBgLayout: colors.background,
     colorBgContainer: colors.surface,

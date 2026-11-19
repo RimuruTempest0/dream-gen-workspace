@@ -221,10 +221,12 @@ for (const lang of ["en", "vi", "ja", "ko"] as const) {
       page.getByRole("heading", { name: tr(lang, "settings.title"), level: 1 }),
     ).toBeVisible();
     await expect(
-      page.locator(".connection-row").filter({ hasText: "Image A" }),
+      // Anchored: translated skill descriptions also mention images and rules.
+      page.locator(".connection-row").filter({ hasText: /^Image A/ }),
     ).toBeVisible();
     await expect(
-      page.locator(".connection-row").filter({ hasText: "Rule" }),
+      // Anchored: translated skill descriptions also mention images and rules.
+      page.locator(".connection-row").filter({ hasText: /^Rule/ }),
     ).toBeVisible();
     await expect(page.locator("#update")).toContainText(
       tr(lang, "updates.title"),
