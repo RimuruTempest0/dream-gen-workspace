@@ -13,6 +13,8 @@ import {
 import { SafetyCertificateOutlined } from "@ant-design/icons";
 import { call } from "./api";
 import { dateTime, notImages, useActions, useData, time } from "./ui";
+import { t } from "./i18n";
+import { fill } from "./i18n/fill";
 
 export type LicenseStatus = {
   mode: "developer" | "trial" | "active" | "expired" | "invalid" | "mismatch";
@@ -45,20 +47,23 @@ export function LicenseBadge({ tooltip }: { tooltip?: boolean }) {
   if (!l || l.mode === "developer") return null;
   const text =
     l.mode === "trial"
-      ? `试用剩余 ${l.trialRemaining} / ${l.trialLimit} 张`
+      ? t("license.badge.trial", {
+          left: l.trialRemaining,
+          limit: l.trialLimit,
+        })
       : l.mode === "active"
         ? l.daysLeft
-          ? `${l.daysLeft} 天后到期`
-          : "已激活"
+          ? t("license.badge.daysLeft", { days: l.daysLeft })
+          : t("license.state.active")
         : l.mode === "expired"
-          ? "授权已到期"
-          : "授权异常";
+          ? t("license.badge.expired")
+          : t("license.state.problem");
   return (
     <Tooltip title={tooltip ? text : undefined} placement="right">
       <Link
         to="/settings#license"
         className={`license-badge license-${l.mode}`}
-        aria-label={`授权状态：${text}`}
+        aria-label={t("license.badge.aria", { status: text })}
       >
         <SafetyCertificateOutlined aria-hidden="true" />
         <span className="rail-label">{text}</span>
@@ -77,7 +82,11 @@ export function LicenseNotice() {
         type="error"
         showIcon
         className="license-notice"
-        message={l.mode === "expired" ? "软件授权已到期" : "暂时不能生图"}
+        message={
+          l.mode === "expired"
+            ? t("license.notice.expired")
+            : t("license.notice.blocked")
+        }
         description={l.message}
       />
     );
@@ -87,14 +96,19 @@ export function LicenseNotice() {
         type="warning"
         showIcon
         className="license-notice"
-        message={`软件授权 ${l.daysLeft} 天后到期`}
-        description={
-          <>
-            到期时间 {dateTime(l.expiresAt || "")}
-            。到期后不能生成新图片，已有图片不受影响。请联系软件提供方续费，收到新的授权文件后在
-            <Link to="/settings#license">系统 → 连接 → 授权</Link>导入。
-          </>
-        }
+        message={t("license.notice.expiring", { days: l.daysLeft })}
+        description={fill(
+          t("license.notice.expiringBody", {
+            date: dateTime(l.expiresAt || ""),
+          }),
+          {
+            link: (
+              <Link to="/settings#license">
+                {t("license.notice.expiringLink")}
+              </Link>
+            ),
+          },
+        )}
       />
     );
   if (l.mode === "trial" && l.trialRemaining <= 0)
@@ -103,13 +117,17 @@ export function LicenseNotice() {
         type="warning"
         showIcon
         className="license-notice"
-        message="试用额度已用完"
-        description={
-          <>
-            {l.trialLimit} 张试用图片已用完，之前生成的图片都保留在作品与素材。
-            <Link to="/settings#license">输入激活码</Link>后继续使用。
-          </>
-        }
+        message={t("license.notice.trialUsed")}
+        description={fill(
+          t("license.notice.trialUsedBody", { limit: l.trialLimit }),
+          {
+            link: (
+              <Link to="/settings#license">
+                {t("license.notice.trialUsedLink")}
+              </Link>
+            ),
+          },
+        )}
       />
     );
   return null;
@@ -129,7 +147,7 @@ export function LicensePanel() {
     await call("ImportCustomerFile", path);
     // New lines or a new expiry: refresh every list, not just the licence.
     await qc.invalidateQueries(notImages);
-    notification.success({ message: "已导入新的授权文件" });
+    notification.success({ message: t("license.imported") });
   }
   if (!l || (l.mode === "developer" && !l.canImport)) return null;
   // The open edition of the mass-market line: a licence file from the provider
@@ -143,21 +161,18 @@ export function LicensePanel() {
       >
         <div className="panel-heading">
           <h2 id="license-title">
-            <SafetyCertificateOutlined aria-hidden="true" /> 托管版授权
+            <SafetyCertificateOutlined aria-hidden="true" />{" "}
+            {t("license.hosted.title")}
           </h2>
-          <Tag>未使用</Tag>
+          <Tag>{t("license.hosted.unused")}</Tag>
         </div>
-        <p className="hint">
-          你现在用的是自己配置的图片服务和 AI
-          模型。如果软件提供方给了你授权文件（customer.dat），在这里导入，就改用提供方的线路，不用自己填地址和
-          Key；你已经配置的连接会保留，授权期间不使用。
-        </p>
+        <p className="hint">{t("license.hosted.hint")}</p>
         <div className="license-import">
           <Button
             onClick={() => actions.run(importFile)}
             disabled={actions.busy}
           >
-            导入授权文件
+            {t("license.import")}
           </Button>
         </div>
       </section>
@@ -181,7 +196,7 @@ export function LicensePanel() {
     >
       <div className="panel-heading">
         <h2 id="license-title">
-          <SafetyCertificateOutlined aria-hidden="true" /> 授权
+          <SafetyCertificateOutlined aria-hidden="true" /> {t("license.title")}
         </h2>
         <Tag
           color={
@@ -193,32 +208,34 @@ export function LicensePanel() {
           }
         >
           {l.mode === "active"
-            ? "已激活"
+            ? t("license.state.active")
             : l.mode === "trial"
-              ? "试用中"
+              ? t("license.state.trial")
               : l.mode === "expired"
-                ? "已到期"
-                : "授权异常"}
+                ? t("license.state.expired")
+                : t("license.state.problem")}
         </Tag>
       </div>
       <dl className="license-facts">
         {l.customer && (
           <>
-            <dt>{l.hosted ? "顾客" : "客户"}</dt>
+            <dt>
+              {l.hosted ? t("license.fact.customer") : t("license.fact.client")}
+            </dt>
             <dd>{l.customer}</dd>
           </>
         )}
-        <dt>软件标识</dt>
+        <dt>{t("license.fact.softwareID")}</dt>
         <dd className="mono">{l.softwareID || "—"}</dd>
         {(l.mode === "active" || l.activated) && l.activatedAt && (
           <>
-            <dt>激活时间</dt>
+            <dt>{t("license.fact.activatedAt")}</dt>
             <dd>{time(l.activatedAt)}</dd>
           </>
         )}
         {l.expiresAt && (
           <>
-            <dt>有效期至</dt>
+            <dt>{t("license.fact.expiresAt")}</dt>
             <dd>{dateTime(l.expiresAt)}</dd>
           </>
         )}
@@ -232,40 +249,34 @@ export function LicensePanel() {
         <Alert
           type="warning"
           showIcon
-          message={`${l.daysLeft} 天后到期，到期后不能生成新图片。请联系软件提供方续费。`}
+          message={t("license.expiring", { days: l.daysLeft })}
         />
       )}
       <div className="license-import">
         <Button onClick={() => actions.run(importFile)} disabled={actions.busy}>
-          导入授权文件
+          {t("license.import")}
         </Button>
-        <small className="hint">
-          续费或更换线路后，软件提供方会发给你新的
-          customer.dat。导入后立即生效，图片、任务和激活状态都保留。
-        </small>
+        <small className="hint">{t("license.import.hint")}</small>
       </div>
-      {l.hosted && (
-        <p className="hint">
-          想改用自己的图片服务和 AI 模型：关闭软件，删除程序目录里的
-          customer.dat，再打开。提供方的线路会随之移除。
-        </p>
-      )}
+      {l.hosted && <p className="hint">{t("license.leaveHosted")}</p>}
       {l.mode === "active" && (
-        <p className="hint">
-          已启用全部线路（含备用线路）。额度和有效期以软件提供方的设置为准，升级软件后无需重新激活。
-        </p>
+        <p className="hint">{t("license.active.hint")}</p>
       )}
       {l.mode === "active" && l.upstreamRemaining && (
         <p className="hint">
-          图片线路 1 剩余额度：{l.upstreamRemaining}（以图片服务为准）
+          {t("license.active.upstream", { amount: l.upstreamRemaining })}
         </p>
       )}
       {l.mode === "trial" && (
         <>
           <div className="license-trial">
             <span>
-              试用剩余 <strong>{l.trialRemaining}</strong> / {l.trialLimit} 张
-              {l.trialPending ? `（${l.trialPending} 张生成中）` : ""}
+              {fill(t("license.trial.left", { limit: l.trialLimit }), {
+                left: <strong>{l.trialRemaining}</strong>,
+              })}
+              {l.trialPending
+                ? t("license.trial.pending", { count: l.trialPending })
+                : ""}
             </span>
             <Progress
               percent={
@@ -277,15 +288,15 @@ export function LicensePanel() {
               }
               showInfo={false}
               status={l.trialRemaining ? "active" : "exception"}
-              aria-label={`已用 ${l.trialUsed + l.trialPending} / ${l.trialLimit} 张`}
+              aria-label={t("license.trial.used", {
+                used: l.trialUsed + l.trialPending,
+                limit: l.trialLimit,
+              })}
             />
-            <small className="hint">
-              成功生成的图片计入试用；失败、取消和被拒绝的不计入，结果未知的计入
-              1 张。重新安装软件或清除数据不会重置试用。
-            </small>
+            <small className="hint">{t("license.trial.rules")}</small>
             {l.upstreamRemaining && (
               <small className="hint">
-                试用线路剩余额度：{l.upstreamRemaining}（以图片服务为准）
+                {t("license.trial.upstream", { amount: l.upstreamRemaining })}
               </small>
             )}
           </div>
@@ -297,7 +308,7 @@ export function LicensePanel() {
             }}
           >
             <label htmlFor="activation-code" className="field-label">
-              激活码
+              {t("license.code")}
             </label>
             <div className="license-form-row">
               <Input
@@ -319,7 +330,7 @@ export function LicensePanel() {
                 loading={actions.busy}
                 disabled={!code.trim()}
               >
-                激活
+                {t("license.activate")}
               </Button>
             </div>
             {error && (
@@ -327,10 +338,7 @@ export function LicensePanel() {
                 {error}
               </p>
             )}
-            <p className="hint">
-              激活后启用全部线路（含备用线路），试用期间的图片和任务都会保留。不需要填写任何地址或
-              Key。
-            </p>
+            <p className="hint">{t("license.activate.hint")}</p>
           </form>
         </>
       )}

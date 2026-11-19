@@ -111,6 +111,11 @@
   line-height: 18px;
   white-space: nowrap;
 }
+/* Other languages' hints are longer than the Chinese ones: they wrap. */
+html:not([lang="zh-CN"]) .mode-option-hint {
+  white-space: normal;
+  max-width: 15em;
+}
 .mode-option:has(input:checked) {
   border-color: var(--primary);
   background: var(--soft);
