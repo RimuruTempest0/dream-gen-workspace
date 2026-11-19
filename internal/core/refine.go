@@ -112,6 +112,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	t.RefinedFrom = source.ID
 	t.RefineInstruction = in.Instruction
 	t.PreviousAssetIDs = nil
+	t.Language = s.Language() // a new request: the language chosen now
 	t.Prompt = refinePrompt(baseTaskPrompt(source), in.Instruction, len(t.SampleAssetIDs))
 	// The original requirements often state the opposite of the change ("only the
 	// middle stocking has the design"); outnumbered, the change was ignored. With
@@ -268,7 +269,7 @@ var removalWords = regexp.MustCompile(`去掉|删除|删掉|不要|取消|拿掉
 // longer contradict the change, and returns the refinement prompt built on them.
 func (s *Service) refineRequirements(ctx context.Context, c Connection, key string, t Task) (string, error) {
 	base := refineBase(baseTaskPrompt(t))
-	merged, e := s.llmRewrite(ctx, c, key, fmt.Sprintf(refineMergeInstruction, t.RefineInstruction)+base, "优化前改写原制作要求", func(text string) error {
+	merged, e := s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, fmt.Sprintf(refineMergeInstruction, t.RefineInstruction)+base),"优化前改写原制作要求", func(text string) error {
 		return checkRefineRequirements(base, t.RefineInstruction, text)
 	})
 	if e != nil {

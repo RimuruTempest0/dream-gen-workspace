@@ -320,6 +320,7 @@ func oneLine(v string) string { return strings.Join(strings.Fields(v), " ") }
 // ComposeConcept rewrites the prompt once per chosen stance. It sends no image
 // and costs nothing at the image gateway; with an LLM line it uses that LLM.
 func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
+	lang := s.Language() // the whole composition keeps the language it started in
 	form, ok := findConcept(conceptForms, in.Form)
 	if !ok {
 		return ConceptResult{}, errors.New("请选择一个形体")
@@ -398,7 +399,7 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 		wg.Add(1)
 		go func(i int, st Concept) {
 			defer wg.Done()
-			text, e := s.llmRewrite(ctx, c, key, conceptRequest(in, form, st, single), conceptStage, check)
+			text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, conceptRequest(in, form, st, single)), conceptStage, check)
 			if e == nil && !single {
 				text = oneLine(text)
 			}

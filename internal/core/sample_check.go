@@ -32,7 +32,7 @@ const sampleCheckInstruction = `你是刺绣商品图的质检员。第 1 张图
 - 画面文字的拼写、大小写、字形风格和颜色；
 - 各元素的左右顺序、相对位置和相对大小。
 只检查以上设计内容，不评价光线、背景、构图或拍摄角度；看不清的地方不算错。
-只输出一个 JSON：{"pass": true 或 false, "problems": ["每条一句中文，写清哪里不对、应该是什么样"]}。通过时 problems 为空数组。
+只输出一个 JSON：{"pass": true 或 false, "problems": ["每条一句话，写清哪里不对、应该是什么样"]}。通过时 problems 为空数组。problems 会给用户看，也会写进重画样板的提示词；其中的画面文字照原文写，不翻译。
 
 制作要求：
 `
@@ -150,7 +150,7 @@ func (s *Service) redrawSampleLocked(t *Task) string {
 }
 
 func (s *Service) askSampleCheck(ctx context.Context, c Connection, key string, t Task, files [][]byte) (bool, []string, error) {
-	content := []any{map[string]any{"type": "text", "text": sampleCheckInstruction + t.Prompt}}
+	content := []any{map[string]any{"type": "text", "text": replyLanguageRule(t.Language) + "\n\n" + sampleCheckInstruction + t.Prompt}}
 	for _, data := range files {
 		block, e := messagesImageBlock(data)
 		if e != nil {

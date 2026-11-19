@@ -148,7 +148,10 @@ type AgentRun struct {
 	CancelRequested      bool       `json:"cancelRequested"`
 	AnalysisStartedAt    string     `json:"analysisStartedAt"`
 	Instructions         []string   `json:"instructions"`
-	ID                   string     `json:"id"`
+	// Language is the interface language the current round started in (0.8.0);
+	// the round, its plan's images and their checks keep it after a switch.
+	Language string `json:"language,omitempty"`
+	ID                  string     `json:"id"`
 	CreatedAt            string     `json:"createdAt"`
 	UpdatedAt            string     `json:"updatedAt"`
 	Status               string     `json:"status"`

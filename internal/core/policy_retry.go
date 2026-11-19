@@ -137,7 +137,7 @@ func (s *Service) reword(id string) {
 		} else if t.RewordFor == rewordRefine {
 			prompt, e = s.refineRequirements(ctx, c, key, t)
 		} else {
-			prompt, e = s.rewordPrompt(ctx, c, key, t.Prompt)
+			prompt, e = s.rewordPrompt(ctx, c, key, t.Language, t.Prompt)
 		}
 		cancel()
 	}
@@ -200,14 +200,14 @@ var quotedText = regexp.MustCompile(`“([^”]+)”|"([^"]+)"`)
 
 // rewordPrompt asks the LLM for a reworded prompt. The sample line the backend
 // added is kept as it is, and every quoted in-image text must survive verbatim.
-func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, prompt string) (string, error) {
+func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, lang, prompt string) (string, error) {
 	head, body := "", prompt
 	if strings.HasPrefix(prompt, "样板图：参考图第") {
 		if line, rest, ok := strings.Cut(prompt, "\n"); ok {
 			head, body = line+"\n", rest
 		}
 	}
-	text, e := s.llmRewrite(ctx, c, key, rewordInstruction+body, "内容审核拒绝后改写提示词", func(text string) error {
+	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body),"内容审核拒绝后改写提示词", func(text string) error {
 		for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
 			if want := q[1] + q[2]; !strings.Contains(text, want) {
 				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)

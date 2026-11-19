@@ -317,7 +317,14 @@ func resumeTimer(r *AgentRun) {
 	}
 }
 
+// launchAgent starts a round the customer asked for, in the interface language
+// chosen now; continueAgent goes on with the round in the language it began in.
 func (s *Service) launchAgent(r AgentRun, instruction string) {
+	r.Language = s.Language()
+	s.continueAgent(r, instruction)
+}
+
+func (s *Service) continueAgent(r AgentRun, instruction string) {
 	r.AnalysisStartedAt = Now()
 	r.AttemptStartRevision = len(r.Plans)
 	r.AnalysisSucceeded = false
@@ -389,7 +396,7 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 			if relaunch != "" {
 				s.agentRunID = ""
 				s.agentCancel = nil
-				s.launchAgent(current, relaunch)
+				s.continueAgent(current, relaunch)
 				close(done)
 				s.mu.Unlock()
 				s.signal()
@@ -618,6 +625,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	for _, item := range p.Items {
 		prompt := itemPrompt(r, p, item)
 		t := Task{ID: NewID(), BatchID: batch, AgentRunID: id, PlanItemID: item.ID, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: item.Size, Quality: item.Quality, References: append([]string{}, item.References...), ProjectID: r.Input.ProjectID, Connection: c, AssetIDs: []string{}, Sample: item.Sample}
+		t.Language = s.Language() // the images and their sample checks finish in the language they were submitted in
 		if item.Sample {
 			// The rest of the set copies the sample's details: it gets the best quality.
 			t.Quality = sampleQuality
