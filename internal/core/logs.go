@@ -106,12 +106,12 @@ func (st *Store) logObjectChange(kind, id string, before, after []byte) {
 			return
 		}
 		source = "image"
-		message = fmt.Sprintf("生图状态：%s；阶段：%s；模型：%s", next.Status, next.Diagnostic.Stage, next.Model)
+		message = st.msg("log.task.status", "status", next.Status, "stage", next.Diagnostic.Stage, "model", next.Model)
 		if next.Diagnostic.HTTPStatus != 0 {
 			message += fmt.Sprintf("；HTTP %d", next.Diagnostic.HTTPStatus)
 		}
 		if next.Diagnostic.UpstreamRequestID != "" {
-			message += "；供应商请求 ID：" + next.Diagnostic.UpstreamRequestID
+			message += st.msg("log.task.requestID", "id", next.Diagnostic.UpstreamRequestID)
 		}
 		if next.Error != "" {
 			message += "；" + next.Error
@@ -167,7 +167,7 @@ func (s *Service) ListLogs(level, source, keyword string, offset, limit int) (Lo
 		limit = 50
 	}
 	if len([]rune(keyword)) > 200 {
-		return LogPage{}, fmt.Errorf("日志关键词最多200个字符")
+		return LogPage{}, s.fail("log.keywordTooLong")
 	}
 	where := ` WHERE (?='' OR level=?) AND (?='' OR source=?) AND (?='' OR instr(lower(message || ' ' || related_id),lower(?))>0)`
 	args := []any{level, level, source, source, keyword, keyword}

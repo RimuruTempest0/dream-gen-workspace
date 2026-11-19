@@ -188,7 +188,7 @@ func TestDropReasonsInPlainWords(t *testing.T) {
 		"context deadline exceeded": "等待超时",
 	}
 	for in, want := range cases {
-		if got := dropReason(in); got != want {
+		if got := dropReason("zh-CN", in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
 		}
 	}

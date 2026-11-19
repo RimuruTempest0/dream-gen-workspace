@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -76,7 +74,7 @@ func (s *Service) ImageConcurrency() int {
 // applies immediately: more tasks start when raised; running ones finish when lowered.
 func (s *Service) SetImageConcurrency(n int) error {
 	if n < 1 || n > maxImageConcurrency {
-		return fmt.Errorf("同时生成张数需在 1–%d 之间", maxImageConcurrency)
+		return s.fail("task.concurrencyRange", "max", maxImageConcurrency)
 	}
 	s.mu.Lock()
 	if e := s.store.Put("preferences", "image-concurrency", n); e != nil {
@@ -86,7 +84,7 @@ func (s *Service) SetImageConcurrency(n int) error {
 	changed := s.imageConcurrency != n
 	s.imageConcurrency = n
 	if changed {
-		_ = s.store.appendLog("info", "image", "", fmt.Sprintf("同时生成张数调整为 %d", n))
+		_ = s.store.appendLog("info", "image", "", s.msg("task.log.concurrency", "n", n))
 	}
 	s.mu.Unlock()
 	s.signal()
@@ -105,7 +103,7 @@ func (s *Service) StopAllQueued() {
 	for _, t := range tasks {
 		if t.Status == "queued" {
 			t.Status = "blocked"
-			t.Error = "退出时暂停，未向平台提交；可显式恢复"
+			t.Error = s.msg("task.pausedOnExit")
 			s.store.Put("task", t.ID, t)
 		}
 	}
@@ -123,6 +121,7 @@ func NewService(root string) (*Service, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{store: st, provider: NewProvider(), ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), allowLocalProduct: qaLocalProduct}
 	s.lang.Store(lang)
+	st.lang = s.Language
 	tasks, e := List[Task](st, "task")
 	if e != nil {
 		st.Close()
@@ -134,7 +133,7 @@ func NewService(root string) (*Service, error) {
 			var run AgentRun
 			if st.Get("agent_run", t.AgentRunID, &run) == nil && run.AutoGeneration {
 				t.Status = "blocked"
-				t.Error = "上次制作中断，此图尚未提交，请明确恢复生成"
+				t.Error = s.msg("task.interruptedUnsent")
 				if e = st.Put("task", t.ID, t); e != nil {
 					st.Close()
 					cancel()
@@ -151,11 +150,11 @@ func NewService(root string) (*Service, error) {
 				cancel()
 				return nil, e
 			}
-			_ = st.appendLog("info", "image", t.ID, "上次退出时异步任务仍在生成，继续查询同一个任务 "+t.Diagnostic.UpstreamJobID)
+			_ = st.appendLog("info", "image", t.ID, s.msg("task.log.asyncResumed", "job", t.Diagnostic.UpstreamJobID))
 		}
 		if t.Status == "submitting" || t.Status == "running" {
 			t.Status = "unknown"
-			t.Error = "应用上次在提交期间退出，结果未知。请先核对平台记录。"
+			t.Error = s.msg("task.exitedWhileSubmitting")
 			if e = st.Put("task", t.ID, t); e != nil {
 				st.Close()
 				cancel()
@@ -193,7 +192,7 @@ func NewService(root string) (*Service, error) {
 		cancel()
 		return nil, e
 	}
-	_ = st.appendLog("info", "app", "", "应用已启动；本地日志保留最近5000条")
+	_ = st.appendLog("info", "app", "", s.msg("log.started"))
 	return s, nil
 }
 func (s *Service) Start(emit func()) { s.emit = emit; go s.loop(); go s.watchUpdates() }
@@ -216,15 +215,15 @@ func (s *Service) signal() {
 }
 func (s *Service) key(ref string) (string, error) {
 	if ref == "" {
-		return "", errors.New("请在设置中保存 API Key")
+		return "", s.fail("connection.key.none")
 	}
 	b, e := readOwned(s.store.Root, "secrets/"+ref+".bin")
 	if e != nil {
-		return "", errors.New("密钥不可用，请在设置中重新输入")
+		return "", s.fail("connection.key.unavailable")
 	}
 	plain, e := Unprotect(b)
 	if e != nil {
-		return "", errors.New("密钥无法在当前 Windows 用户下解密，请重新输入")
+		return "", s.fail("connection.key.undecryptable")
 	}
 	return string(plain), nil
 }

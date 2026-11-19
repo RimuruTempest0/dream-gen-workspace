@@ -16,6 +16,8 @@ import (
 type Store struct {
 	db   *sql.DB
 	Root string
+	// lang is the interface language for log lines the Store writes itself.
+	lang func() string
 }
 
 func NewID() string {
@@ -54,7 +56,7 @@ func Open(root string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	return &Store{db, root}, nil
+	return &Store{db: db, Root: root}, nil
 }
 
 // schemaVersion is PRAGMA user_version; an older app refuses a newer database.

@@ -1,0 +1,32 @@
+{
+  "zh-CN": {
+    "log.started": "应用已启动；本地日志保留最近5000条",
+    "log.task.status": "生图状态：{status}；阶段：{stage}；模型：{model}",
+    "log.task.requestID": "；供应商请求 ID：{id}",
+    "log.keywordTooLong": "日志关键词最多200个字符"
+  },
+  "en": {
+    "log.started": "App started; the local log keeps the latest 5000 entries",
+    "log.task.status": "Image status: {status}; stage: {stage}; model: {model}",
+    "log.task.requestID": "; provider request ID: {id}",
+    "log.keywordTooLong": "The log keyword can be at most 200 characters"
+  },
+  "vi": {
+    "log.started": "Ứng dụng đã khởi động; nhật ký trên máy giữ 5000 mục gần nhất",
+    "log.task.status": "Trạng thái tạo ảnh: {status}; giai đoạn: {stage}; mô hình: {model}",
+    "log.task.requestID": "; ID yêu cầu nhà cung cấp: {id}",
+    "log.keywordTooLong": "Từ khóa nhật ký tối đa 200 ký tự"
+  },
+  "ja": {
+    "log.started": "アプリを起動しました。ローカルログは最新 5000 件を保持します",
+    "log.task.status": "生成状態：{status}；段階：{stage}；モデル：{model}",
+    "log.task.requestID": "；プロバイダーのリクエスト ID：{id}",
+    "log.keywordTooLong": "ログのキーワードは 200 文字までです"
+  },
+  "ko": {
+    "log.started": "앱을 시작했습니다. 로컬 로그는 최근 5000건을 보관합니다",
+    "log.task.status": "생성 상태: {status}; 단계: {stage}; 모델: {model}",
+    "log.task.requestID": "; 공급자 요청 ID: {id}",
+    "log.keywordTooLong": "로그 키워드는 최대 200자입니다"
+  }
+}

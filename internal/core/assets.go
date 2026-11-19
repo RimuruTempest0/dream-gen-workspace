@@ -284,7 +284,7 @@ func (s *Service) ExportAssets(ids []string, path string) (int, error) {
 func (s *Service) outputBytes(ctx context.Context, out Output) ([]byte, error) {
 	if out.Base64 != "" {
 		if len(out.Base64) > MaxImageBytes*4/3+16 {
-			return nil, errors.New("结果图片超过 32 MB")
+			return nil, failCtx(ctx, "generation.download.tooLarge")
 		}
 		return base64.StdEncoding.DecodeString(out.Base64)
 	}

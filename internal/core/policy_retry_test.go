@@ -106,7 +106,7 @@ func TestPolicyRefusalResendsThenRewords(t *testing.T) {
 	if len(p.Items) != 2 || p.Items[1].Status != "failed" || p.Items[1].PolicyRetriedAs != first.ID || first.PolicyRetryOf != p.Items[1].ID || first.PolicyStep != 1 || first.Rewording {
 		t.Fatalf("refused image not resent unchanged: %+v", p.Items)
 	}
-	if e := p.Items[1].Error; !strings.HasPrefix(e, policyRefusedPrefix) || !strings.Contains(e, "原样重发") || strings.Contains(e, "test-key") {
+	if e := p.Items[1].Error; !strings.HasPrefix(e, "生图模型的内容审核拒绝了这张图") || !strings.Contains(e, "原样重发") || strings.Contains(e, "test-key") {
 		t.Fatal(e)
 	}
 	s.stepNext()
