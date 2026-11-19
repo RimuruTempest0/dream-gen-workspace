@@ -93,6 +93,9 @@
     "agentSettings.skill.attachments": "{count} 个附件",
     "agentSettings.skill.category": "品类：{category}",
     "agentSettings.skill.category.all": "通用（每个品类都用）",
+    "agentSettings.skill.source.builtin": "内置",
+    "agentSettings.skill.source.imported": "导入",
+    "agentSettings.skill.source.custom": "自定义",
     "agentSettings.skill.setCategory": "设置品类",
     "agentSettings.skill.setCategory.aria": "设置技能 {name} 的品类",
     "agentSettings.skill.enable": "启用技能 {name}",
@@ -102,10 +105,7 @@
     "agentSettings.category.title": "设置品类：{name}",
     "agentSettings.category.hint": "留空表示通用：每次制作都用。填了品类的技能只在创作选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。",
     "agentSettings.category.label": "品类",
-    "agentSettings.category.placeholder": "通用",
-    "agentSettings.skill.source.builtin": "内置",
-    "agentSettings.skill.source.custom": "自定义",
-    "agentSettings.skill.source.imported": "导入"
+    "agentSettings.category.placeholder": "通用"
   },
   "en": {
     "agentSettings.name": "Connection name",
@@ -201,6 +201,9 @@
     "agentSettings.skill.attachments": "{count} attachments",
     "agentSettings.skill.category": "Category: {category}",
     "agentSettings.skill.category.all": "General (used for every category)",
+    "agentSettings.skill.source.builtin": "Built-in",
+    "agentSettings.skill.source.imported": "Imported",
+    "agentSettings.skill.source.custom": "Custom",
     "agentSettings.skill.setCategory": "Set category",
     "agentSettings.skill.setCategory.aria": "Set the category of skill {name}",
     "agentSettings.skill.enable": "Enable skill {name}",
@@ -210,10 +213,7 @@
     "agentSettings.category.title": "Set category: {name}",
     "agentSettings.category.hint": "Leave empty for general: used every time. A skill with a category is used only when that category is chosen in Create. Name categories as you like, e.g. “embroidered hoodie” or “mug”.",
     "agentSettings.category.label": "Category",
-    "agentSettings.category.placeholder": "General",
-    "agentSettings.skill.source.builtin": "Built-in",
-    "agentSettings.skill.source.custom": "Custom",
-    "agentSettings.skill.source.imported": "Imported"
+    "agentSettings.category.placeholder": "General"
   },
   "vi": {
     "agentSettings.name": "Tên kết nối",
@@ -309,6 +309,9 @@
     "agentSettings.skill.attachments": "{count} tệp đính kèm",
     "agentSettings.skill.category": "Ngành hàng: {category}",
     "agentSettings.skill.category.all": "Chung (dùng cho mọi ngành hàng)",
+    "agentSettings.skill.source.builtin": "Có sẵn",
+    "agentSettings.skill.source.imported": "Đã nhập",
+    "agentSettings.skill.source.custom": "Tự tạo",
     "agentSettings.skill.setCategory": "Đặt ngành hàng",
     "agentSettings.skill.setCategory.aria": "Đặt ngành hàng cho kỹ năng {name}",
     "agentSettings.skill.enable": "Bật kỹ năng {name}",
@@ -318,10 +321,7 @@
     "agentSettings.category.title": "Đặt ngành hàng: {name}",
     "agentSettings.category.hint": "Để trống là dùng chung: lần nào cũng dùng. Kỹ năng có ngành hàng chỉ được dùng khi chọn đúng ngành hàng đó trong Sáng tác. Tên ngành hàng tùy bạn đặt, ví dụ “áo hoodie thêu”, “cốc”.",
     "agentSettings.category.label": "Ngành hàng",
-    "agentSettings.category.placeholder": "Chung",
-    "agentSettings.skill.source.builtin": "Có sẵn",
-    "agentSettings.skill.source.custom": "Tự tạo",
-    "agentSettings.skill.source.imported": "Đã nhập"
+    "agentSettings.category.placeholder": "Chung"
   },
   "ja": {
     "agentSettings.name": "接続名",
@@ -417,6 +417,9 @@
     "agentSettings.skill.attachments": "添付 {count} 件",
     "agentSettings.skill.category": "カテゴリー：{category}",
     "agentSettings.skill.category.all": "共通（すべてのカテゴリーで使用）",
+    "agentSettings.skill.source.builtin": "組み込み",
+    "agentSettings.skill.source.imported": "インポート",
+    "agentSettings.skill.source.custom": "カスタム",
     "agentSettings.skill.setCategory": "カテゴリーを設定",
     "agentSettings.skill.setCategory.aria": "スキル {name} のカテゴリーを設定",
     "agentSettings.skill.enable": "スキル {name} を有効にする",
@@ -426,10 +429,7 @@
     "agentSettings.category.title": "カテゴリーを設定：{name}",
     "agentSettings.category.hint": "空欄なら共通で、毎回使われます。カテゴリーを設定したスキルは、創作でそのカテゴリーを選んだときだけ使われます。カテゴリー名は自由です（例：「刺繍パーカー」「マグカップ」）。",
     "agentSettings.category.label": "カテゴリー",
-    "agentSettings.category.placeholder": "共通",
-    "agentSettings.skill.source.builtin": "内蔵",
-    "agentSettings.skill.source.custom": "カスタム",
-    "agentSettings.skill.source.imported": "インポート"
+    "agentSettings.category.placeholder": "共通"
   },
   "ko": {
     "agentSettings.name": "연결 이름",
@@ -525,6 +525,9 @@
     "agentSettings.skill.attachments": "첨부 {count}개",
     "agentSettings.skill.category": "품목: {category}",
     "agentSettings.skill.category.all": "공통 (모든 품목에 사용)",
+    "agentSettings.skill.source.builtin": "기본 제공",
+    "agentSettings.skill.source.imported": "가져옴",
+    "agentSettings.skill.source.custom": "사용자 지정",
     "agentSettings.skill.setCategory": "품목 설정",
     "agentSettings.skill.setCategory.aria": "스킬 {name}의 품목 설정",
     "agentSettings.skill.enable": "스킬 {name} 사용",
@@ -534,9 +537,6 @@
     "agentSettings.category.title": "품목 설정: {name}",
     "agentSettings.category.hint": "비워 두면 공통이며 매번 사용합니다. 품목을 정한 스킬은 창작에서 그 품목을 골랐을 때만 사용합니다. 품목 이름은 자유롭게 정하세요. 예: “자수 후드티”, “머그컵”.",
     "agentSettings.category.label": "품목",
-    "agentSettings.category.placeholder": "공통",
-    "agentSettings.skill.source.builtin": "내장",
-    "agentSettings.skill.source.custom": "사용자 지정",
-    "agentSettings.skill.source.imported": "가져옴"
+    "agentSettings.category.placeholder": "공통"
   }
 }

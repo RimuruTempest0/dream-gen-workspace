@@ -302,6 +302,10 @@ h1 {
      token itself is 5.7:1. */
   color: var(--danger);
 }
+/* Same for a text delete button (the template cards). */
+.ant-btn-dangerous.ant-btn-variant-text:not(:hover):not(:disabled) {
+  color: var(--danger);
+}
 /* The brand name Image Workbench (every language but Chinese) is wider than
    生图工作台: it sets on two lines beside the mark instead of being cut. */
 html:not([lang="zh-CN"]) .rail-wordmark {

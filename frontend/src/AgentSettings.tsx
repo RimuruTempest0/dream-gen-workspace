@@ -31,14 +31,16 @@ import type {
 import { DataState, SecretInput, useActions, useData } from "./ui";
 import { t, type MessageKey } from "./i18n";
 
-// The backend stores a skill's source as a fixed code (its Chinese name).
+// The backend stores where a skill came from as a fixed Chinese word.
 const skillSources: Record<string, MessageKey> = {
   内置: "agentSettings.skill.source.builtin",
-  自定义: "agentSettings.skill.source.custom",
   导入: "agentSettings.skill.source.imported",
+  自定义: "agentSettings.skill.source.custom",
 };
-const skillSource = (source: string) =>
-  skillSources[source] ? t(skillSources[source]) : source;
+function skillSource(source: string) {
+  const key = skillSources[source];
+  return key ? t(key) : source;
+}
 
 export function ConnectionFields({
   editing,

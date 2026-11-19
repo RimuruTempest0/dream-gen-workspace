@@ -79,6 +79,8 @@ test("更新说明：英文界面一键更新显示英文说明，中文界面�
   const dialogNotes = page.locator(".ant-modal .update-notes");
   await expect(dialogNotes).toHaveText(english);
   await expect(page.locator(".ant-modal")).not.toContainText(chinese);
+  // The zoom-in can start after the text is there; check the settled dialog.
+  await expect(page.locator(".ant-modal")).not.toHaveClass(/ant-zoom/);
   await page.waitForFunction(() => document.getAnimations().length === 0);
   const a11y = await new AxeBuilder({ page })
     .include(".ant-modal")

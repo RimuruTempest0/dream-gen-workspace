@@ -244,7 +244,7 @@ test.beforeAll(async () => {
       }
       if (
         typeof first === "string" &&
-        first.startsWith("图片模型的内容安全审核拒绝了")
+        first.includes("图片模型的内容安全审核拒绝了")
       ) {
         rewriteRequests++;
         res.setHeader("content-type", "application/json");
@@ -263,7 +263,7 @@ test.beforeAll(async () => {
       }
       if (
         typeof first === "string" &&
-        first.startsWith("下面是一张电商图片原来的制作要求")
+        first.includes("下面是一张电商图片原来的制作要求")
       ) {
         refineRewrites++;
         res.setHeader("content-type", "application/json");
@@ -278,7 +278,7 @@ test.beforeAll(async () => {
       if (
         Array.isArray(first) &&
         first[0]?.type === "text" &&
-        first[0].text.startsWith("你是刺绣商品图的质检员")
+        first[0].text.includes("你是刺绣商品图的质检员")
       ) {
         sampleChecks++;
         res.setHeader("content-type", "application/json");
@@ -1558,8 +1558,9 @@ const foreignText = [
   ".agent-judgments li > small",
   ".run-activity-log", // backend activity feed (#7/#8)
 ].join(", ");
-// Sample areas the mock AI named (胸前, 袖口) appear inside interface sentences.
-const aiWords = ["胸前", "袖口"];
+// Sample areas the mock AI named (胸前, 袖口) appear inside interface sentences,
+// and the image connection the user named "Agent QA 生图" in the picker.
+const aiWords = ["胸前", "袖口", "Agent QA 生图"];
 async function chineseLeft() {
   return page.evaluate(
     ({ skip, words }) => {
