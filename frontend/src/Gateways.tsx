@@ -86,9 +86,7 @@ export function gatewayLabel(
         : "";
   const state =
     h && h.state !== "unknown" ? ` · ${gatewayStateText(h.state)}` : "";
-  return (
-    c.name + role + state + (c.hasKey ? "" : ` · ${t("gateways.noKey")}`)
-  );
+  return c.name + role + state + (c.hasKey ? "" : ` · ${t("gateways.noKey")}`);
 }
 
 function seconds(ms: number) {
@@ -245,9 +243,7 @@ export function GatewayFailover() {
           {t("gateways.failover.check")}
         </Button>
       </div>
-      {!configured && (
-        <p className="hint">{t("gateways.failover.unset")}</p>
-      )}
+      {!configured && <p className="hint">{t("gateways.failover.unset")}</p>}
       <p className="hint">{t("gateways.failover.probe")}</p>
       <div className="gateway-switch">
         <Switch

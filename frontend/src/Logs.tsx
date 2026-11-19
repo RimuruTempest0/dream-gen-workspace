@@ -232,7 +232,9 @@ export function Logs() {
         open={!!detail}
         onCancel={() => setDetail(null)}
         footer={
-          <Button onClick={() => setDetail(null)}>{t("logs.detail.close")}</Button>
+          <Button onClick={() => setDetail(null)}>
+            {t("logs.detail.close")}
+          </Button>
         }
       >
         {detail && (

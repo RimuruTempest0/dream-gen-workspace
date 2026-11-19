@@ -69,7 +69,11 @@ export function ShopRules() {
         <Button onClick={() => open(null)}>{t("shopRules.new")}</Button>
       </div>
       <p className="hint">{t("shopRules.hint")}</p>
-      <DataState query={q} empty={!q.data?.length} emptyText={t("shopRules.empty")}>
+      <DataState
+        query={q}
+        empty={!q.data?.length}
+        emptyText={t("shopRules.empty")}
+      >
         <div className="connection-list">
           {q.data?.map((v) => (
             <div className="connection-row" key={v.id}>

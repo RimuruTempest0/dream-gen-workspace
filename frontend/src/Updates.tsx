@@ -46,7 +46,10 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
   return (
     <div className="update-available">
       <strong>
-        {t("updates.offer.version", { version: u.version || "", size: mb(u.size) })}
+        {t("updates.offer.version", {
+          version: u.version || "",
+          size: mb(u.size),
+        })}
       </strong>
       {u.notes && <p className="update-notes">{u.notes}</p>}
       {u.stage === "downloading" && (
@@ -98,7 +101,9 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
             })
           }
         >
-          {downloading ? t("updates.offer.downloading") : t("updates.offer.install")}
+          {downloading
+            ? t("updates.offer.downloading")
+            : t("updates.offer.install")}
         </Button>
       )}
       <p className="hint">{t("updates.offer.hint")}</p>
@@ -136,9 +141,7 @@ export function UpdateBadge({ tooltip }: { tooltip?: boolean }) {
         onCancel={() => setOpen(false)}
         destroyOnHidden
       >
-        <p className="hint">
-          {t("updates.current", { version: u.current })}
-        </p>
+        <p className="hint">{t("updates.current", { version: u.current })}</p>
         {u.error && <Alert type="warning" showIcon message={u.error} />}
         <UpdateOffer u={u} />
       </Modal>
@@ -203,7 +206,8 @@ export function UpdatePanel() {
           {u.available && u.version ? (
             <UpdateOffer u={u} />
           ) : (
-            u.checkedAt && !u.error && <p className="hint">{t("updates.upToDate")}</p>
+            u.checkedAt &&
+            !u.error && <p className="hint">{t("updates.upToDate")}</p>
           )}
         </>
       )}

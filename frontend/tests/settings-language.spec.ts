@@ -35,8 +35,7 @@ for (const a of areas) {
   const t = JSON.parse(
     fs.readFileSync(path.join(messages, a + ".json"), "utf8"),
   ) as Tables;
-  for (const l of Object.keys(t) as Lang[])
-    table[l] = { ...table[l], ...t[l] };
+  for (const l of Object.keys(t) as Lang[]) table[l] = { ...table[l], ...t[l] };
 }
 // The text for key in lang with {name} placeholders filled.
 function tr(lang: Lang, key: string, params: Record<string, string> = {}) {
@@ -257,9 +256,7 @@ for (const lang of ["en", "vi", "ja", "ko"] as const) {
     ).toBeVisible();
     await expect(page.locator(".day-bars")).toHaveAttribute(
       "aria-label",
-      new RegExp(
-        "^" + tr(lang, "monitor.gw.daily.aria", { days: "" }).trim(),
-      ),
+      new RegExp("^" + tr(lang, "monitor.gw.daily.aria", { days: "" }).trim()),
     );
     await expect(page.locator(".ant-table-thead")).toContainText(
       tr(lang, "monitor.col.result"),
@@ -352,11 +349,17 @@ for (const lang of ["en", "vi", "ja", "ko"] as const) {
       tr(lang, "updates.badge", { version: "9.9.9" }),
     );
     await offer.click();
-    const dialog = page.getByRole("dialog", { name: tr(lang, "updates.title") });
+    const dialog = page.getByRole("dialog", {
+      name: tr(lang, "updates.title"),
+    });
     await expect(
       dialog.getByRole("button", { name: tr(lang, "updates.offer.install") }),
     ).toBeVisible();
-    await expectNoChinese(lang, "update dialog", ".ant-modal .ant-modal-header");
+    await expectNoChinese(
+      lang,
+      "update dialog",
+      ".ant-modal .ant-modal-header",
+    );
     await expect(dialog.locator(".hint").last()).toHaveText(
       tr(lang, "updates.offer.hint"),
     );

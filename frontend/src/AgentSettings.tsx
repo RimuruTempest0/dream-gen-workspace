@@ -113,9 +113,13 @@ export function ConnectionFields({
       </UIForm.Item>
       <UIForm.Item
         name="model"
-        label={llm ? t("agentSettings.model") : t("agentSettings.model.default")}
+        label={
+          llm ? t("agentSettings.model") : t("agentSettings.model.default")
+        }
         rules={
-          llm ? [{ required: true, message: t("agentSettings.model.required") }] : []
+          llm
+            ? [{ required: true, message: t("agentSettings.model.required") }]
+            : []
         }
       >
         <Input placeholder={t("agentSettings.model.placeholder")} />
@@ -432,7 +436,9 @@ export function LLMConnections() {
                   <Button
                     danger
                     disabled={!!validating}
-                    aria-label={t("agentSettings.llm.delete.aria", { name: c.name })}
+                    aria-label={t("agentSettings.llm.delete.aria", {
+                      name: c.name,
+                    })}
                     icon={<DeleteOutlined aria-hidden="true" />}
                     onClick={() =>
                       actions.confirm(
@@ -483,7 +489,9 @@ export function LLMConnections() {
       )}
       <Modal
         title={
-          editing ? t("agentSettings.llm.editTitle") : t("agentSettings.llm.add")
+          editing
+            ? t("agentSettings.llm.editTitle")
+            : t("agentSettings.llm.add")
         }
         open={editing !== undefined}
         onCancel={close}
@@ -551,10 +559,7 @@ export function AgentSettings() {
   function open(v: SkillRecord | null) {
     setEditing(v);
     setName(v?.name || "");
-    setContent(
-      v?.content ||
-        t("agentSettings.skill.template"),
-    );
+    setContent(v?.content || t("agentSettings.skill.template"));
     setError("");
     setDirty(false);
   }
@@ -619,7 +624,9 @@ export function AgentSettings() {
           <Button onClick={() => runtime.refetch()}>
             {t("agentSettings.runtime.check")}
           </Button>
-          <Button onClick={() => open(null)}>{t("agentSettings.skill.new")}</Button>
+          <Button onClick={() => open(null)}>
+            {t("agentSettings.skill.new")}
+          </Button>
           <Button
             icon={<UploadOutlined aria-hidden="true" />}
             onClick={() => importSkill(false)}
@@ -666,12 +673,15 @@ export function AgentSettings() {
                 )}
                 <small>
                   {t("agentSettings.skill.category", {
-                    category: v.category || t("agentSettings.skill.category.all"),
+                    category:
+                      v.category || t("agentSettings.skill.category.all"),
                   })}{" "}
                   <Button
                     type="link"
                     size="small"
-                    aria-label={t("agentSettings.skill.setCategory.aria", { name: v.name })}
+                    aria-label={t("agentSettings.skill.setCategory.aria", {
+                      name: v.name,
+                    })}
                     onClick={() => {
                       setCategoryFor(v);
                       setCategory(v.category || "");
@@ -690,10 +700,14 @@ export function AgentSettings() {
                     actions.run(() => call("SetSkillEnabled", v.id, enabled))
                   }
                 />
-                <Button onClick={() => open(v)}>{t("agentSettings.skill.edit")}</Button>
+                <Button onClick={() => open(v)}>
+                  {t("agentSettings.skill.edit")}
+                </Button>
                 <Button
                   danger
-                  aria-label={t("agentSettings.skill.delete.aria", { name: v.name })}
+                  aria-label={t("agentSettings.skill.delete.aria", {
+                    name: v.name,
+                  })}
                   icon={<DeleteOutlined aria-hidden="true" />}
                   onClick={() =>
                     actions.confirm(
