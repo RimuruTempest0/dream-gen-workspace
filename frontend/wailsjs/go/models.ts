@@ -39,6 +39,7 @@ export namespace core {
 	export class AgentEvent {
 	    at: string;
 	    text: string;
+	    code?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AgentEvent(source);
@@ -48,6 +49,7 @@ export namespace core {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.at = source["at"];
 	        this.text = source["text"];
+	        this.code = source["code"];
 	    }
 	}
 	export class AgentInput {
@@ -280,6 +282,7 @@ export namespace core {
 	    version: number;
 	    enabled: boolean;
 	    source: string;
+	    conflict?: boolean;
 	    attachments: SkillAttachment[];
 	    sealed?: boolean;
 	    category?: string;
@@ -297,6 +300,7 @@ export namespace core {
 	        this.version = source["version"];
 	        this.enabled = source["enabled"];
 	        this.source = source["source"];
+	        this.conflict = source["conflict"];
 	        this.attachments = this.convertValues(source["attachments"], SkillAttachment);
 	        this.sealed = source["sealed"];
 	        this.category = source["category"];
@@ -470,11 +474,13 @@ export namespace core {
 	    cancelRequested: boolean;
 	    analysisStartedAt: string;
 	    instructions: string[];
+	    language?: string;
 	    id: string;
 	    createdAt: string;
 	    updatedAt: string;
 	    status: string;
 	    stage: string;
+	    stageCode?: string;
 	    error: string;
 	    llmReconnects?: number;
 	    autoContinues?: number;
@@ -511,11 +517,13 @@ export namespace core {
 	        this.cancelRequested = source["cancelRequested"];
 	        this.analysisStartedAt = source["analysisStartedAt"];
 	        this.instructions = source["instructions"];
+	        this.language = source["language"];
 	        this.id = source["id"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	        this.status = source["status"];
 	        this.stage = source["stage"];
+	        this.stageCode = source["stageCode"];
 	        this.error = source["error"];
 	        this.llmReconnects = source["llmReconnects"];
 	        this.autoContinues = source["autoContinues"];
@@ -1507,6 +1515,7 @@ export namespace core {
 	    expectation: MoodOption[];
 	    renderings: MoodOption[];
 	    nudges: MoodOption[];
+	    sentence: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new MoodLibrary(source);
@@ -1520,6 +1529,7 @@ export namespace core {
 	        this.expectation = this.convertValues(source["expectation"], MoodOption);
 	        this.renderings = this.convertValues(source["renderings"], MoodOption);
 	        this.nudges = this.convertValues(source["nudges"], MoodOption);
+	        this.sentence = source["sentence"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1582,6 +1592,7 @@ export namespace core {
 	    basePrompt?: string;
 	    nudgeOf?: string;
 	    nudge?: string;
+	    language?: string;
 	    agentRunID?: string;
 	    planItemID?: string;
 	    refinedFrom?: string;
@@ -1641,6 +1652,7 @@ export namespace core {
 	        this.basePrompt = source["basePrompt"];
 	        this.nudgeOf = source["nudgeOf"];
 	        this.nudge = source["nudge"];
+	        this.language = source["language"];
 	        this.agentRunID = source["agentRunID"];
 	        this.planItemID = source["planItemID"];
 	        this.refinedFrom = source["refinedFrom"];
