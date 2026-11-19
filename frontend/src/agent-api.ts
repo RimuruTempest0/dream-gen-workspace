@@ -167,11 +167,3 @@ export const blankAgentDraft: AgentInput = {
   imageModel: "",
   skillIDs: ["product-analysis", "etsy-suite", "embroidery-rules"],
 };
-export const agentStateNames: Record<string, string> = {
-  analyzing: "分析中",
-  needs_input: "待补充资料",
-  review: "待确认方案",
-  submitted: "已提交生图",
-  interrupted: "已中断",
-  failed: "分析失败",
-};

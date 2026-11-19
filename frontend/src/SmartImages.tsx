@@ -63,12 +63,14 @@ import {
   type ViewerItem,
 } from "./ui";
 import { gatewayLabel, useGateways } from "./Gateways";
+import { t, type MessageKey } from "./i18n";
 import { LicenseNotice } from "./License";
 import {
   ReferenceStrip,
   AgentTiming,
-  browserReadingStage,
   browserVerifyStage,
+  isKnownStage,
+  stageText,
   VerificationWait,
   ratioSizes,
   isKeyRejected,
@@ -267,20 +269,23 @@ export function SmartImages() {
     run?.autoGeneration && run?.llmConnection?.id
       ? run.llmConnection
       : llms.find((c) => c.id === input.llmConnectionID);
-  const model = input.imageModel || imageConnection?.model || "未设置";
+  const model = input.imageModel || imageConnection?.model || t("ui.unset");
   // Viewer walks the set in slot order: each slot's current image, then its earlier versions.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerItems: ViewerItem[] = [];
   const viewerTargets = new Map<string, { task: Task; current: boolean }>();
   tasks.forEach((task, slot) => {
     task.assetIDs.forEach((assetID) => {
-      viewerItems.push({ assetID, label: `第 ${slot + 1} 张` });
+      viewerItems.push({
+        assetID,
+        label: t("smart.image.number", { n: slot + 1 }),
+      });
       viewerTargets.set(assetID, { task, current: true });
     });
     (task.previousAssetIDs || []).forEach((assetID, version) => {
       viewerItems.push({
         assetID,
-        label: `第 ${slot + 1} 张 · 之前的版本 ${version + 1}`,
+        label: t("smart.image.previous", { n: slot + 1, version: version + 1 }),
       });
       viewerTargets.set(assetID, { task, current: false });
     });
@@ -304,35 +309,41 @@ export function SmartImages() {
       t.status,
     ),
   );
-  const stage = !run
-    ? "等待开始"
+  const done = submitted && tasks.length > 0 && completed === tasks.length;
+  const stageKey: MessageKey = !run
+    ? "smart.stage.waiting"
     : analyzing
-      ? run.stage === browserVerifyStage
-        ? run.stage
-        : run.progress
-          ? runStepLabel(run.progress)
-          : run.stage === "准备素材" || run.stage === browserReadingStage
-            ? run.stage
-            : "处理中"
+      ? "run.processing"
       : submitted
-        ? tasks.length > 0 && completed === tasks.length
-          ? "已完成"
+        ? done
+          ? "smart.stage.done"
           : tasks.some((t) =>
                 ["queued", "submitting", "running", "downloading"].includes(
                   t.status,
                 ),
               )
-            ? "正在生成"
+            ? "smart.stage.generating"
             : failed
-              ? "制作未完成"
-              : "正在生成"
+              ? "smart.stage.unfinished"
+              : "smart.stage.generating"
         : run.status === "needs_input"
-          ? "等待补充"
+          ? "smart.stage.needsInput"
           : run.status === "interrupted"
-            ? "已中断"
+            ? "smart.stage.interrupted"
             : run.status === "failed"
-              ? "制作未完成"
-              : "等待继续制作";
+              ? "smart.stage.unfinished"
+              : "smart.stage.resume";
+  // The stage while analyzing is the step, or a stage the backend named.
+  const stage =
+    run && analyzing
+      ? run.stage === browserVerifyStage
+        ? stageText(run.stage)
+        : run.progress
+          ? runStepLabel(run.progress)
+          : isKnownStage(run.stage)
+            ? stageText(run.stage)
+            : t(stageKey)
+      : t(stageKey);
   const candidates = extractProductLinks(input.instruction);
   const pendingQuestions =
     run?.questions.filter((q) => q.required && !q.answer.trim()) || [];
@@ -371,7 +382,7 @@ export function SmartImages() {
     if (out?.length) {
       const refs = [...new Set([...input.references, ...out.map((a) => a.id)])];
       if (refs.length > 20) {
-        setError("参考图最多20张，请移除多余图片");
+        setError(t("smart.error.tooManyReferences", { max: 20 }));
         return;
       }
       change({ references: refs });
@@ -379,7 +390,7 @@ export function SmartImages() {
   }
   async function start() {
     if (!input.instruction.trim()) {
-      setError("请填写完整制作指令");
+      setError(t("smart.error.noInstruction"));
       return;
     }
     const id = startRequest.current || crypto.randomUUID();
@@ -434,16 +445,16 @@ export function SmartImages() {
           onClick={addFiles}
           loading={actions.busy}
         >
-          上传参考图
+          {t("smart.upload")}
         </Button>
       </Space>
       <UISelect
-        aria-label="从作品与素材选择参考图"
+        aria-label={t("smart.references.pick")}
         className="full-width"
         mode="multiple"
         disabled={analyzing || submitted}
         value={input.references}
-        placeholder="也可选择已有素材"
+        placeholder={t("smart.references.placeholder")}
         optionFilterProp="label"
         listItemHeight={44}
         listHeight={308}
@@ -493,7 +504,7 @@ export function SmartImages() {
     <div className="parameter-grid">
       <div>
         <label htmlFor="agent-count" className="field-label">
-          目标张数
+          {t("smart.count")}
         </label>
         <InputNumber
           id="agent-count"
@@ -507,7 +518,7 @@ export function SmartImages() {
       </div>
       <div>
         <label htmlFor="agent-ratio" className="field-label">
-          画面比例
+          {t("smart.ratio")}
         </label>
         <UISelect
           id="agent-ratio"
@@ -541,7 +552,7 @@ export function SmartImages() {
       disabled={!ready || runtime.data?.available === false}
       onClick={start}
     >
-      开始生成套图
+      {t("smart.start")}
     </Button>
   );
   // Newest generated images; uploads used as references are not works.
@@ -550,12 +561,8 @@ export function SmartImages() {
     <>
       <LicenseNotice />
       <Header
-        title={home ? "想做一张什么样的图？" : "创作"}
-        sub={
-          autoMode
-            ? "自动模式：给完指令直接得到一套图。缺少的资料由制作助手像你一样逐题判断，列出依据供你核对。"
-            : "手动模式：输入制作需求，自动完成套图。需要补充资料时会集中提示，填写后继续。"
-        }
+        title={home ? t("smart.title.home") : t("shell.nav.create")}
+        sub={t(autoMode ? "smart.sub.auto" : "smart.sub.manual")}
         action={
           <div className="smart-header-actions">
             <ModeSwitch
@@ -569,23 +576,19 @@ export function SmartImages() {
               disabled={actions.busy}
               onClick={newRun}
             >
-              新建需求
+              {t("smart.newRun")}
             </Button>
           </div>
         }
       />
       {runtime.data && !runtime.data.available && (
-        <Alert
-          type="warning"
-          showIcon
-          message="制作组件不可用，请完整解压便携包或在设置中检查。"
-        />
+        <Alert type="warning" showIcon message={t("smart.runtimeMissing")} />
       )}
       {draftError && (
         <Alert
           type="error"
           showIcon
-          message="草稿未保存"
+          message={t("smart.draftFailed")}
           description={draftError}
         />
       )}
@@ -599,12 +602,12 @@ export function SmartImages() {
           }
         >
           <div className="panel-heading">
-            <h2>制作需求</h2>
-            <Tag>{run ? "已保存需求" : "草稿"}</Tag>
+            <h2>{t("smart.request.title")}</h2>
+            <Tag>{t(run ? "smart.request.saved" : "smart.request.draft")}</Tag>
           </div>
           <div className="field-header prompt-header">
             <label htmlFor="agent-instruction" className="field-label">
-              完整制作指令
+              {t("smart.instruction")}
             </label>
             {!home && templateBar}
           </div>
@@ -614,7 +617,7 @@ export function SmartImages() {
             disabled={!!run || actions.busy}
             autoSize={{ minRows: home ? 3 : 6, maxRows: 12 }}
             style={{ resize: "none" }}
-            placeholder="描述想要的图，也可以粘贴商品链接和完整的套图需求"
+            placeholder={t("smart.instruction.placeholder")}
             onChange={(e) => changeInstruction(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.ctrlKey && !e.nativeEvent.isComposing)
@@ -623,10 +626,10 @@ export function SmartImages() {
           />
           {home && (
             <div className="composer-row">
-              <Tooltip title="添加参考图">
+              <Tooltip title={t("smart.addReferences")}>
                 <Button
                   type="text"
-                  aria-label="添加参考图"
+                  aria-label={t("smart.addReferences")}
                   icon={<PaperClipOutlined aria-hidden="true" />}
                   disabled={actions.busy}
                   onClick={addFiles}
@@ -639,7 +642,7 @@ export function SmartImages() {
                 aria-controls="agent-more"
                 onClick={() => setMoreChoice(!moreOpen)}
               >
-                更多选项
+                {t("smart.more")}
               </Button>
               {startButton}
             </div>
@@ -647,13 +650,13 @@ export function SmartImages() {
           <div id="agent-more" className="agent-more" hidden={!moreOpen}>
             {home && <div className="composer-templates">{templateBar}</div>}
             <label htmlFor="agent-url" className="field-label">
-              商品链接
+              {t("smart.url")}
             </label>
             <Input
               id="agent-url"
               value={input.productURL}
               disabled={!!run || actions.busy}
-              placeholder="可从指令自动提取，也可手动填写"
+              placeholder={t("smart.url.placeholder")}
               onChange={(e) => {
                 autoURL.current = "";
                 change({ productURL: e.target.value });
@@ -662,7 +665,7 @@ export function SmartImages() {
             {!run && candidates.length > 1 && (
               <>
                 <label htmlFor="agent-link-choice" className="field-label">
-                  选择本次商品链接
+                  {t("smart.url.choose")}
                 </label>
                 <UISelect
                   id="agent-link-choice"
@@ -678,10 +681,8 @@ export function SmartImages() {
             )}
             {!home && countRatio}
             <div className="agent-reference-heading">
-              <h3>参考素材</h3>
-              <p className="hint">
-                上传商品图、字体或色卡。每次需求最多20张参考图。
-              </p>
+              <h3>{t("smart.references.title")}</h3>
+              <p className="hint">{t("smart.references.hint", { max: 20 })}</p>
               {references}
             </div>
             <Collapse
@@ -693,7 +694,7 @@ export function SmartImages() {
               items={[
                 {
                   key: "settings",
-                  label: "更多设置",
+                  label: t("smart.settings"),
                   children: (
                     <>
                       {!!skillCategories.data?.length && (
@@ -702,7 +703,7 @@ export function SmartImages() {
                             htmlFor="agent-category"
                             className="field-label"
                           >
-                            商品品类（可选）
+                            {t("smart.category")}
                           </label>
                           <UISelect
                             id="agent-category"
@@ -710,7 +711,7 @@ export function SmartImages() {
                             value={input.category || ""}
                             disabled={!!run || actions.busy}
                             options={[
-                              { value: "", label: "不指定（只用通用技能）" },
+                              { value: "", label: t("smart.category.none") },
                               ...skillCategories.data.map((value) => ({
                                 value,
                                 label: value,
@@ -718,13 +719,11 @@ export function SmartImages() {
                             ]}
                             onChange={(category) => change({ category })}
                           />
-                          <p className="hint">
-                            选了品类时，加上设置里归在这个品类下的技能。
-                          </p>
+                          <p className="hint">{t("smart.category.hint")}</p>
                         </>
                       )}
                       <label htmlFor="agent-llm" className="field-label">
-                        AI 模型
+                        {t("smart.llm")}
                       </label>
                       <UISelect
                         id="agent-llm"
@@ -740,7 +739,7 @@ export function SmartImages() {
                         }
                       />
                       <label htmlFor="agent-image" className="field-label">
-                        图片服务
+                        {t("smart.imageService")}
                       </label>
                       <UISelect
                         id="agent-image"
@@ -763,7 +762,7 @@ export function SmartImages() {
                         htmlFor="agent-image-model"
                         className="field-label"
                       >
-                        生图模型
+                        {t("smart.imageModel")}
                       </label>
                       <ModelSelect
                         id="agent-image-model"
@@ -776,7 +775,7 @@ export function SmartImages() {
                       <div className="parameter-grid">
                         <div>
                           <label htmlFor="agent-size" className="field-label">
-                            图片尺寸
+                            {t("smart.size")}
                           </label>
                           <UISelect
                             id="agent-size"
@@ -792,7 +791,7 @@ export function SmartImages() {
                             htmlFor="agent-quality"
                             className="field-label"
                           >
-                            图片质量
+                            {t("smart.quality")}
                           </label>
                           <UISelect
                             id="agent-quality"
@@ -807,14 +806,12 @@ export function SmartImages() {
                           />
                         </div>
                       </div>
-                      <p className="hint">
-                        尺寸需由生图模型支持。比例同时写入图片制作要求。
-                      </p>
+                      <p className="hint">{t("smart.size.hint")}</p>
                       <label
                         htmlFor="agent-concurrency"
                         className="field-label"
                       >
-                        同时生成张数
+                        {t("smart.concurrency")}
                       </label>
                       <UISelect
                         id="agent-concurrency"
@@ -824,7 +821,9 @@ export function SmartImages() {
                         options={[1, 2, 3, 4].map((value) => ({
                           value,
                           label:
-                            value === 1 ? "1 张（逐张生成）" : `${value} 张`,
+                            value === 1
+                              ? t("smart.concurrency.one")
+                              : t("smart.concurrency.many", { n: value }),
                         }))}
                         onChange={(n) =>
                           actions.run(async () => {
@@ -833,10 +832,7 @@ export function SmartImages() {
                           })
                         }
                       />
-                      <p className="hint">
-                        生成中也可调整，立即生效；调低时已在生成的图片会继续完成。对专业模式同样生效。图片服务可能限制并发，出现大量失败或
-                        429 时请调低。
-                      </p>
+                      <p className="hint">{t("smart.concurrency.hint")}</p>
                     </>
                   ),
                 },
@@ -844,17 +840,22 @@ export function SmartImages() {
             />
             {(!input.llmConnectionID || !input.imageConnectionID) && (
               <p className="hint">
-                请在更多设置中选择连接，或前往
-                <Link to="/settings">系统 → 连接</Link>添加供应商。
+                {t("smart.connection.before")}
+                <Link to="/settings">{t("smart.connection.link")}</Link>
+                {t("smart.connection.after")}
               </p>
             )}
           </div>
           <div className="sticky-actions">
             <p className="hint">
-              本次 {input.targetCount} 张 · 生图模型：{model}
+              {t("smart.summary.images", {
+                count: input.targetCount,
+                model,
+              })}
               <br />
-              AI 模型：{llmConnection?.model || "未设置"}
-              。将调用 AI 模型与图片服务，可能产生费用。
+              {t("smart.summary.llm", {
+                model: llmConnection?.model || t("ui.unset"),
+              })}
             </p>
             <SuiteEstimateHint
               connectionID={input.imageConnectionID}
@@ -873,15 +874,17 @@ export function SmartImages() {
             {recent.length ? (
               <>
                 <div className="recent-works-head">
-                  <h2 id="recent-works-title">最近的作品</h2>
-                  <Link to="/assets">查看全部</Link>
+                  <h2 id="recent-works-title">{t("smart.recent")}</h2>
+                  <Link to="/assets">{t("smart.recent.all")}</Link>
                 </div>
                 <div className="recent-works-wall">
                   {recent.map((a) => (
                     <Link
                       key={a.id}
                       to="/assets"
-                      aria-label={`在作品与素材中查看 ${assetLabel(a)}`}
+                      aria-label={t("smart.recent.view", {
+                        name: assetLabel(a),
+                      })}
                     >
                       <AssetImage id={a.id} />
                     </Link>
@@ -892,8 +895,8 @@ export function SmartImages() {
               !!templates.data?.length && (
                 <>
                   <div className="recent-works-head">
-                    <h2 id="recent-works-title">从模板开始</h2>
-                    <Link to="/templates">管理模板</Link>
+                    <h2 id="recent-works-title">{t("smart.templates")}</h2>
+                    <Link to="/templates">{t("smart.templates.manage")}</Link>
                   </div>
                   <div className="template-starters">
                     {templates.data.slice(0, 6).map((t) => (
@@ -915,35 +918,31 @@ export function SmartImages() {
         <div className="agent-content" hidden={home}>
           <section className="panel">
             <div className="panel-heading">
-              <h2>制作进度与结果</h2>
+              <h2>{t("smart.progress.title")}</h2>
               <Space>
                 <Tag
                   color={
-                    analyzing
-                      ? "processing"
-                      : stage === "已完成"
-                        ? "success"
-                        : "default"
+                    analyzing ? "processing" : done ? "success" : "default"
                   }
                 >
                   {stage}
                 </Tag>
                 {run && (
-                  <Tag>{run.input.autoMode ? "自动模式" : "手动模式"}</Tag>
+                  <Tag>
+                    {t(
+                      run.input.autoMode
+                        ? "smart.mode.autoTag"
+                        : "smart.mode.manualTag",
+                    )}
+                  </Tag>
                 )}
                 {run && <AgentTiming run={run} tasks={tasks} />}
               </Space>
             </div>
             {runQuery.error && (
-              <Alert
-                type="error"
-                showIcon
-                message="制作状态暂时无法读取，请刷新后重试。"
-              />
+              <Alert type="error" showIcon message={t("smart.runUnreadable")} />
             )}
-            {!run && (
-              <Empty description="填写需求并开始制作，图片会显示在这里。" />
-            )}
+            {!run && <Empty description={t("smart.empty")} />}
             {run && (
               <>
                 <p
@@ -965,7 +964,7 @@ export function SmartImages() {
                       actions.run(() => call("CancelAgentAnalysis", run.id))
                     }
                   >
-                    取消制作
+                    {t("smart.cancel")}
                   </Button>
                 )}
                 {run.error &&
@@ -975,8 +974,8 @@ export function SmartImages() {
                       showIcon
                       message={
                         run.status === "interrupted"
-                          ? "制作已中断，资料已保留，可继续制作。"
-                          : "制作未完成，资料已保留。可继续制作，详细错误请查看日志。"
+                          ? t("smart.interrupted")
+                          : t("smart.failed")
                       }
                     />
                   )}
@@ -987,13 +986,16 @@ export function SmartImages() {
                       className="hint llm-reconnect-note"
                       title={run.llmReconnectError}
                     >
-                      AI 模型连接中断
-                      {run.llmReconnects > 1
-                        ? ` ${run.llmReconnects} 次`
-                        : "一次"}
-                      ，已自动重试
-                      {analyzing ? "，分析继续进行。" : "并继续完成。"}
-                      不影响生图，也不会额外计费。
+                      {t(
+                        run.llmReconnects > 1
+                          ? analyzing
+                            ? "smart.reconnect.manyAnalyzing"
+                            : "smart.reconnect.manyDone"
+                          : analyzing
+                            ? "smart.reconnect.onceAnalyzing"
+                            : "smart.reconnect.onceDone",
+                        { count: run.llmReconnects },
+                      )}
                     </p>
                   )}
                 {!analyzing && !submitted && (
@@ -1002,16 +1004,20 @@ export function SmartImages() {
                       <Alert
                         type="warning"
                         showIcon
-                        message="暂时无法读取商品链接，请上传商品参考图或粘贴商品描述。"
+                        message={t("smart.product.unreadable")}
                       />
                     ) : (
                       run.product.imageNote && (
                         <p className="hint">
-                          已读取商品页，{run.product.imageNote}。
+                          {t("smart.product.read", {
+                            note: run.product.imageNote,
+                          })}
                         </p>
                       )
                     )}
-                    {pendingQuestions.length > 0 && <h3>补充必要资料</h3>}
+                    {pendingQuestions.length > 0 && (
+                      <h3>{t("smart.supplement.title")}</h3>
+                    )}
                     {pendingQuestions
                       .filter((q) => q.id !== "product-material")
                       .map((q) => (
@@ -1043,7 +1049,7 @@ export function SmartImages() {
                           htmlFor="agent-supplement-text"
                           className="field-label"
                         >
-                          商品描述或补充说明
+                          {t("smart.supplement.text")}
                         </label>
                         <Input.TextArea
                           id="agent-supplement-text"
@@ -1055,9 +1061,7 @@ export function SmartImages() {
                           autoSize={{ minRows: 3, maxRows: 8 }}
                           style={{ resize: "none" }}
                         />
-                        <p className="hint">
-                          需要图片时，可通过左侧“上传参考图”补充。
-                        </p>
+                        <p className="hint">{t("smart.supplement.hint")}</p>
                       </>
                     )}
                     <Button
@@ -1065,9 +1069,11 @@ export function SmartImages() {
                       loading={actions.busy}
                       onClick={continueRun}
                     >
-                      {pendingQuestions.length > 0
-                        ? "补充并继续制作"
-                        : "继续制作"}
+                      {t(
+                        pendingQuestions.length > 0
+                          ? "smart.continueWith"
+                          : "smart.continue",
+                      )}
                     </Button>
                   </div>
                 )}
@@ -1077,7 +1083,7 @@ export function SmartImages() {
           {submitted && (
             <section className="panel">
               <div className="panel-heading">
-                <h2>套图结果</h2>
+                <h2>{t("smart.results")}</h2>
                 <Space wrap>
                   {pendingDownloads.length > 0 && (
                     <Button
@@ -1087,25 +1093,27 @@ export function SmartImages() {
                           for (const task of pendingDownloads) {
                             await call("RetryDownload", task.id);
                           }
-                        }, "已加入补下载队列，不会重新生图")
+                        }, t("smart.download.queued"))
                       }
                     >
-                      补下载全部失败图片（{pendingDownloads.length} 张）
+                      {t("smart.download.retryAll", {
+                        count: pendingDownloads.length,
+                      })}
                     </Button>
                   )}
                   {retryable > 0 && (
                     <Button
                       onClick={() =>
                         actions.confirm(
-                          `重新生成 ${retryable} 张图片？`,
-                          `将为 ${retryable} 张失败或暂停的图片重新发起生图请求，可能产生费用。“结果未知”的图片不包含在内，请先核对平台记录。`,
+                          t("smart.retry.allTitle", { count: retryable }),
+                          t("smart.retry.allContent", { count: retryable }),
                           () => call("RetryFailedAgentImages", run!.id),
                           false,
-                          "重新生成",
+                          t("smart.retry.ok"),
                         )
                       }
                     >
-                      重新生成全部失败图片（{retryable} 张）
+                      {t("smart.retry.all", { count: retryable })}
                     </Button>
                   )}
                   <Button
@@ -1114,9 +1122,7 @@ export function SmartImages() {
                     loading={downloads.busy}
                     onClick={() => downloads.downloadBatch(run!.batchID)}
                   >
-                    {tasks.length > 0 && completed === tasks.length
-                      ? "下载整套图片"
-                      : "下载已完成图片"}
+                    {t(done ? "smart.download.set" : "smart.download.done")}
                   </Button>
                 </Space>
               </div>
@@ -1124,60 +1130,64 @@ export function SmartImages() {
                 <Alert
                   type="error"
                   showIcon
-                  message="图片服务账户余额不足"
-                  description={
-                    <>
-                      这些图片没有生成，也不计费；同批未提交的图片已暂停（设置了备用图片服务时会改用备用）。请到该图片服务后台充值，再点“重新生成全部失败图片”。API
-                      Key 不需要重新输入。
-                    </>
-                  }
+                  message={t("smart.balance.title")}
+                  description={t("smart.balance.text")}
                 />
               )}
               {tasks.some(isKeyRejected) && (
                 <Alert
                   type="error"
                   showIcon
-                  message="图片服务拒绝了 API Key"
+                  message={t("smart.key.title")}
                   description={
                     <>
-                      这些图片没有生成，也不计费；同批未提交的图片已暂停。请到
-                      <Link to="/settings">系统 → 连接</Link>
-                      重新输入该图片服务的 API Key，再点“重新生成全部失败图片”。
+                      {t("smart.key.before")}
+                      <Link to="/settings">{t("smart.connection.link")}</Link>
+                      {t("smart.key.after")}
                     </>
                   }
                 />
               )}
               <p role="status">
-                已完成 {completed} / {tasks.length || input.targetCount}{" "}
-                个任务，可下载 {available} 张图片
+                {t("smart.results.status", {
+                  done: completed,
+                  total: tasks.length || input.targetCount,
+                  available,
+                })}
               </p>
               {taskQuery.error && (
                 <Alert
                   type="error"
                   showIcon
-                  message="图片状态暂时无法读取，请稍后刷新。"
+                  message={t("smart.tasksUnreadable")}
                 />
               )}
               <div className="agent-results">
                 {tasks.map((task, index) => (
                   <article className="agent-result" key={task.id}>
                     <Space>
-                      <strong>第 {index + 1} 张</strong>
+                      <strong>
+                        {t("smart.image.number", { n: index + 1 })}
+                      </strong>
                       <Status state={task.status} task={task} />
                     </Space>
                     <TaskTiming task={task} />
                     <TaskFailureAlert task={task} />
                     {task.refineInstruction && (
                       <p className="hint refine-note">
-                        优化：{task.refineInstruction}
+                        {t("ui.taskTitle.refine", {
+                          text: task.refineInstruction,
+                        })}
                       </p>
                     )}
                     <SampleNote task={task} tasks={tasks} />
                     {task.sample && (
                       <p className="hint">
                         {task.sampleArea
-                          ? `「${task.sampleArea}」样板：先生成这张，其他看得见${task.sampleArea}的图片照它画`
-                          : "细节样板：先生成这张，其他看得见袖口等细节的图片照它画"}
+                          ? t("smart.sample.areaNote", {
+                              area: task.sampleArea,
+                            })
+                          : t("smart.sample.detailNote")}
                       </p>
                     )}
                     {task.sample && <SampleCheckNote task={task} />}
@@ -1186,7 +1196,7 @@ export function SmartImages() {
                         <button
                           type="button"
                           className="image-open"
-                          aria-label={`查看第 ${index + 1} 张大图`}
+                          aria-label={t("smart.image.view", { n: index + 1 })}
                           onClick={() => openViewer(id)}
                         >
                           <AssetImage id={id} arrived={arrivals.has(id)} />
@@ -1196,14 +1206,16 @@ export function SmartImages() {
                             disabled={downloads.busy}
                             onClick={() => downloads.downloadAsset(id)}
                           >
-                            下载图片
+                            {t("smart.image.download")}
                           </Button>
                           {task.status === "succeeded" && (
                             <Button
-                              aria-label={`优化第 ${index + 1} 张图片`}
+                              aria-label={t("smart.image.refineLabel", {
+                                n: index + 1,
+                              })}
                               onClick={() => setRefining({ task, assetID: id })}
                             >
-                              优化
+                              {t("smart.image.refine")}
                             </Button>
                           )}
                         </div>
@@ -1215,7 +1227,9 @@ export function SmartImages() {
                         open={task.assetIDs.length === 0}
                       >
                         <summary>
-                          之前的版本（{task.previousAssetIDs.length}）
+                          {t("smart.versions", {
+                            count: task.previousAssetIDs.length,
+                          })}
                         </summary>
                         <div className="agent-version-grid">
                           {task.previousAssetIDs.map((id, version) => (
@@ -1223,7 +1237,10 @@ export function SmartImages() {
                               <button
                                 type="button"
                                 className="image-open"
-                                aria-label={`查看第 ${index + 1} 张的之前版本 ${version + 1}`}
+                                aria-label={t("smart.versions.view", {
+                                  n: index + 1,
+                                  version: version + 1,
+                                })}
                                 onClick={() => openViewer(id)}
                               >
                                 <AssetImage id={id} />
@@ -1231,11 +1248,14 @@ export function SmartImages() {
                               <Button
                                 size="small"
                                 block
-                                aria-label={`下载第 ${index + 1} 张的之前版本 ${version + 1}`}
+                                aria-label={t("smart.versions.downloadLabel", {
+                                  n: index + 1,
+                                  version: version + 1,
+                                })}
                                 disabled={downloads.busy}
                                 onClick={() => downloads.downloadAsset(id)}
                               >
-                                下载
+                                {t("smart.versions.download")}
                               </Button>
                             </div>
                           ))}
@@ -1247,15 +1267,15 @@ export function SmartImages() {
                       <Button
                         onClick={() =>
                           actions.confirm(
-                            "恢复生成这张图片？",
-                            "这张图片尚未提交。恢复后将调用图片服务，可能产生费用。",
+                            t("smart.resume.title"),
+                            t("smart.resume.content"),
                             () => call("ResumeBlocked", task.id),
                             false,
-                            "恢复生成",
+                            t("smart.resume"),
                           )
                         }
                       >
-                        恢复生成
+                        {t("smart.resume")}
                       </Button>
                     )}
                     {task.status === "download_failed" && (
@@ -1265,7 +1285,7 @@ export function SmartImages() {
                           actions.run(() => call("RetryDownload", task.id))
                         }
                       >
-                        补下载
+                        {t("smart.redownload")}
                       </Button>
                     )}
                     {["failed", "unknown", "canceled"].includes(
@@ -1274,15 +1294,15 @@ export function SmartImages() {
                       <Button
                         onClick={() =>
                           actions.confirm(
-                            "重新生成这张图片？",
-                            "将发起新的计费请求。结果未知时请先核对供应商记录。",
+                            t("smart.retry.oneTitle"),
+                            t("smart.retry.oneContent"),
                             () => call("Retry", task.id),
                             false,
-                            "重新生成",
+                            t("smart.retry.ok"),
                           )
                         }
                       >
-                        重新生成
+                        {t("smart.retry.ok")}
                       </Button>
                     )}
                   </article>
@@ -1294,7 +1314,7 @@ export function SmartImages() {
                     actions.run(() => call("StopBatch", run!.batchID))
                   }
                 >
-                  停止未提交图片
+                  {t("smart.stopQueued")}
                 </Button>
               )}
             </section>
@@ -1315,7 +1335,7 @@ export function SmartImages() {
                 disabled={downloads.busy}
                 onClick={() => downloads.downloadAsset(item.assetID)}
               >
-                下载原图
+                {t("smart.viewer.original")}
               </Button>
               {entry?.current && entry.task.status === "succeeded" && (
                 <Button
@@ -1324,7 +1344,7 @@ export function SmartImages() {
                     setRefining({ task: entry.task, assetID: item.assetID });
                   }}
                 >
-                  优化
+                  {t("smart.image.refine")}
                 </Button>
               )}
             </>
@@ -1332,11 +1352,11 @@ export function SmartImages() {
         }}
       />
       <section className="panel agent-history">
-        <h2>制作历史</h2>
+        <h2>{t("smart.history")}</h2>
         <DataState
           query={history}
           empty={!history.data?.items.length}
-          emptyText="暂无制作记录"
+          emptyText={t("smart.history.empty")}
         >
           <div>
             {history.data?.items.map((r) => (
@@ -1344,16 +1364,17 @@ export function SmartImages() {
                 <div>
                   <strong>{r.input.instruction.slice(0, 60)}</strong>
                   <p className="hint">
-                    {time(r.createdAt)} · {r.input.targetCount} 张 ·{" "}
+                    {time(r.createdAt)} ·{" "}
+                    {t("smart.history.count", { count: r.input.targetCount })} ·{" "}
                     {r.batchID
-                      ? "已提交生图"
+                      ? t("smart.history.submitted")
                       : r.status === "analyzing"
                         ? r.progress
                           ? runStepLabel(r.progress)
-                          : "处理中"
+                          : t("run.processing")
                         : r.status === "needs_input"
-                          ? "等待补充"
-                          : "可继续制作"}
+                          ? t("smart.stage.needsInput")
+                          : t("smart.history.resume")}
                   </p>
                 </div>
                 <Button
@@ -1362,7 +1383,7 @@ export function SmartImages() {
                     setError("");
                   }}
                 >
-                  打开记录
+                  {t("smart.history.open")}
                 </Button>
               </div>
             ))}
