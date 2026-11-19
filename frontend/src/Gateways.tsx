@@ -8,6 +8,7 @@ import {
 } from "@ant-design/icons";
 import { call, type Connection } from "./api";
 import { useActions, useData, time } from "./ui";
+import { t, type MessageKey } from "./i18n";
 
 export type GatewaySettings = {
   primaryID: string;
@@ -29,12 +30,16 @@ export type GatewayHealth = {
   inFlight: number;
 };
 
-const stateText = {
-  healthy: "正常",
-  slow: "变慢",
-  down: "不可用",
-  unknown: "未检查",
-} as const;
+const stateKeys: Record<GatewayHealth["state"], MessageKey> = {
+  healthy: "gateways.state.healthy",
+  slow: "gateways.state.slow",
+  down: "gateways.state.down",
+  unknown: "gateways.state.unknown",
+};
+/** Health state name in the interface language. */
+export function gatewayStateText(state: GatewayHealth["state"]) {
+  return t(stateKeys[state]);
+}
 const stateColor = {
   healthy: "success",
   slow: "warning",
@@ -61,7 +66,7 @@ export function GatewayTag({ health }: { health?: GatewayHealth }) {
   const state = health?.state || "unknown";
   const tag = (
     <Tag color={stateColor[state]} className="gateway-tag">
-      {stateText[state]}
+      {gatewayStateText(state)}
     </Tag>
   );
   return health?.reason ? <Tooltip title={health.reason}>{tag}</Tooltip> : tag;
@@ -75,16 +80,19 @@ export function gatewayLabel(
 ) {
   const role =
     g?.primaryID === c.id
-      ? " · 主用"
+      ? ` · ${t("gateways.primary")}`
       : g?.backupIDs.includes(c.id)
-        ? " · 备用"
+        ? ` · ${t("gateways.backup")}`
         : "";
-  const state = h && h.state !== "unknown" ? ` · ${stateText[h.state]}` : "";
-  return c.name + role + state + (c.hasKey ? "" : " · 未配置密钥");
+  const state =
+    h && h.state !== "unknown" ? ` · ${gatewayStateText(h.state)}` : "";
+  return (
+    c.name + role + state + (c.hasKey ? "" : ` · ${t("gateways.noKey")}`)
+  );
 }
 
 function seconds(ms: number) {
-  return `${Math.round(ms / 1000)} 秒`;
+  return t("gateways.seconds", { n: Math.round(ms / 1000) });
 }
 
 // Per-connection controls shown inside the image relay list.
@@ -119,7 +127,7 @@ export function GatewayRow({
     <div className="gateway-row">
       <Space wrap size={[12, 6]}>
         <span>
-          健康 <GatewayTag health={h} />
+          {t("gateways.health")} <GatewayTag health={h} />
         </span>
         <Radio
           checked={isPrimary}
@@ -131,7 +139,7 @@ export function GatewayRow({
             })
           }
         >
-          主用
+          {t("gateways.primary")}
         </Radio>
         {!isPrimary && (
           <Space size={4}>
@@ -139,7 +147,7 @@ export function GatewayRow({
               size="small"
               checked={backupIndex >= 0}
               disabled={actions.busy}
-              aria-label={`将 ${connection.name} 设为备用图片服务`}
+              aria-label={t("gateways.setBackup", { name: connection.name })}
               onChange={(on) =>
                 save({
                   backupIDs: on
@@ -148,14 +156,18 @@ export function GatewayRow({
                 })
               }
             />
-            <span>{backupIndex >= 0 ? `备用 ${backupIndex + 1}` : "备用"}</span>
+            <span>
+              {backupIndex >= 0
+                ? t("gateways.backupN", { n: backupIndex + 1 })
+                : t("gateways.backup")}
+            </span>
             {backupIndex >= 0 && g.backupIDs.length > 1 && (
               <>
                 <Button
                   size="small"
                   type="text"
                   icon={<ArrowUpOutlined aria-hidden="true" />}
-                  aria-label={`${connection.name} 备用顺序上移`}
+                  aria-label={t("gateways.moveUp", { name: connection.name })}
                   disabled={backupIndex === 0 || actions.busy}
                   onClick={() => move(-1)}
                 />
@@ -163,7 +175,7 @@ export function GatewayRow({
                   size="small"
                   type="text"
                   icon={<ArrowDownOutlined aria-hidden="true" />}
-                  aria-label={`${connection.name} 备用顺序下移`}
+                  aria-label={t("gateways.moveDown", { name: connection.name })}
                   disabled={
                     backupIndex === g.backupIDs.length - 1 || actions.busy
                   }
@@ -176,13 +188,24 @@ export function GatewayRow({
       </Space>
       <small className="gateway-detail">
         {h?.checkedAt
-          ? `免费检查 ${time(h.checkedAt)} · 响应 ${h.probeMS} ms · ${
-              h.modelsOK ? `${h.modelCount} 个模型` : "未读取到模型列表"
-            }`
-          : "尚未检查"}
-        {h?.medianMS ? ` · 最近生成中位 ${seconds(h.medianMS)}` : ""}
-        {h?.recentTimeouts ? ` · 15 分钟内超时 ${h.recentTimeouts} 次` : ""}
-        {images.length > 1 && !isPrimary && backupIndex < 0 && " · 未加入备用"}
+          ? t("gateways.detail.checked", {
+              time: time(h.checkedAt),
+              ms: String(h.probeMS),
+              models: h.modelsOK
+                ? t("gateways.detail.models", { count: h.modelCount })
+                : t("gateways.detail.noModels"),
+            })
+          : t("gateways.detail.unchecked")}
+        {h?.medianMS
+          ? ` · ${t("gateways.detail.median", { time: seconds(h.medianMS) })}`
+          : ""}
+        {h?.recentTimeouts
+          ? ` · ${t("gateways.detail.timeouts", { count: h.recentTimeouts })}`
+          : ""}
+        {images.length > 1 &&
+          !isPrimary &&
+          backupIndex < 0 &&
+          ` · ${t("gateways.detail.notBackup")}`}
       </small>
     </div>
   );
@@ -201,7 +224,8 @@ export function GatewayFailover() {
     <section className="panel" aria-labelledby="gateway-failover-title">
       <div className="panel-heading">
         <h2 id="gateway-failover-title">
-          <SafetyCertificateOutlined aria-hidden="true" /> 备用切换
+          <SafetyCertificateOutlined aria-hidden="true" />{" "}
+          {t("gateways.failover.title")}
         </h2>
         <Button
           loading={checking}
@@ -211,26 +235,20 @@ export function GatewayFailover() {
             try {
               await actions.run(
                 () => call("CheckGateways"),
-                "免费检查完成（只读取模型列表，不产生费用）",
+                t("gateways.failover.checked"),
               );
             } finally {
               setChecking(false);
             }
           }}
         >
-          立即检查（免费）
+          {t("gateways.failover.check")}
         </Button>
       </div>
       {!configured && (
-        <p className="hint">
-          在上方图片服务中选择一个“主用”，并把其他图片服务设为“备用”后，以下功能生效。未设置时生图行为与之前相同。
-        </p>
+        <p className="hint">{t("gateways.failover.unset")}</p>
       )}
-      <p className="hint">
-        生图期间每 3
-        分钟免费检查一次主用和备用图片服务（只读取模型列表，不生成图片、不计费），并根据最近的生成耗时和超时判断是否变慢。只有模型列表中包含完全相同模型
-        ID 的图片服务才会被用作备用。
-      </p>
+      <p className="hint">{t("gateways.failover.probe")}</p>
       <div className="gateway-switch">
         <Switch
           checked={g.autoReroute}
@@ -240,17 +258,12 @@ export function GatewayFailover() {
         />
         <div>
           <strong id="auto-reroute-label">
-            自动把未发送的图片转到备用图片服务
+            {t("gateways.failover.reroute")}
           </strong>
-          <p className="hint">
-            主用图片服务变慢或不可用时，还没发送的图片改用健康的备用图片服务。这些图片从未发送过，不会额外计费。
-          </p>
+          <p className="hint">{t("gateways.failover.reroute.hint")}</p>
         </div>
       </div>
-      <p className="hint">
-        结果未知（例如 HTTP
-        524）的图片会自动重新生成一次，优先改用健康、模型完全相同的备用图片服务；原请求可能已计费，这些图片可能产生两次费用。已收到但没保存成功的图片会自动补下载，不会重新生图。
-      </p>
+      <p className="hint">{t("gateways.failover.unknown")}</p>
     </section>
   );
 }

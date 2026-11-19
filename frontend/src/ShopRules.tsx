@@ -12,6 +12,7 @@ import {
 import { DeleteOutlined, PaperClipOutlined } from "@ant-design/icons";
 import { call, errorText } from "./api";
 import { DataState, useActions, useData } from "./ui";
+import { t } from "./i18n";
 
 export type ShopRule = {
   id: string;
@@ -50,7 +51,7 @@ export function ShopRules() {
           enabled: editing?.enabled ?? true,
         });
         setEditing(undefined);
-        notification.success({ message: "店铺规则已保存" });
+        notification.success({ message: t("shopRules.saved") });
       } catch (e) {
         setError(errorText(e));
         throw e;
@@ -64,13 +65,11 @@ export function ShopRules() {
       aria-labelledby="shop-rules-title"
     >
       <div className="panel-heading">
-        <h2 id="shop-rules-title">店铺规则</h2>
-        <Button onClick={() => open(null)}>新建店铺规则</Button>
+        <h2 id="shop-rules-title">{t("shopRules.title")}</h2>
+        <Button onClick={() => open(null)}>{t("shopRules.new")}</Button>
       </div>
-      <p className="hint">
-        写下你的店铺每套图都要遵守的要求（模特、尺寸上限、刺绣位置、不能出现的元素等），可以附上参考图或文字资料。启用的规则在创作时优先于所有技能；已开始的制作沿用当时的规则。
-      </p>
-      <DataState query={q} empty={!q.data?.length} emptyText="还没有店铺规则">
+      <p className="hint">{t("shopRules.hint")}</p>
+      <DataState query={q} empty={!q.data?.length} emptyText={t("shopRules.empty")}>
         <div className="connection-list">
           {q.data?.map((v) => (
             <div className="connection-row" key={v.id}>
@@ -86,7 +85,13 @@ export function ShopRules() {
                         key={a.name}
                         closable
                         closeIcon={
-                          <span aria-label={`删除附件 ${a.name}`}>×</span>
+                          <span
+                            aria-label={t("shopRules.removeFile", {
+                              name: a.name,
+                            })}
+                          >
+                            ×
+                          </span>
                         }
                         onClose={(e) => {
                           e.preventDefault();
@@ -104,7 +109,7 @@ export function ShopRules() {
               <Space>
                 <Switch
                   checked={v.enabled}
-                  aria-label={`启用店铺规则 ${v.name}`}
+                  aria-label={t("shopRules.enable", { name: v.name })}
                   disabled={actions.busy}
                   onChange={(on) =>
                     actions.run(() => call("SetShopRuleEnabled", v.id, on))
@@ -116,17 +121,17 @@ export function ShopRules() {
                     actions.run(() => call("AddShopRuleFiles", v.id))
                   }
                 >
-                  添加附件
+                  {t("shopRules.addFiles")}
                 </Button>
-                <Button onClick={() => open(v)}>编辑</Button>
+                <Button onClick={() => open(v)}>{t("shopRules.edit")}</Button>
                 <Button
                   danger
-                  aria-label={`删除店铺规则 ${v.name}`}
+                  aria-label={t("shopRules.delete", { name: v.name })}
                   icon={<DeleteOutlined aria-hidden="true" />}
                   onClick={() =>
                     actions.confirm(
-                      `删除店铺规则“${v.name}”？`,
-                      "已开始的制作保留当时的规则。",
+                      t("shopRules.delete.title", { name: v.name }),
+                      t("shopRules.delete.body"),
                       () => call("DeleteShopRule", v.id),
                       true,
                     )
@@ -138,18 +143,18 @@ export function ShopRules() {
         </div>
       </DataState>
       <Modal
-        title={editing ? "编辑店铺规则" : "新建店铺规则"}
+        title={editing ? t("shopRules.editTitle") : t("shopRules.new")}
         open={editing !== undefined}
         onCancel={() => setEditing(undefined)}
         onOk={save}
-        okText="保存"
-        cancelText="取消"
+        okText={t("shopRules.save")}
+        cancelText={t("shopRules.cancel")}
         confirmLoading={actions.busy}
         width={720}
         destroyOnHidden
       >
         <label className="field-label" htmlFor="shop-rule-name">
-          规则名称
+          {t("shopRules.name")}
         </label>
         <Input
           id="shop-rule-name"
@@ -158,13 +163,13 @@ export function ShopRules() {
           onChange={(e) => setName(e.target.value)}
         />
         <label className="field-label" htmlFor="shop-rule-text">
-          规则内容
+          {t("shopRules.text")}
         </label>
         <Input.TextArea
           id="shop-rule-text"
           value={text}
           autoSize={{ minRows: 8, maxRows: 20 }}
-          placeholder="例如：所有图片使用欧美模特；刺绣宽度不超过 25 cm；全图清晰，不要虚化背景。"
+          placeholder={t("shopRules.placeholder")}
           onChange={(e) => setText(e.target.value)}
         />
         {error && <Alert type="error" showIcon message={error} />}

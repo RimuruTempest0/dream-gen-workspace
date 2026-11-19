@@ -36,6 +36,7 @@ import {
   AgentSettings,
   ConnectionFields,
 } from "../AgentSettings";
+import { t } from "../i18n";
 
 export function Settings() {
   const q = useData<Connection[]>(["connections"], "ListConnections");
@@ -51,14 +52,12 @@ export function Settings() {
     );
     if (!destination) return;
     actions.confirm(
-      "更改保存位置？",
+      t("settings.move.title"),
       <div>
-        <p>
-          现有图片、任务和配置会一起迁移，原目录保留。新目录必须是空文件夹。
-        </p>
-        <p className="hint">当前目录</p>
+        <p>{t("settings.move.body")}</p>
+        <p className="hint">{t("settings.move.current")}</p>
         <code className="data-path">{summary.data?.dataDir}</code>
-        <p className="hint">新目录</p>
+        <p className="hint">{t("settings.move.new")}</p>
         <code className="data-path">{destination}</code>
       </div>,
       async () => {
@@ -70,7 +69,7 @@ export function Settings() {
         }
       },
       false,
-      "迁移并使用",
+      t("settings.move.ok"),
     );
   }
   const [editing, setEditing] = useState<Connection | null | undefined>(
@@ -121,7 +120,7 @@ export function Settings() {
             id: editing?.id || "",
             clearKey: false,
           }),
-        "连接已保存",
+        t("settings.saved"),
       );
       if (saved) {
         setEditing(undefined);
@@ -165,8 +164,8 @@ export function Settings() {
     if (testing) return;
     if (form.isFieldsTouched())
       actions.confirm(
-        "放弃未保存的连接修改？",
-        "API Key 仅在点击保存后持久化。",
+        t("settings.discard.title"),
+        t("settings.discard.body"),
         async () => {
           setEditing(undefined);
           form.resetFields();
@@ -180,12 +179,8 @@ export function Settings() {
   return (
     <>
       <Header
-        title="连接"
-        sub={
-          customer
-            ? "授权、线路状态和本地数据。线路由软件提供方配置，无需填写地址或 Key。"
-            : "连接图片服务和 AI 模型，管理技能、数据位置和授权。密钥只加密保存在这台电脑上。"
-        }
+        title={t("settings.title")}
+        sub={customer ? t("settings.sub.hosted") : t("settings.sub.open")}
         action={
           customer ? undefined : (
             <Button
@@ -193,7 +188,7 @@ export function Settings() {
               icon={<PlusOutlined aria-hidden="true" />}
               onClick={() => open(null)}
             >
-              添加连接
+              {t("settings.add")}
             </Button>
           )
         }
@@ -204,17 +199,17 @@ export function Settings() {
       <section className="panel">
         <div className="panel-heading">
           <h2>
-            <ApiOutlined aria-hidden="true" /> 图片服务
+            <ApiOutlined aria-hidden="true" /> {t("settings.images.title")}
           </h2>
-          <span className="muted">Images 兼容协议</span>
+          <span className="muted">{t("settings.images.protocol")}</span>
         </div>
         <DataState
           query={q}
           empty={!q.data?.some((c) => c.kind !== "llm")}
-          emptyText="添加你的第一个图片服务"
+          emptyText={t("settings.images.empty")}
           action={
             <Button type="primary" onClick={() => open(null)}>
-              填写 Base URL 与 API Key
+              {t("settings.images.fill")}
             </Button>
           }
         >
@@ -230,16 +225,20 @@ export function Settings() {
                     <strong>
                       {c.name}{" "}
                       <Tag color={c.hasKey ? "success" : "warning"}>
-                        {c.hasKey ? "密钥已保存" : "需要密钥"}
+                        {c.hasKey
+                          ? t("settings.key.saved")
+                          : t("settings.key.needed")}
                       </Tag>
                     </strong>
                     {c.managed ? (
-                      <p className="hint">由软件授权提供</p>
+                      <p className="hint">{t("settings.managed.by")}</p>
                     ) : (
                       <p className="mono">{c.baseURL}</p>
                     )}
                     <small>
-                      默认模型：{c.model || "未设置，可在工作台填写"}
+                      {t("settings.defaultModel", {
+                        model: c.model || t("settings.defaultModel.unset"),
+                      })}
                     </small>
                     <GatewayRow
                       connection={c}
@@ -247,16 +246,18 @@ export function Settings() {
                     />
                   </div>
                   {c.managed ? (
-                    <Tag>由软件授权管理</Tag>
+                    <Tag>{t("settings.managed.tag")}</Tag>
                   ) : (
                     <Space wrap>
-                      <Button onClick={() => open(c)}>编辑 / 测试</Button>
+                      <Button onClick={() => open(c)}>
+                        {t("settings.editTest")}
+                      </Button>
                       {c.hasKey && (
                         <Button
                           onClick={() =>
                             actions.confirm(
-                              "清除此连接的密钥？",
-                              "新任务将无法提交。已提交任务保存的加密凭证版本仍用于恢复；密钥不会从任务中返回到界面。",
+                              t("settings.clearKey.title"),
+                              t("settings.clearKey.body"),
                               () =>
                                 call("SaveConnection", {
                                   ...c,
@@ -266,17 +267,17 @@ export function Settings() {
                             )
                           }
                         >
-                          清除密钥
+                          {t("settings.clearKey")}
                         </Button>
                       )}
                       <Button
                         danger
-                        aria-label={`删除连接 ${c.name}`}
+                        aria-label={t("settings.delete.aria", { name: c.name })}
                         icon={<DeleteOutlined aria-hidden="true" />}
                         onClick={() =>
                           actions.confirm(
-                            `删除连接“${c.name}”？`,
-                            "需要先停止队列。历史任务与图片保留，重新生成需要重新配置连接。",
+                            t("settings.delete.title", { name: c.name }),
+                            t("settings.delete.body"),
                             () => call("DeleteConnection", c.id),
                             true,
                           )
@@ -295,21 +296,26 @@ export function Settings() {
       <AgentSettings />
       <section className="panel storage-panel">
         <div className="panel-heading">
-          <h2>本地数据与备份</h2>
-          <Tag>本机存储</Tag>
+          <h2>{t("settings.storage.title")}</h2>
+          <Tag>{t("settings.storage.tag")}</Tag>
         </div>
-        <p>数据位置</p>
-        <code className="data-path">{summary.data?.dataDir || "正在读取"}</code>
+        <p>{t("settings.storage.location")}</p>
+        <code className="data-path">
+          {summary.data?.dataDir || t("settings.storage.reading")}
+        </code>
         <Space wrap className="location-actions">
           <Button
             icon={<FolderOutlined aria-hidden="true" />}
             disabled={!summary.data || moving}
             loading={actions.busy}
             onClick={() =>
-              actions.run(() => call("OpenDataDirectory"), "已打开数据目录")
+              actions.run(
+                () => call("OpenDataDirectory"),
+                t("settings.storage.opened"),
+              )
             }
           >
-            打开数据位置
+            {t("settings.storage.open")}
           </Button>
           <Button
             icon={<SettingOutlined aria-hidden="true" />}
@@ -319,16 +325,11 @@ export function Settings() {
             loading={moving}
             onClick={chooseLocation}
           >
-            更改保存位置
+            {t("settings.storage.change")}
           </Button>
         </Space>
-        <p className="hint">
-          可以自选空文件夹作为保存位置，现有数据会一起迁移。新位置立即生效，重启后继续使用。
-        </p>
-        <p className="hint">
-          备份包含模板、任务与图片，不包含 API Key
-          或界面缓存。换电脑后重新输入密钥。
-        </p>
+        <p className="hint">{t("settings.storage.changeHint")}</p>
+        <p className="hint">{t("settings.backup.hint")}</p>
         <Space wrap>
           <Button
             icon={<DownloadOutlined aria-hidden="true" />}
@@ -342,60 +343,57 @@ export function Settings() {
               }, undefined)
             }
           >
-            创建备份
+            {t("settings.backup.create")}
           </Button>
           <Button
             icon={<ReloadOutlined aria-hidden="true" />}
             disabled={!!summary.data?.active || moving}
             onClick={() =>
               actions.confirm(
-                "从备份恢复数据？",
-                "当前数据会保留在恢复前目录。任务和图片将以备份为准，密钥需要重新输入。请先停止并结束活动任务。",
+                t("settings.restore.title"),
+                t("settings.restore.body"),
                 () => call("Restore"),
                 true,
               )
             }
           >
-            恢复备份
+            {t("settings.restore")}
           </Button>
         </Space>
-        <p className="hint">
-          商品链接被网站拦截时，创作会用应用内浏览器读取页面，Cookie
-          保存在当前数据目录，不进入备份。清除后，下次读取可能需要重新完成验证。
-        </p>
+        <p className="hint">{t("settings.browser.hint")}</p>
         <Space wrap>
           <Button
             icon={<DeleteOutlined aria-hidden="true" />}
             disabled={moving}
             onClick={() =>
               actions.confirm(
-                "清除商品页浏览器数据？",
-                "将删除应用内浏览器保存的 Cookie 与缓存，不影响图片、任务、连接和密钥。",
+                t("settings.browser.clear.title"),
+                t("settings.browser.clear.body"),
                 async () => {
                   await call("ClearProductBrowserData");
-                  notification.success({ message: "已清除商品页浏览器数据" });
+                  notification.success({
+                    message: t("settings.browser.cleared"),
+                  });
                 },
                 true,
-                "清除",
+                t("settings.browser.clear.ok"),
               )
             }
           >
-            清除商品页浏览器数据
+            {t("settings.browser.clear")}
           </Button>
         </Space>
         {!!summary.data?.active && (
-          <p className="hint">
-            当前有活动或等待任务，完成或停止后才能更改保存位置或恢复备份。
-          </p>
+          <p className="hint">{t("settings.storage.busy")}</p>
         )}
       </section>
       <Modal
-        title={editing ? "编辑图片服务" : "添加图片服务"}
+        title={editing ? t("settings.edit.title") : t("settings.add.title")}
         open={editing !== undefined}
         onCancel={close}
         onOk={save}
-        okText="保存连接"
-        cancelText="取消"
+        okText={t("settings.edit.ok")}
+        cancelText={t("settings.cancel")}
         confirmLoading={actions.busy}
         okButtonProps={{ disabled: testing }}
         maskClosable={!testing}
@@ -410,18 +408,18 @@ export function Settings() {
               onClick={test}
               loading={testing}
             >
-              测试连接 / 获取模型
+              {t("settings.test")}
             </Button>
             {testing && (
               <Button disabled={false} onClick={cancelTest}>
-                取消测试
+                {t("settings.test.cancel")}
               </Button>
             )}
-            <span className="muted">不会提交生图任务</span>
+            <span className="muted">{t("settings.test.free")}</span>
           </div>
           {testing && (
             <p role="status" className="hint">
-              正在连接并获取模型，最多等待 30 秒。可以取消测试。
+              {t("settings.test.running")}
             </p>
           )}
           {testError && <Alert type="error" showIcon message={testError} />}{" "}
@@ -442,10 +440,10 @@ export function Settings() {
               {!!result.ids.length && (
                 <UISelect
                   className="full-width"
-                  aria-label="查询到的模型"
+                  aria-label={t("settings.test.models")}
                   showSearch
                   optionFilterProp="label"
-                  placeholder="选择一个默认模型"
+                  placeholder={t("settings.test.pick")}
                   options={result.ids.map((id) => ({ value: id, label: id }))}
                   onChange={(id) => form.setFieldValue("model", id)}
                 />

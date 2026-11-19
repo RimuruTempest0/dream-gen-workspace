@@ -13,6 +13,8 @@ import {
 import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import { call } from "./api";
 import { DataState, Header, time, useActions, useData } from "./ui";
+import { t, type MessageKey } from "./i18n";
+import { fill } from "./i18n/fill";
 
 type LogEntry = {
   id: number;
@@ -23,17 +25,19 @@ type LogEntry = {
   message: string;
 };
 type LogPage = { items: LogEntry[]; total: number };
-const levels: Record<string, string> = {
-  info: "信息",
-  warn: "警告",
-  error: "错误",
+const levels: Record<string, MessageKey> = {
+  info: "logs.level.info",
+  warn: "logs.level.warn",
+  error: "logs.level.error",
 };
-const sources: Record<string, string> = {
-  app: "应用",
-  connection: "连接验证",
-  agent: "智能分析",
-  image: "生图任务",
+const sources: Record<string, MessageKey> = {
+  app: "logs.source.app",
+  connection: "logs.source.connection",
+  agent: "logs.source.agent",
+  image: "logs.source.image",
 };
+const levelName = (v: string) => (levels[v] ? t(levels[v]) : v);
+const sourceName = (v: string) => (sources[v] ? t(sources[v]) : v);
 
 export function Logs() {
   const [level, setLevel] = useState("");
@@ -52,9 +56,8 @@ export function Logs() {
     });
     if (path)
       notification.success({
-        message: "诊断包已导出",
-        description:
-          "可以发给软件提供方。包内没有 API Key、激活码、提示词、图片和技能正文。",
+        message: t("logs.exported"),
+        description: t("logs.exported.body"),
       });
   }
   const q = useData<LogPage>(
@@ -66,8 +69,8 @@ export function Logs() {
   return (
     <>
       <Header
-        title="日志"
-        sub="查看连接、智能分析和生图任务的运行记录。日志保存在当前数据目录，保留最近 5000 条。"
+        title={t("logs.title")}
+        sub={t("logs.sub")}
         action={
           <Space wrap>
             <Button
@@ -75,22 +78,22 @@ export function Logs() {
               loading={actions.busy}
               onClick={() => void exportDiagnostics()}
             >
-              导出诊断包
+              {t("logs.export")}
             </Button>
             <Button
               icon={<ReloadOutlined aria-hidden="true" />}
               loading={q.isFetching}
               onClick={() => void q.refetch()}
             >
-              刷新日志
+              {t("logs.refresh")}
             </Button>
           </Space>
         }
       />
-      <section className="panel" aria-label="日志记录">
+      <section className="panel" aria-label={t("logs.records")}>
         <div className="log-filters">
           <div className="log-filter">
-            <label htmlFor="log-level">日志级别</label>
+            <label htmlFor="log-level">{t("logs.filter.level")}</label>
             <UISelect
               id="log-level"
               value={level}
@@ -99,16 +102,16 @@ export function Logs() {
                 setPage(1);
               }}
               options={[
-                { value: "", label: "全部级别" },
-                ...Object.entries(levels).map(([value, label]) => ({
+                { value: "", label: t("logs.filter.allLevels") },
+                ...Object.keys(levels).map((value) => ({
                   value,
-                  label,
+                  label: levelName(value),
                 })),
               ]}
             />
           </div>
           <div className="log-filter">
-            <label htmlFor="log-source">日志来源</label>
+            <label htmlFor="log-source">{t("logs.filter.source")}</label>
             <UISelect
               id="log-source"
               value={source}
@@ -117,22 +120,22 @@ export function Logs() {
                 setPage(1);
               }}
               options={[
-                { value: "", label: "全部来源" },
-                ...Object.entries(sources).map(([value, label]) => ({
+                { value: "", label: t("logs.filter.allSources") },
+                ...Object.keys(sources).map((value) => ({
                   value,
-                  label,
+                  label: sourceName(value),
                 })),
               ]}
             />
           </div>
           <div className="log-filter log-search">
-            <label htmlFor="log-keyword">关键词或关联 ID</label>
+            <label htmlFor="log-keyword">{t("logs.filter.keyword")}</label>
             <Input.Search
               id="log-keyword"
-              placeholder="输入后搜索"
+              placeholder={t("logs.filter.keyword.placeholder")}
               maxLength={200}
               allowClear
-              enterButton="搜索"
+              enterButton={t("logs.filter.search")}
               onSearch={(v) => {
                 setKeyword(v.trim());
                 setPage(1);
@@ -141,14 +144,14 @@ export function Logs() {
           </div>
           <Space>
             <Switch id="log-auto" checked={auto} onChange={setAuto} />
-            <label htmlFor="log-auto">自动刷新</label>
+            <label htmlFor="log-auto">{t("logs.auto")}</label>
           </Space>
         </div>
-        <p className="hint">
-          仅记录阶段和错误摘要，密钥已脱敏，不记录提示词、图片内容或思考原文。从此版本开始记录，历史任务仍可在生成记录查看。
-        </p>
+        <p className="hint">{t("logs.privacy")}</p>
         <div role="status" aria-live="polite" className="hint">
-          {q.data ? `共 ${q.data.total} 条符合条件的日志` : "正在读取日志"}
+          {q.data
+            ? t("logs.total", { count: q.data.total })
+            : t("logs.loading")}
         </div>
         <DataState query={q}>
           <Table<LogEntry>
@@ -156,7 +159,7 @@ export function Logs() {
             dataSource={q.data?.items || []}
             scroll={{ x: 760 }}
             locale={{
-              emptyText: "暂无符合条件的日志，可调整筛选条件或稍后刷新。",
+              emptyText: t("logs.empty"),
             }}
             pagination={{
               current: page,
@@ -168,13 +171,13 @@ export function Logs() {
             }}
             columns={[
               {
-                title: "时间",
+                title: t("logs.col.time"),
                 dataIndex: "time",
                 width: 170,
                 render: (v: string) => time(v),
               },
               {
-                title: "级别",
+                title: t("logs.col.level"),
                 dataIndex: "level",
                 width: 80,
                 render: (v: string) => (
@@ -187,18 +190,18 @@ export function Logs() {
                           : "default"
                     }
                   >
-                    {levels[v] || v}
+                    {levelName(v)}
                   </Tag>
                 ),
               },
               {
-                title: "来源",
+                title: t("logs.col.source"),
                 dataIndex: "source",
                 width: 110,
-                render: (v: string) => sources[v] || v,
+                render: (v: string) => sourceName(v),
               },
               {
-                title: "内容",
+                title: t("logs.col.message"),
                 dataIndex: "message",
                 render: (v: string) => (
                   <span className="log-message">
@@ -208,15 +211,15 @@ export function Logs() {
                 ),
               },
               {
-                title: "操作",
+                title: t("logs.col.actions"),
                 width: 95,
                 render: (_, entry) => (
                   <Button
                     size="small"
-                    aria-label={`查看日志 ${entry.id} 详情`}
+                    aria-label={t("logs.detail.aria", { id: String(entry.id) })}
                     onClick={() => setDetail(entry)}
                   >
-                    查看详情
+                    {t("logs.detail.open")}
                   </Button>
                 ),
               },
@@ -225,20 +228,27 @@ export function Logs() {
         </DataState>
       </section>
       <Modal
-        title="日志详情"
+        title={t("logs.detail.title")}
         open={!!detail}
         onCancel={() => setDetail(null)}
-        footer={<Button onClick={() => setDetail(null)}>关闭</Button>}
+        footer={
+          <Button onClick={() => setDetail(null)}>{t("logs.detail.close")}</Button>
+        }
       >
         {detail && (
           <div className="log-detail">
-            <p>时间：{time(detail.time)}</p>
+            <p>{t("logs.detail.time", { time: time(detail.time) })}</p>
             <p>
-              级别：{levels[detail.level]} · 来源：{sources[detail.source]}
+              {t("logs.detail.levelSource", {
+                level: levelName(detail.level),
+                source: sourceName(detail.source),
+              })}
             </p>
             {detail.relatedID && (
               <p>
-                关联 ID：<span className="mono">{detail.relatedID}</span>
+                {fill(t("logs.detail.related"), {
+                  id: <span className="mono">{detail.relatedID}</span>,
+                })}
               </p>
             )}
             <pre className="log-message">{detail.message}</pre>
