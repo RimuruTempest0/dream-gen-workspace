@@ -232,8 +232,8 @@ func TestSkillImportFreezingAndBackup(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.ImportSkill(source, false); e == nil {
-		t.Fatal("silent overwrite")
+	if again, e := s.ImportSkill(source, false); e != nil || !again.Conflict {
+		t.Fatal("silent overwrite", e)
 	}
 	r := AgentRun{ID: NewID(), CreatedAt: Now(), Status: "review", Skills: []SkillRecord{v}, LLMConnection: Connection{Credential: "encrypted-ref", HasKey: true}}
 	s.store.Put("agent_run", r.ID, r)

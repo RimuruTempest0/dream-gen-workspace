@@ -56,7 +56,7 @@ func TestVersionRules(t *testing.T) {
 	if ok, _ := m.Applies("0.7.13"); ok {
 		t.Fatal("same version offered")
 	}
-	if ok, why := m.Applies("0.7.9"); ok || !strings.Contains(why, "0.7.10") {
+	if ok, why := m.Applies("0.7.9"); ok || why == nil || !strings.Contains(why.Error(), "0.7.10") {
 		t.Fatal("below min version offered", why)
 	}
 	if ok, _ := m.Applies("0.7.12"); !ok {

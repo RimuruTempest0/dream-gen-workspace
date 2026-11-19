@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"context"
 	"fmt"
 	"strings"
@@ -47,7 +48,7 @@ func TestPlanAllowsOneSamplePerDesignArea(t *testing.T) {
 		}
 	}
 	// The main design's sample is a master; a cuff sample keeps the close-up rule.
-	if !strings.Contains(sampleLead("胸前"), "设计母版") || sampleLead("袖口") != sampleSelfLine || sampleLead("") != sampleSelfLine {
+	if !strings.Contains(sampleLead("胸前", i18n.ZhCN), "设计母版") || sampleLead("袖口", i18n.ZhCN) != sampleSelfLine || sampleLead("", i18n.ZhCN) != sampleSelfLine {
 		t.Fatal("sample leads")
 	}
 }
@@ -80,7 +81,7 @@ func TestSubmittedSuiteLinksImagesToTheirAreaSamples(t *testing.T) {
 		t.Fatal(len(tasks))
 	}
 	chest, cuff := tasks[0], tasks[1]
-	if !strings.HasPrefix(chest.Prompt, sampleLead("胸前")) || chest.SampleArea != "胸前" || chest.Quality != sampleQuality || cuff.SampleArea != "袖口" || cuff.Quality != sampleQuality {
+	if !strings.HasPrefix(chest.Prompt, sampleLead("胸前", i18n.ZhCN)) || chest.SampleArea != "胸前" || chest.Quality != sampleQuality || cuff.SampleArea != "袖口" || cuff.Quality != sampleQuality {
 		t.Fatalf("samples: %+v / %+v", chest, cuff)
 	}
 	if fmt.Sprint(tasks[2].SampleItems) != fmt.Sprint([]string{chest.PlanItemID, cuff.PlanItemID}) || tasks[2].SampleItem != chest.PlanItemID || !tasks[2].SamplePending {
@@ -111,18 +112,18 @@ func TestImageGetsAllItsAreaSamplesFirst(t *testing.T) {
 	if fmt.Sprint(ready.References) != "[chest-img cuff-img shape]" || fmt.Sprint(ready.SampleAssetIDs) != "[chest-img cuff-img]" || ready.SampleAssetID != "chest-img" {
 		t.Fatalf("references: %v", ready.References)
 	}
-	if want := samplesPromptLine([]string{"胸前", "袖口"}, 3); !strings.HasPrefix(ready.Prompt, want) || !strings.Contains(want, "第 1 张是「胸前」设计的样板，第 2 张是「袖口」设计的样板") || !strings.Contains(want, "“图1”到“图1”，依次指第 3 到第 3 张") {
+	if want := samplesPromptLine([]string{"胸前", "袖口"}, 3, i18n.ZhCN); !strings.HasPrefix(ready.Prompt, want) || !strings.Contains(want, "第 1 张是「胸前」设计的样板，第 2 张是「袖口」设计的样板") || !strings.Contains(want, "“图1”到“图1”，依次指第 3 到第 3 张") {
 		t.Fatalf("prompt: %q", ready.Prompt)
 	}
 	partly := image()
 	attachSample(&partly, []Task{sample("chest", "胸前", "failed", ""), sample("cuff", "袖口", "succeeded", "passed")})
-	if fmt.Sprint(partly.References) != "[cuff-img shape]" || !strings.HasPrefix(partly.Prompt, samplesPromptLine([]string{"袖口"}, 2)) {
+	if fmt.Sprint(partly.References) != "[cuff-img shape]" || !strings.HasPrefix(partly.Prompt, samplesPromptLine([]string{"袖口"}, 2, i18n.ZhCN)) {
 		t.Fatalf("failed sample not left out: %v %q", partly.References, partly.Prompt)
 	}
 }
 
 func TestRefinementCarriesAllSamples(t *testing.T) {
-	p := refinePrompt("原始提示词", "背景更亮", 2)
+	p := refinePrompt("原始提示词", "背景更亮", 2, i18n.ZhCN)
 	if !strings.Contains(p, fmt.Sprintf(refineSamplesLine, 3)) || strings.Contains(p, refineSampleLine) {
 		t.Fatal(p)
 	}

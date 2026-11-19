@@ -1,7 +1,6 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,15 +43,15 @@ func (s *Service) SaveShopRule(v ShopRule) (ShopRule, error) {
 	defer s.mu.Unlock()
 	v.Name, v.Text = strings.TrimSpace(v.Name), strings.TrimSpace(strings.ReplaceAll(v.Text, "\r\n", "\n"))
 	if v.Name == "" || utf8.RuneCountInString(v.Name) > 100 {
-		return v, errors.New("请填写店铺规则名称（最多 100 个字）")
+		return v, s.fail("skill.shopRule.name")
 	}
 	if v.Text == "" || len(v.Text) > maxShopRuleText || !utf8.ValidString(v.Text) {
-		return v, errors.New("请填写规则内容（最多 32 KB）")
+		return v, s.fail("skill.shopRule.content")
 	}
 	if v.ID != "" {
 		var old ShopRule
 		if e := s.store.Get("shop_rule", v.ID, &old); e != nil {
-			return v, missing(e, "这条店铺规则已删除")
+			return v, missing(e, s.msg("skill.shopRule.deleted"))
 		}
 		v.Version, v.Attachments = old.Version+1, old.Attachments
 	} else {
@@ -67,7 +66,7 @@ func (s *Service) SetShopRuleEnabled(id string, enabled bool) error {
 	defer s.mu.Unlock()
 	var v ShopRule
 	if e := s.store.Get("shop_rule", id, &v); e != nil {
-		return missing(e, "这条店铺规则已删除")
+		return missing(e, s.msg("skill.shopRule.deleted"))
 	}
 	v.Enabled = enabled
 	return s.store.Put("shop_rule", id, v)
@@ -86,20 +85,20 @@ func (s *Service) AddShopRuleFiles(id string, paths []string) (ShopRule, error) 
 	defer s.mu.Unlock()
 	var v ShopRule
 	if e := s.store.Get("shop_rule", id, &v); e != nil {
-		return v, missing(e, "这条店铺规则已删除")
+		return v, missing(e, s.msg("skill.shopRule.deleted"))
 	}
 	if len(v.Attachments)+len(paths) > maxShopRuleFiles {
-		return v, fmt.Errorf("每条店铺规则最多 %d 个附件", maxShopRuleFiles)
+		return v, s.fail("skill.shopRule.maxFiles", "n", maxShopRuleFiles)
 	}
 	v.Version++
 	for _, p := range paths {
 		name := filepath.Base(p)
 		if !validSkillFile(name) {
-			return v, fmt.Errorf("不支持 %s：附件只能是图片（png、jpg、webp）或文本（md、txt、json）", name)
+			return v, s.fail("skill.shopRule.fileType", "name", name)
 		}
 		info, e := os.Lstat(p)
 		if e != nil || !info.Mode().IsRegular() || info.Size() > MaxImageBytes {
-			return v, fmt.Errorf("%s 无法读取或超过 32 MB", name)
+			return v, s.fail("skill.shopRule.fileUnreadable", "name", name)
 		}
 		data, e := os.ReadFile(p)
 		if e != nil {
@@ -134,7 +133,7 @@ func (s *Service) RemoveShopRuleFile(id, name string) (ShopRule, error) {
 	defer s.mu.Unlock()
 	var v ShopRule
 	if e := s.store.Get("shop_rule", id, &v); e != nil {
-		return v, missing(e, "这条店铺规则已删除")
+		return v, missing(e, s.msg("skill.shopRule.deleted"))
 	}
 	kept := []SkillAttachment{}
 	for _, a := range v.Attachments {
@@ -211,11 +210,11 @@ func (s *Service) SetSkillCategory(id, category string) error {
 	defer s.mu.Unlock()
 	category = strings.TrimSpace(category)
 	if utf8.RuneCountInString(category) > 40 {
-		return errors.New("品类名称最多 40 个字")
+		return s.fail("skill.category.tooLong")
 	}
 	var v SkillRecord
 	if e := s.store.Get("skill", id, &v); e != nil {
-		return missing(e, "这个技能已删除")
+		return missing(e, s.msg("skill.deleted"))
 	}
 	v.Category = category
 	return s.store.Put("skill", id, v)

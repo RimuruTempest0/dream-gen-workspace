@@ -73,6 +73,8 @@ export type SkillRecord = {
   enabled: boolean;
   source: string;
   attachments: { name: string; path: string }[];
+  /** Set by ImportSkill when a skill of that name exists (nothing imported). */
+  conflict?: boolean;
   sealed?: boolean;
   /** Product category; empty = used for every category. */
   category?: string;
@@ -88,6 +90,8 @@ export type AgentRun = {
   updatedAt: string;
   status: string;
   stage: string;
+  /** Code of a stage the page reacts to, whatever the stage text's language. */
+  stageCode?: string;
   error: string;
   llmReconnects?: number;
   llmReconnectError?: string;
@@ -102,7 +106,7 @@ export type AgentRun = {
   product: ProductInfo;
   questions: AgentQuestion[];
   plans: SuitePlan[];
-  events: { at: string; text: string }[];
+  events: { at: string; text: string; code?: string }[];
   batchID: string;
   submittedRevision: number;
 };

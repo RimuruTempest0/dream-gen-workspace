@@ -46,9 +46,9 @@ func projectRulesSuffix(r AgentRun, p SuitePlan) string {
 		for _, shipped := range shippedP004Contents() {
 			if skill.Content == shipped {
 				if p.CuffEmbroidery != nil && !*p.CuffEmbroidery {
-					return "\n" + p004FixedRulesNoCuff
+					return "\n" + p004Rules(r.Language, false)
 				}
-				return "\n" + p004FixedRules
+				return "\n" + p004Rules(r.Language, true)
 			}
 		}
 	}
@@ -86,16 +86,21 @@ func shippedP004Contents() []string {
 // the garment, cuff embroidery included, even when told not to.
 func itemPrompt(r AgentRun, p SuitePlan, item SuiteItem) string {
 	suffix := projectRulesSuffix(r, p)
+	// The fixed lines follow the prompt language (prompt_scaffold.go).
+	ratio, rules, clarity, locked, editable, sep := "\n画面比例：", "\n项目固定规则（P004）：", p004ClarityRules, "\n统一锁定项：", "\n允许修改：", "；"
+	if !zhPrompt(r.Language) {
+		ratio, rules, clarity, locked, editable, sep = enRatioLine, enRulesLine, enP004ClarityRules, enLockedLine, enEditableLine, enListSep
+	}
 	if item.NoProduct {
-		prompt := item.Prompt + "\n画面比例：" + r.Input.Ratio
+		prompt := item.Prompt + ratio + r.Input.Ratio
 		if suffix != "" {
-			prompt += "\n项目固定规则（P004）：" + p004ClarityRules
+			prompt += rules + clarity
 		}
 		return prompt
 	}
-	prompt := item.Prompt + "\n统一锁定项：" + strings.Join(p.Locked, "；") + "\n允许修改：" + strings.Join(p.Editable, "；") + "\n画面比例：" + r.Input.Ratio + suffix
+	prompt := item.Prompt + locked + strings.Join(p.Locked, sep) + editable + strings.Join(p.Editable, sep) + ratio + r.Input.Ratio + suffix
 	if item.Sample {
-		prompt = sampleLead(item.SampleArea) + prompt
+		prompt = sampleLead(item.SampleArea, r.Language) + prompt
 	}
 	return prompt
 }
@@ -134,9 +139,16 @@ func samplesUsed(p SuitePlan, item SuiteItem) []string {
 
 // sampleLead opens a sample's own prompt. A cuff-like detail sample keeps the
 // close-up rule; the master of a main design area shows its placement and size.
-func sampleLead(area string) string {
-	if area == "" || strings.Contains(area, "袖") {
+func sampleLead(area, lang string) string {
+	lower := strings.ToLower(area)
+	if area == "" || strings.Contains(area, "袖") || strings.Contains(lower, "cuff") || strings.Contains(lower, "sleeve") {
+		if !zhPrompt(lang) {
+			return enSampleSelfLine
+		}
 		return sampleSelfLine
+	}
+	if !zhPrompt(lang) {
+		return fmt.Sprintf(enSampleMasterLine, area)
 	}
 	return fmt.Sprintf("设计母版（本套其他图片会照这张画「%[1]s」的设计，必须画准）：按提示词的取景画；画面里「%[1]s」设计的图案、朝向、位置和相对大小就是全套的标准，必须清楚、完整、端正。\n", area)
 }

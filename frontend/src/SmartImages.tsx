@@ -68,7 +68,7 @@ import { LicenseNotice } from "./License";
 import {
   ReferenceStrip,
   AgentTiming,
-  browserVerifyStage,
+  isVerifyStage,
   isKnownStage,
   stageText,
   VerificationWait,
@@ -336,12 +336,12 @@ export function SmartImages() {
   // The stage while analyzing is the step, or a stage the backend named.
   const stage =
     run && analyzing
-      ? run.stage === browserVerifyStage
-        ? stageText(run.stage)
+      ? isVerifyStage(run)
+        ? stageText(run)
         : run.progress
           ? runStepLabel(run.progress)
-          : isKnownStage(run.stage)
-            ? stageText(run.stage)
+          : isKnownStage(run)
+            ? stageText(run)
             : t(stageKey)
       : t(stageKey);
   const candidates = extractProductLinks(input.instruction);
@@ -955,7 +955,7 @@ export function SmartImages() {
                 {analyzing && run.progress && <RunSteps run={run} />}
                 <RunActivity run={run} />
                 <AgentJudgments run={run} />
-                {analyzing && run.stage === browserVerifyStage && (
+                {analyzing && isVerifyStage(run) && (
                   <VerificationWait run={run} />
                 )}
                 {analyzing && (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"net/http"
 	"os"
@@ -73,7 +74,7 @@ type UpdateStatus struct {
 	Notes      string `json:"notes,omitempty"`
 	NotesLang  string `json:"notesLang,omitempty"` // language of Notes: zh-CN or en
 	Size       int64  `json:"size,omitempty"`
-	Stage      string `json:"stage,omitempty"` // downloading, ready
+	Stage      string `json:"stage,omitempty"`      // downloading, ready
 	Installing bool   `json:"installing,omitempty"` // one-click update under way
 	Waiting    string `json:"waiting,omitempty"`    // why the restart is put off
 	Downloaded int64  `json:"downloaded,omitempty"`
@@ -115,7 +116,7 @@ func (s *Service) updateBlockedLocked() string {
 		return ""
 	}
 	if s.lic.mode == "invalid" || s.lic.mode == "mismatch" {
-		return "软件授权无效，不能在线更新。请先在“系统 → 连接 → 授权”导入授权文件。"
+		return s.msg("update.blocked")
 	}
 	return ""
 }
@@ -169,7 +170,7 @@ func (s *Service) CheckForUpdate() (UpdateStatus, error) {
 	s.mu.Lock()
 	if !s.updateSupportedLocked() {
 		s.mu.Unlock()
-		return s.UpdateStatus(), errors.New("此版本没有设置更新地址，请向软件提供方获取完整包升级")
+		return s.UpdateStatus(), s.fail("update.notSupported")
 	}
 	if blocked := s.updateBlockedLocked(); blocked != "" {
 		s.mu.Unlock()
@@ -183,21 +184,25 @@ func (s *Service) CheckForUpdate() (UpdateStatus, error) {
 	s.upd.status.Checking = true
 	keys, url := s.updateKeysLocked(), updateManifestURL
 	s.mu.Unlock()
-	m, e := fetchManifest(s.ctx, url, keys, productLine)
+	m, e := fetchManifest(s.langCtx(s.ctx), url, keys, productLine)
+	e = s.localErr(e)
 	s.mu.Lock()
 	s.upd.status.Checking = false
 	s.upd.status.CheckedAt = Now()
 	if e != nil {
 		s.upd.status.Error = e.Error()
-		_ = s.store.appendLog("warn", "app", "", "检查更新失败："+e.Error())
+		_ = s.store.appendLog("warn", "app", "", s.msg("update.log.checkFailed", "error", e))
 	} else {
 		ok, why := m.Applies(AppVersion)
 		s.upd.manifest = m
-		s.upd.status.Error = why
+		s.upd.status.Error = ""
+		if why != nil {
+			s.upd.status.Error = s.errText(why)
+		}
 		s.upd.status.Available = ok
 		if ok && s.upd.status.Version != m.Version {
 			s.upd.status.Stage, s.upd.staged = "", ""
-			_ = s.store.appendLog("info", "app", "", "发现新版本 "+m.Version)
+			_ = s.store.appendLog("info", "app", "", s.msg("update.log.found", "version", m.Version))
 		}
 		s.upd.status.Version, s.upd.status.Size = m.Version, m.Size
 		if !ok {
@@ -218,11 +223,11 @@ func fetchManifest(ctx context.Context, url string, keys []string, line string) 
 	}
 	resp, e := updateClient().Do(req)
 	if e != nil {
-		return update.Manifest{}, fmt.Errorf("暂时连不上更新服务器，可以稍后再试，或向软件提供方获取完整包（%w）", e)
+		return update.Manifest{}, failCtx(ctx, "update.server.unreachable", "error", e)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return update.Manifest{}, fmt.Errorf("更新服务器返回 HTTP %d", resp.StatusCode)
+		return update.Manifest{}, failCtx(ctx, "update.server.status", "status", resp.StatusCode)
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes))
 	if e != nil {
@@ -242,7 +247,7 @@ func (s *Service) DownloadUpdate() (UpdateStatus, error) {
 	}
 	if !s.upd.status.Available || dir == "" {
 		s.mu.Unlock()
-		return s.UpdateStatus(), errors.New("没有可下载的新版本，请先检查更新")
+		return s.UpdateStatus(), s.fail("update.nothingToDownload")
 	}
 	if s.upd.status.Stage == "downloading" {
 		s.mu.Unlock()
@@ -252,13 +257,14 @@ func (s *Service) DownloadUpdate() (UpdateStatus, error) {
 	s.mu.Unlock()
 	s.signal()
 	staged, e := s.fetchAndStage(m, dir)
+	e = s.localErr(e)
 	s.mu.Lock()
 	if e != nil {
 		s.upd.status.Stage, s.upd.status.Error = "", e.Error()
-		_ = s.store.appendLog("error", "app", "", "下载更新失败："+e.Error())
+		_ = s.store.appendLog("error", "app", "", s.msg("update.log.downloadFailed", "error", e))
 	} else {
 		s.upd.status.Stage, s.upd.staged = "ready", staged
-		_ = s.store.appendLog("info", "app", "", "新版本 "+m.Version+" 已下载并通过校验")
+		_ = s.store.appendLog("info", "app", "", s.msg("update.log.downloaded", "version", m.Version))
 	}
 	s.mu.Unlock()
 	s.signal()
@@ -267,26 +273,26 @@ func (s *Service) DownloadUpdate() (UpdateStatus, error) {
 
 func (s *Service) fetchAndStage(m update.Manifest, program string) (string, error) {
 	if m.Size > maxUpdatePackage {
-		return "", errors.New("更新包过大")
+		return "", s.fail("update.package.tooLarge")
 	}
 	work := filepath.Join(program, updateDir)
 	if e := os.MkdirAll(work, 0o700); e != nil {
-		return "", fmt.Errorf("程序目录不可写（%w），请用完整包升级", e)
+		return "", s.fail("update.programReadOnly", "error", e)
 	}
 	pkg := filepath.Join(work, "ImageWorkbench-"+m.Version+".zip")
 	partial := pkg + ".partial"
 	_ = os.Remove(partial)
-	req, e := http.NewRequestWithContext(s.ctx, "GET", m.URL, nil)
+	req, e := http.NewRequestWithContext(s.langCtx(s.ctx), "GET", m.URL, nil)
 	if e != nil {
 		return "", e
 	}
 	resp, e := updateClient().Do(req)
 	if e != nil {
-		return "", fmt.Errorf("无法下载更新包：%w", e)
+		return "", s.fail("update.download.failed", "error", e)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("下载更新包失败：HTTP %d", resp.StatusCode)
+		return "", s.fail("update.download.status", "status", resp.StatusCode)
 	}
 	f, e := os.Create(partial)
 	if e != nil {
@@ -298,16 +304,16 @@ func (s *Service) fetchAndStage(m update.Manifest, program string) (string, erro
 	}
 	if e != nil {
 		os.Remove(partial)
-		return "", fmt.Errorf("下载更新包中断：%w", e)
+		return "", s.fail("update.download.interrupted", "error", e)
 	}
 	if n != m.Size {
 		os.Remove(partial)
-		return "", errors.New("更新包大小不符，可能下载不完整")
+		return "", s.fail("update.download.size")
 	}
 	sum, e := update.FileSHA256(partial)
 	if e != nil || !strings.EqualFold(sum, m.SHA256) {
 		os.Remove(partial)
-		return "", errors.New("更新包校验失败（SHA-256 不符），已删除")
+		return "", s.fail("update.download.checksum")
 	}
 	_ = os.Remove(pkg)
 	if e = os.Rename(partial, pkg); e != nil {
@@ -322,11 +328,11 @@ func (s *Service) fetchAndStage(m update.Manifest, program string) (string, erro
 	info, e := update.ReadInfo(filepath.Join(stage, "version.json"))
 	if e != nil || info.Version != m.Version {
 		os.RemoveAll(stage)
-		return "", errors.New("更新包的版本与清单不一致")
+		return "", s.fail("update.package.version")
 	}
 	if info.Line != productLine {
 		os.RemoveAll(stage)
-		return "", errors.New("更新包不属于这条产品线，已删除")
+		return "", s.fail("update.package.line")
 	}
 	if e = update.CheckComponents(stage, program); e != nil {
 		os.RemoveAll(stage)
@@ -362,10 +368,10 @@ func (s *Service) StartUpdate() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.upd.status.Stage != "ready" || s.upd.staged == "" {
-		return errors.New("新版本还没有下载完成")
+		return s.fail("update.notReady")
 	}
 	if e := s.agentBusy(); e != nil {
-		return updateBusy("创作正在进行，完成后才能重启更新")
+		return updateBusy(s.msg("update.wait.creation"))
 	}
 	counts, e := s.store.taskStatusCounts(false)
 	if e != nil {
@@ -373,14 +379,14 @@ func (s *Service) StartUpdate() error {
 	}
 	for status, n := range counts {
 		if n > 0 && active(status) {
-			return updateBusy("还有图片在生成或下载，完成后才能重启更新")
+			return updateBusy(s.msg("update.wait.images"))
 		}
 	}
 	exe := filepath.Join(s.upd.staged, "ImageWorkbench.exe")
-	if e = startUpdater(exe, updateFlag, "-pid", fmt.Sprint(os.Getpid()), "-program", s.programDir, "-stage", s.upd.staged); e != nil {
-		return fmt.Errorf("无法启动更新程序：%w", e)
+	if e = startUpdater(exe, updateFlag, "-pid", fmt.Sprint(os.Getpid()), "-program", s.programDir, "-stage", s.upd.staged, "-lang", s.Language()); e != nil {
+		return s.fail("update.startFailed", "error", e)
 	}
-	_ = s.store.appendLog("info", "app", "", "开始更新到 "+s.upd.manifest.Version+"，软件将重新启动")
+	_ = s.store.appendLog("info", "app", "", s.msg("update.log.starting", "version", s.upd.manifest.Version))
 	s.paused = true
 	return nil
 }
@@ -402,7 +408,7 @@ func (s *Service) UpdateNow(restart func()) error {
 	}
 	if !s.upd.status.Available || s.programDir == "" {
 		s.mu.Unlock()
-		return errors.New("没有可下载的新版本，请先检查更新")
+		return s.fail("update.nothingToDownload")
 	}
 	s.upd.auto, s.upd.cancel = true, false
 	s.mu.Unlock()
@@ -445,7 +451,7 @@ func (s *Service) runUpdate(restart func()) {
 		}
 		var busy updateBusy
 		if !errors.As(e, &busy) {
-			_ = s.store.appendLog("error", "app", "", "更新失败："+e.Error())
+			_ = s.store.appendLog("error", "app", "", s.msg("update.log.failed", "error", e))
 			stop(e.Error())
 			return
 		}
@@ -478,6 +484,17 @@ func (s *Service) CancelUpdateWait() {
 // IsUpdateCommand reports whether the program was started to apply an update.
 func IsUpdateCommand(args []string) bool { return len(args) > 1 && args[1] == updateFlag }
 
+// UpdateCommandLanguage is the interface language the old program passed with
+// -lang (zh-CN when it passed none: versions before 0.8.0).
+func UpdateCommandLanguage(args []string) string {
+	for i := 2; i+1 < len(args); i += 2 {
+		if args[i] == "-lang" && i18n.Supported(args[i+1]) {
+			return args[i+1]
+		}
+	}
+	return i18n.Default
+}
+
 // RunUpdateCommand is the new program applying itself: wait for the old process,
 // move the files in (with backup and rollback) and start the program again.
 func RunUpdateCommand(args []string, waitExit func(pid int, timeout time.Duration)) error {
@@ -494,10 +511,10 @@ func RunUpdateCommand(args []string, waitExit func(pid int, timeout time.Duratio
 		}
 	}
 	if program == "" || stage == "" {
-		return errors.New("更新参数不完整")
+		return i18n.Fail("update.command.args")
 	}
 	if rel, e := filepath.Rel(filepath.Join(program, updateDir), stage); e != nil || strings.HasPrefix(rel, "..") {
-		return errors.New("更新文件不在程序目录中")
+		return i18n.Fail("update.command.outside")
 	}
 	if pid > 0 {
 		waitExit(pid, time.Minute)
@@ -505,9 +522,10 @@ func RunUpdateCommand(args []string, waitExit func(pid int, timeout time.Duratio
 	backup := filepath.Join(program, updateDir, "backup-"+time.Now().Format("20060102-150405"))
 	applyErr := update.Apply(stage, program, backup)
 	log := filepath.Join(program, updateDir, "update.log")
-	msg := Now() + " 更新完成\r\n"
+	lang := UpdateCommandLanguage(args)
+	msg := Now() + " " + i18n.T(lang, "update.command.done") + "\r\n"
 	if applyErr != nil {
-		msg = Now() + " 更新失败，已恢复原文件：" + applyErr.Error() + "\r\n"
+		msg = Now() + " " + i18n.T(lang, "update.command.restored", "error", i18n.Text(applyErr, lang)) + "\r\n"
 	}
 	if f, e := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); e == nil {
 		f.WriteString(msg)
@@ -544,10 +562,10 @@ func CleanupUpdates(program string) {
 func updateClient() *http.Client {
 	return &http.Client{Transport: newNetworkTransport(), CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
-			return errors.New("更新地址跳转次数过多")
+			return failCtx(r.Context(), "update.redirect.tooMany")
 		}
 		if via[0].URL.Scheme == "https" && r.URL.Scheme != "https" {
-			return errors.New("更新地址从 https 跳转到了不安全的地址，已停止")
+			return failCtx(r.Context(), "update.redirect.insecure")
 		}
 		return nil
 	}}

@@ -44,10 +44,10 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 	if in.Mood != nil {
 		var e error
 		if mood, e = resolveMood(*in.Mood); e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		if concept, e = resolveConceptChoice(in.Concept); e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		if len(in.Prompts) == 0 {
 			in.Prompts = []string{""}

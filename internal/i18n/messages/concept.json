@@ -1,0 +1,72 @@
+{
+  "zh-CN": {
+    "concept.missing": "所选概念不存在，请重新选择",
+    "concept.strength": "概念强度无效",
+    "concept.rewrite.tooLong": "改写结果过长",
+    "concept.chooseForm": "请选择一个形体",
+    "concept.chooseStances": "请选择 1–3 个立场",
+    "concept.stanceMissing": "立场不存在",
+    "concept.stanceDuplicate": "立场重复",
+    "concept.promptTooLong": "提示词过长",
+    "concept.log.fallback": "未配置 AI 模型，已直接附加概念要点",
+    "concept.llmStage": "按概念改写提示词",
+    "concept.rewriteFailed": "“{label}”改写没有成功：{error}",
+    "concept.log.rewritten": "已按概念改写提示词"
+  },
+  "en": {
+    "concept.missing": "The chosen concept does not exist. Choose again",
+    "concept.strength": "Invalid concept strength",
+    "concept.rewrite.tooLong": "The rewrite is too long",
+    "concept.chooseForm": "Choose a form",
+    "concept.chooseStances": "Choose 1–3 stances",
+    "concept.stanceMissing": "The stance does not exist",
+    "concept.stanceDuplicate": "A stance is chosen twice",
+    "concept.promptTooLong": "The prompt is too long",
+    "concept.log.fallback": "No AI model is set up, so the concept points were added as they are",
+    "concept.llmStage": "Rewriting the prompt for the concept",
+    "concept.rewriteFailed": "Rewriting \"{label}\" did not succeed: {error}",
+    "concept.log.rewritten": "Rewrote the prompt for the concept"
+  },
+  "vi": {
+    "concept.missing": "Khái niệm đã chọn không tồn tại, hãy chọn lại",
+    "concept.strength": "Độ mạnh khái niệm không hợp lệ",
+    "concept.rewrite.tooLong": "Bản viết lại quá dài",
+    "concept.chooseForm": "Hãy chọn một hình khối",
+    "concept.chooseStances": "Hãy chọn 1–3 lập trường",
+    "concept.stanceMissing": "Lập trường không tồn tại",
+    "concept.stanceDuplicate": "Lập trường bị trùng",
+    "concept.promptTooLong": "Câu lệnh quá dài",
+    "concept.log.fallback": "Chưa cấu hình mô hình AI nên đã thêm thẳng các ý chính của khái niệm",
+    "concept.llmStage": "Viết lại câu lệnh theo khái niệm",
+    "concept.rewriteFailed": "Viết lại \"{label}\" không thành công: {error}",
+    "concept.log.rewritten": "Đã viết lại câu lệnh theo khái niệm"
+  },
+  "ja": {
+    "concept.missing": "選んだコンセプトがありません。選び直してください",
+    "concept.strength": "コンセプトの強さが無効です",
+    "concept.rewrite.tooLong": "書き直しが長すぎます",
+    "concept.chooseForm": "形体を 1 つ選んでください",
+    "concept.chooseStances": "立場を 1～3 個選んでください",
+    "concept.stanceMissing": "その立場はありません",
+    "concept.stanceDuplicate": "立場が重複しています",
+    "concept.promptTooLong": "プロンプトが長すぎます",
+    "concept.log.fallback": "AI モデルが設定されていないため、コンセプトの要点をそのまま付け加えました",
+    "concept.llmStage": "コンセプトに合わせてプロンプトを書き直し",
+    "concept.rewriteFailed": "「{label}」の書き直しに失敗しました：{error}",
+    "concept.log.rewritten": "コンセプトに合わせてプロンプトを書き直しました"
+  },
+  "ko": {
+    "concept.missing": "고른 콘셉트가 없습니다. 다시 고르세요",
+    "concept.strength": "콘셉트 강도가 올바르지 않습니다",
+    "concept.rewrite.tooLong": "다시 쓴 결과가 너무 깁니다",
+    "concept.chooseForm": "형체를 하나 고르세요",
+    "concept.chooseStances": "입장을 1–3개 고르세요",
+    "concept.stanceMissing": "그 입장이 없습니다",
+    "concept.stanceDuplicate": "입장이 중복되었습니다",
+    "concept.promptTooLong": "프롬프트가 너무 깁니다",
+    "concept.log.fallback": "AI 모델이 설정되지 않아 콘셉트 요점을 그대로 덧붙였습니다",
+    "concept.llmStage": "콘셉트에 맞게 프롬프트 다시 쓰기",
+    "concept.rewriteFailed": "\"{label}\" 다시 쓰기에 실패했습니다: {error}",
+    "concept.log.rewritten": "콘셉트에 맞게 프롬프트를 다시 썼습니다"
+  }
+}

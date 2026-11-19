@@ -96,7 +96,12 @@ export function taskTitle(task: Task) {
   const lines = task.prompt
     .split("\n")
     .map((s) => s.trim())
-    .filter((s) => s && !s.startsWith("样板图："));
+    .filter(
+      (s) =>
+        s &&
+        !s.startsWith("样板图：") &&
+        !s.startsWith("Samples: reference image"),
+    );
   return (lines[0] || task.prompt).replace(/^用途[：:]\s*/, "");
 }
 
@@ -529,6 +534,9 @@ const balanceWords =
   /insufficient[ _-]?(balance|quota|credit|funds)|quota[ _-]?(exhausted|exceeded)|\bbalance\b|\bquota\b|credits?\b|payment required|billing|余额|额度|欠费|充值/i;
 export function rejectionOf(task: Task): "balance" | "auth" | "" {
   if (task.status !== "failed" || !task.error) return "";
+  // The backend names the refusal (0.8.0); the text checks below are for tasks
+  // a version before 0.8.0 saved, in Chinese.
+  if (task.refusal) return task.refusal === "policy" ? "" : task.refusal;
   if (
     task.error.startsWith("图片服务账户余额不足") ||
     // Tasks saved before 0.7.24 use the old wording.
@@ -576,7 +584,10 @@ export function TaskFailureAlert({ task }: { task: Task }) {
       </p>
     );
   let key: MessageKey = "ui.failure.default";
-  if (task.status === "failed" && task.error.startsWith(policyRefused)) {
+  if (
+    task.status === "failed" &&
+    (task.refusal === "policy" || task.error.startsWith(policyRefused))
+  ) {
     key = "ui.failure.policy";
   } else if (task.status === "download_failed") {
     key =

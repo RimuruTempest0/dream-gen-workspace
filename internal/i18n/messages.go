@@ -67,7 +67,8 @@ var argPattern = regexp.MustCompile(`\{(\w+)\}`)
 //	i18n.T(lang, "task.count", "max", 20)
 //
 // A key missing in lang falls back to zh-CN; an unknown key returns the key.
-// Values are written with fmt.Sprint and are never translated.
+// Values are inserted as they are and never translated, except catalog errors
+// (*Error) and Messages, which are written in lang too (see Text).
 func T(lang, key string, args ...any) string {
 	all := messages()
 	text, ok := all[lang][key]
@@ -82,7 +83,7 @@ func T(lang, key string, args ...any) string {
 	values := map[string]string{}
 	for i := 0; i+1 < len(args); i += 2 {
 		name, _ := args[i].(string)
-		values[name] = fmt.Sprint(args[i+1])
+		values[name] = Text(args[i+1], lang)
 	}
 	return argPattern.ReplaceAllStringFunc(text, func(m string) string {
 		if v, ok := values[m[1:len(m)-1]]; ok {
@@ -131,4 +132,69 @@ func FromContext(ctx context.Context) string {
 		}
 	}
 	return Default
+}
+
+// Message is a catalog message that is not yet put into a language: packages
+// that do not know the interface language (update, license) return it inside
+// an *Error, and code that must show the same state in whatever language is
+// current at display time keeps it (the licence status).
+type Message struct {
+	Key  string
+	Args []any // name, value pairs as for T
+}
+
+// Msg builds a Message; see T for the arguments.
+func Msg(key string, args ...any) Message { return Message{Key: key, Args: args} }
+
+// IsZero reports whether no message is set.
+func (m Message) IsZero() bool { return m.Key == "" }
+
+// In is the message in lang. Values that are catalog errors (*Error) or
+// Messages are put into lang too; other values are inserted as is.
+func (m Message) In(lang string) string {
+	if m.Key == "" {
+		return ""
+	}
+	return T(lang, m.Key, m.Args...)
+}
+
+// Error is a catalog message used as an error. Error() is the zh-CN text (the
+// admin tool and logs written without a language); show it with Text.
+type Error struct{ Message }
+
+// Fail returns a catalog message as an error:
+//
+//	return i18n.Fail("update.tooLarge")
+func Fail(key string, args ...any) error { return &Error{Msg(key, args...)} }
+
+func (e *Error) Error() string { return e.In(Default) }
+
+// Unwrap returns the first error among the values, so errors.Is still sees
+// a wrapped cause.
+func (e *Error) Unwrap() error {
+	for i := 1; i < len(e.Args); i += 2 {
+		if err, ok := e.Args[i].(error); ok {
+			return err
+		}
+	}
+	return nil
+}
+
+// Localized is a value that can write itself in any interface language
+// (Message, *Error, and error types of other packages built on them).
+type Localized interface{ In(lang string) string }
+
+// Text writes a placeholder value in lang: a Localized value (the value itself,
+// not one wrapped inside other text) or a Message in lang, an other error as
+// its own text, anything else with fmt.Sprint.
+func Text(v any, lang string) string {
+	switch v := v.(type) {
+	case nil:
+		return ""
+	case Localized:
+		return v.In(lang)
+	case error:
+		return v.Error()
+	}
+	return fmt.Sprint(v)
 }

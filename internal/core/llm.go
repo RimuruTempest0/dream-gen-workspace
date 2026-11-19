@@ -262,9 +262,9 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 			}
 			e = err
 		}
-		call.Status, call.Error = "error", redact(e.Error(), key)
+		call.Status, call.Error = "error", s.redact(e.Error(), key)
 		s.saveLLMCall(call, started)
-		cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", label, "result", redact(e.Error(), key)))
+		cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", label, "result", s.redact(e.Error(), key)))
 		return messageResponse{}, e
 	}
 	if v, err := probe(s.msg("connection.llm.check.text"), "Reply exactly OK.", nil); err == nil {
@@ -348,8 +348,8 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 		}
 		call.Status = "completed"
 		if err != nil {
-			call.Status, call.Error = "error", redact(err.Error(), key)
-			cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", s.msg("connection.llm.check.streaming"), "result", redact(err.Error(), key)))
+			call.Status, call.Error = "error", s.redact(err.Error(), key)
+			cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", s.msg("connection.llm.check.streaming"), "result", s.redact(err.Error(), key)))
 		}
 		s.saveLLMCall(call, started)
 	}

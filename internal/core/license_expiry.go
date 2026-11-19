@@ -1,8 +1,6 @@
 package core
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,11 +15,9 @@ import (
 // behind that time counts as expired until it is corrected.
 
 const (
-	expiryWarning     = 7 * 24 * time.Hour
-	clockRollback     = time.Hour
-	lastSeenThrottle  = 10 * time.Minute
-	expiredMessageFmt = "软件授权已于 %s 到期，已停止生成新图片；已有图片、任务和导出不受影响。请联系软件提供方续费，收到新的授权文件后在“系统 → 连接 → 授权”导入。"
-	clockBackMessage  = "系统时间早于这台电脑上次使用本软件的时间，已暂停生成新图片。请把 Windows 时间改回正确的日期和时间后重新打开软件。"
+	expiryWarning    = 7 * 24 * time.Hour
+	clockRollback    = time.Hour
+	lastSeenThrottle = 10 * time.Minute
 )
 
 // expiredLocked reports whether the licence has ended (or the clock was set back).
@@ -32,13 +28,13 @@ func (s *Service) expiredLocked(now time.Time) (bool, string) {
 	}
 	at, e := time.Parse(time.RFC3339, p.ExpiresAt)
 	if e != nil {
-		return true, "软件授权文件中的有效期无效，请联系软件提供方。"
+		return true, s.msg("license.expiry.invalid")
 	}
 	if seen, e := time.Parse(time.RFC3339, s.lic.shared.LastSeen); e == nil && now.Before(seen.Add(-clockRollback)) {
-		return true, clockBackMessage
+		return true, s.msg("license.expiry.clockBack")
 	}
 	if !now.Before(at) {
-		return true, fmt.Sprintf(expiredMessageFmt, at.Local().Format("2006-01-02 15:04"))
+		return true, s.msg("license.expiry.ended", "date", at.Local().Format("2006-01-02 15:04"))
 	}
 	return false, ""
 }
@@ -71,7 +67,7 @@ func (s *Service) ImportCustomerFile(source string) (LicenseStatus, error) {
 		return LicenseStatus{}, e
 	}
 	if len(data) > 1<<20 {
-		return LicenseStatus{}, errors.New("这不是软件授权文件")
+		return LicenseStatus{}, s.fail("license.import.notLicense")
 	}
 	s.mu.Lock()
 	dir := s.programDir
@@ -84,36 +80,36 @@ func (s *Service) ImportCustomerFile(source string) (LicenseStatus, error) {
 	busy := s.agentRunID != ""
 	s.mu.Unlock()
 	if dir == "" || licenseKey() == "" {
-		return LicenseStatus{}, errors.New("此版本不使用授权文件，不需要导入")
+		return LicenseStatus{}, s.fail("license.import.notUsed")
 	}
 	if busy {
-		return LicenseStatus{}, errors.New("创作正在进行，请等它完成或取消后再导入")
+		return LicenseStatus{}, s.fail("license.import.busy")
 	}
 	keys := []string{licenseKey()}
 	p, e := license.Verify(data, keys)
 	if e != nil {
-		return LicenseStatus{}, errors.New("授权文件无效或已被修改，请向软件提供方重新获取")
+		return LicenseStatus{}, s.fail("license.import.invalid")
 	}
 	// A customer build that lost its customer.dat on a fresh data folder has no
 	// software ID to compare; the provider's signature is the check then.
 	if current != "" && p.SoftwareID != current {
-		return LicenseStatus{}, fmt.Errorf("这个授权文件属于另一份软件（%s），本软件是 %s", p.SoftwareID, current)
+		return LicenseStatus{}, s.fail("license.import.other", "id", p.SoftwareID, "current", current)
 	}
 	target := filepath.Join(dir, license.FileName)
 	if old, e := os.ReadFile(target); e == nil {
 		_ = atomicWrite(target+".bak", old)
 	}
 	if e = atomicWrite(target, data); e != nil {
-		return LicenseStatus{}, fmt.Errorf("无法写入软件目录（%w），请把软件放在可写的文件夹后再导入", e)
+		return LicenseStatus{}, s.fail("license.import.write", "error", e)
 	}
 	if e = s.LoadLicense(dir); e != nil {
 		return LicenseStatus{}, e
 	}
 	s.mu.Lock()
-	msg := "已导入新的软件授权文件"
+	msg := s.msg("license.log.imported")
 	if p.ExpiresAt != "" {
 		if at, e := time.Parse(time.RFC3339, p.ExpiresAt); e == nil {
-			msg += "，有效期至 " + at.Local().Format("2006-01-02 15:04")
+			msg = s.msg("license.log.importedUntil", "date", at.Local().Format("2006-01-02 15:04"))
 		}
 	}
 	_ = s.store.appendLog("info", "license", "", msg)

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -159,7 +160,7 @@ func TestMoodSubmitHoldsAndRewritesBeforeSending(t *testing.T) {
 		t.Fatal("each rendering must reach its rewrite")
 	}
 	llmCalls, _ := List[LLMCall](s.store, "llm_call")
-	if len(llmCalls) != 2 || llmCalls[0].Stage != moodStage {
+	if len(llmCalls) != 2 || llmCalls[0].Stage != i18n.T(i18n.ZhCN, "mood.llmStage") {
 		t.Fatalf("rewrites not in the LLM monitor: %+v", llmCalls)
 	}
 	var logged, leaked int

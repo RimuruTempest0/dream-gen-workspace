@@ -21,14 +21,14 @@ func (a *App) ResetDesktopQA() error { return a.ResetDesktopQAWithSystemLanguage
 func (a *App) ResetDesktopQAWithSystemLanguage(tag string) error {
 	core.SetTestSystemLanguage(tag)
 	if filepath.Base(a.configRoot) != "desktop-qa" {
-		return errors.New("仅限独立桌面 QA 实例")
+		return errors.New("only for the separate desktop QA instance")
 	}
 	state, e := a.service.Dashboard()
 	if e != nil {
 		return e
 	}
 	if state.Active > 0 {
-		return errors.New("测试任务仍在执行")
+		return errors.New("test tasks are still running")
 	}
 	root := filepath.Join(filepath.Dir(a.service.Root()), "qa-data-"+core.NewID())
 	next, e := core.NewService(root)
@@ -113,7 +113,7 @@ func (a *App) StartTestHosted(imageBase, llmBase string, trialImages int) (map[s
 // the licence again, as closing the program, deleting the file and opening it does.
 func (a *App) RemoveTestLicenceFile(program string) error {
 	if !strings.HasPrefix(filepath.Base(filepath.Dir(program)), "qa-customer-") {
-		return errors.New("仅限桌面 QA 的程序目录")
+		return errors.New("only for a desktop QA program folder")
 	}
 	if e := os.Remove(filepath.Join(program, "customer.dat")); e != nil {
 		return e

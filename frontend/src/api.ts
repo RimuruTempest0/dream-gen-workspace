@@ -76,6 +76,8 @@ export type NudgeInput = {
   direction: string;
 };
 export type Task = {
+  /** Why the image service refused it, as a code (0.8.0): content check, empty account or rejected key. */
+  refusal?: "policy" | "balance" | "auth";
   concept?: string;
   // Mood guide (0.7.26): label, choice, rendering (realistic/painterly), the
   // user's own prompt before the rewrite, and the 再靠近一点 source and direction.

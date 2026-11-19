@@ -185,11 +185,11 @@ func (s *Service) probe(id string) {
 		case status >= 500:
 			r.down, r.reason = true, s.msg("connection.probe.serverError", "status", status)
 		case status == 0:
-			r.down, r.reason = true, s.msg("connection.probe.unreachable", "error", redact(e.Error(), key))
+			r.down, r.reason = true, s.msg("connection.probe.unreachable", "error", s.redact(e.Error(), key))
 		default:
 			// Some relays do not list models; generation may still work, but the
 			// exact model cannot be verified, so it is not used as a backup.
-			r.reason = s.msg("connection.probe.noModelList", "error", redact(e.Error(), key))
+			r.reason = s.msg("connection.probe.noModelList", "error", s.redact(e.Error(), key))
 		}
 	}
 	s.mu.Lock()

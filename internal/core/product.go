@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,12 +24,13 @@ var productURLPattern = regexp.MustCompile(`https?://[^\s\]\)\\<>【】「」『
 
 // errProductTarget marks link problems a browser cannot fix: invalid, private or unresolvable targets.
 var errProductTarget = errors.New("product target")
-var errProductTooLarge = errors.New("商品资料超过大小限制")
+var errProductTooLarge = i18n.Fail("product.tooLarge")
 
-type productTargetError struct{ message string }
+type productTargetError struct{ message i18n.Message }
 
-func (e productTargetError) Error() string        { return e.message }
+func (e productTargetError) Error() string           { return e.message.In(i18n.Default) }
 func (e productTargetError) Is(target error) bool { return target == errProductTarget }
+func (e productTargetError) In(lang string) string { return e.message.In(lang) }
 
 // cleanProductURL cuts a pasted link at the first full-width bracket or
 // punctuation and shortens Amazon listing links; other links are kept as typed.
@@ -49,7 +51,7 @@ func cleanProductURL(raw string) string {
 func validateProductURL(raw string) error {
 	u, e := url.Parse(raw)
 	if e != nil || u.Host == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return productTargetError{"请填写完整 HTTP/HTTPS 商品链接，不包含用户名或密码"}
+		return productTargetError{i18n.Msg("product.url.invalid")}
 	}
 	return nil
 }
@@ -82,14 +84,14 @@ func publicProductURL(ctx context.Context, raw string) error {
 		}
 	}
 	if e != nil {
-		return productTargetError{e.Error()}
+		return productTargetError{i18n.Msg("product.url.lookup", "error", e.Error())}
 	}
 	if len(ips) == 0 {
-		return productTargetError{"无法解析商品网站"}
+		return productTargetError{i18n.Msg("product.url.unresolved")}
 	}
 	for _, a := range ips {
 		if a.IP.IsLoopback() || a.IP.IsPrivate() || a.IP.IsUnspecified() || a.IP.IsLinkLocalUnicast() || a.IP.IsLinkLocalMulticast() || a.IP.IsMulticast() {
-			return productTargetError{"商品资料仅支持公开网站，不访问本机或内网地址"}
+			return productTargetError{i18n.Msg("product.url.private")}
 		}
 	}
 	// Only public results are remembered; a private answer is checked again every time.
@@ -111,7 +113,7 @@ var (
 func productClient(ctx context.Context, allowLocal bool) *http.Client {
 	return &http.Client{Transport: newNetworkTransport(), Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) > 5 {
-			return errors.New("页面重定向次数过多")
+			return failCtx(r.Context(), "product.redirects")
 		}
 		r.Header.Del("Authorization")
 		r.Header.Del("x-api-key")
@@ -155,7 +157,7 @@ func cutProductText(s string, n int) string {
 	}
 	return s[:n]
 }
-func parseProductPage(raw []byte, base string) (ProductInfo, []string, error) {
+func parseProductPage(raw []byte, base, lang string) (ProductInfo, []string, error) {
 	info := ProductInfo{SourceURL: base, ReferenceIDs: []string{}}
 	images := []string{}
 	seen := map[string]bool{}
@@ -367,7 +369,7 @@ func parseProductPage(raw []byte, base string) (ProductInfo, []string, error) {
 	info.Title = cutProductText(info.Title, 1000)
 	info.Description = cutProductText(info.Description, 32000)
 	if len(strings.TrimSpace(info.Description)) < 40 && len(images) == 0 {
-		info.Error = "页面缺少可提取的商品资料，可能需要登录或动态加载；请补充图片与商品描述"
+		info.Error = i18n.T(lang, "product.noData")
 	}
 	return info, images, nil
 }
@@ -391,7 +393,8 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	}
 	// Runs saved before 0.6.14 may hold the link with a trailing "】" or tracking parameters.
 	target := cleanProductURL(r.Input.ProductURL)
-	s.updateAgent(id, "提取商品链接", func(run *AgentRun) error {
+	ctx = s.langCtx(ctx)
+	s.updateAgent(id, s.msg("agent.stage.productLink"), func(run *AgentRun) error {
 		p := progressOf(run)
 		p.enter(stepProduct)
 		p.ProductVia = "direct"
@@ -402,7 +405,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	info := ProductInfo{SourceURL: target, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
 	var images []string
 	if e == nil {
-		info, images, e = parseProductPage(data, target)
+		info, images, e = parseProductPage(data, target, s.Language())
 	}
 	var browser *browserSession
 	if reason := browserFallbackReason(ctx, data, info, e); reason != "" {
@@ -413,11 +416,11 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			info, images, e = parsed, found, nil
 		} else if ctx.Err() != nil {
 			e = ctx.Err()
-		} else if e != nil || reason == "返回人机验证页" {
+		} else if e != nil || reason == msgCtx(ctx, "product.reason.challenge") {
 			// The direct page is unusable; the permanent fallback is uploaded images or pasted text.
-			e = fmt.Errorf("商品页无法读取（%s；浏览器：%v）；请上传图片或粘贴商品描述", directLabel(reason), be)
+			e = s.fail("product.unreadable", "reason", directLabel(s.Language(), reason), "browser", be)
 		} else {
-			info.Error = cutProductText(info.Error+"（浏览器读取失败："+be.Error()+"）", 1500)
+			info.Error = cutProductText(info.Error+s.msg("product.browserFailedNote", "error", be), 1500)
 		}
 	}
 	if e == nil {
@@ -433,7 +436,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	if e != nil {
 		// Discard anything parsed from a blocked or challenge page.
 		info = ProductInfo{SourceURL: target, ReferenceIDs: r.Product.ReferenceIDs, ImageSources: r.Product.ImageSources}
-		info.Error = cutProductText(e.Error(), 1500)
+		info.Error = cutProductText(s.errText(e), 1500)
 		// A page that read fine in an earlier run but not now (usually a passing
 		// network or proxy problem) is not asked for again: that run's product
 		// data and saved images are used.
@@ -444,8 +447,8 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 				}
 			}
 			info = cached
-			_ = s.store.appendLog("warn", "agent", id, fmt.Sprintf("商品页这次没打开（%s），沿用 %s 读取的同一链接商品资料", cutProductText(e.Error(), 300), localTime(at)))
-			s.addActivity(id, "warn", fmt.Sprintf("商品页这次没打开，已沿用 %s 读取的同一商品资料和 %d 张商品图", localTime(at), len(info.ReferenceIDs)))
+			_ = s.store.appendLog("warn", "agent", id, s.msg("product.log.cached", "error", cutProductText(s.errText(e), 300), "time", localTime(at)))
+			s.addActivity(id, "warn", s.msg("product.cached", "time", localTime(at), "n", len(info.ReferenceIDs)))
 			s.setProgress(id, func(p *RunProgress) {
 				p.visit(stepImages)
 				p.ImagesFound, p.ImagesSaved = len(info.ReferenceIDs), len(info.ReferenceIDs)
@@ -463,13 +466,13 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 		failed, firstFailure := 0, ""
 		defer func() {
 			if failed > 0 {
-				_ = s.store.appendLog("warn", "agent", id, fmt.Sprintf("商品图片 %d 张未能保存（共 %d 张候选）；首个原因：%s", failed, len(images), firstFailure))
+				_ = s.store.appendLog("warn", "agent", id, s.msg("product.log.imagesFailed", "n", failed, "total", len(images), "error", firstFailure))
 			}
 		}()
 		fail := func(err error) {
 			failed++
 			if firstFailure == "" {
-				firstFailure = cutProductText(err.Error(), 300)
+				firstFailure = cutProductText(s.errText(err), 300)
 			}
 		}
 		for _, rawURL := range images {
@@ -488,7 +491,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			}
 			if err != nil {
 				fail(err)
-				info.ImageNote = "部分商品图片未能下载，可上传缺失的参考图"
+				info.ImageNote = s.msg("product.imagesNotDownloaded")
 				continue
 			}
 			u, _ := url.Parse(rawURL)
@@ -497,13 +500,13 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 			s.mu.Unlock()
 			if err != nil {
 				fail(err)
-				info.ImageNote = "部分商品图片不可读取，可上传参考图"
+				info.ImageNote = s.msg("product.imagesUnreadable")
 				continue
 			}
 			info.ReferenceIDs = append(info.ReferenceIDs, asset.ID)
 			info.ImageSources[rawURL] = asset.ID
 			// Persist after every download so cancellation does not discard usable images.
-			s.updateAgent(id, "保存商品参考图", func(run *AgentRun) error {
+			s.updateAgent(id, s.msg("agent.stage.productImages"), func(run *AgentRun) error {
 				run.Product = info
 				progressOf(run).ImagesSaved = len(info.ReferenceIDs)
 				return nil
@@ -513,7 +516,7 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 	if len(info.ReferenceIDs) == 0 && len(r.Product.ReferenceIDs) > 0 {
 		info.ReferenceIDs = r.Product.ReferenceIDs
 	}
-	s.updateAgent(id, "商品资料已提取", func(run *AgentRun) error {
+	s.updateAgent(id, s.msg("agent.stage.productDone"), func(run *AgentRun) error {
 		run.Product = info
 		progressOf(run).ProductDone = true
 		return nil
@@ -523,11 +526,11 @@ func (s *Service) fetchProduct(ctx context.Context, id string) (ProductInfo, err
 }
 
 // directLabel names why the direct request did not give a usable page.
-func directLabel(reason string) string {
+func directLabel(lang, reason string) string {
 	if strings.HasPrefix(reason, "HTTP ") {
-		return "直连返回 " + reason
+		return i18n.T(lang, "product.direct.status", "reason", reason)
 	}
-	return "直连" + reason
+	return i18n.T(lang, "product.direct.reason", "reason", reason)
 }
 
 // productCacheAge is how old another run's reading of the same link may be to

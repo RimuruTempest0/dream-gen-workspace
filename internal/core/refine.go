@@ -1,8 +1,8 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -27,13 +27,13 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	defer s.mu.Unlock()
 	in.Instruction = strings.TrimSpace(in.Instruction)
 	if in.RequestID == "" || len(in.RequestID) > 128 {
-		return "", errors.New("请求标识无效")
+		return "", s.fail("agent.requestInvalid")
 	}
 	if in.Instruction == "" {
-		return "", errors.New("请填写想怎么调整这张图片")
+		return "", s.fail("agent.refine.instruction")
 	}
 	if utf8.RuneCountInString(in.Instruction) > 1000 {
-		return "", errors.New("调整说明最多1000个字")
+		return "", s.fail("agent.refine.tooLong")
 	}
 	// A repeated click (same request ID) returns the earlier submission unchanged.
 	var submitted string
@@ -42,24 +42,24 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	}
 	var source Task
 	if e := s.store.Get("task", in.TaskID, &source); e != nil {
-		return "", errors.New("找不到这张图片的任务")
+		return "", s.fail("agent.image.noTask")
 	}
 	if source.AgentRunID == "" || source.PlanItemID == "" {
-		return "", errors.New("只能优化创作的结果")
+		return "", s.fail("agent.refine.notCreation")
 	}
 	if source.Status != "succeeded" {
-		return "", errors.New("只能优化已完成的图片")
+		return "", s.fail("agent.refine.notDone")
 	}
 	owned := false
 	for _, id := range source.AssetIDs {
 		owned = owned || id == in.AssetID
 	}
 	if !owned {
-		return "", errors.New("图片不属于这个任务")
+		return "", s.fail("agent.image.otherTask")
 	}
 	var asset Asset
 	if e := s.store.Get("asset", in.AssetID, &asset); e != nil || asset.TaskID != source.ID {
-		return "", errors.New("原图不可用，请刷新后重试")
+		return "", s.fail("agent.image.unavailable")
 	}
 	tasks, e := List[Task](s.store, "task")
 	if e != nil {
@@ -67,15 +67,15 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	}
 	for _, t := range tasks {
 		if t.AgentRunID == source.AgentRunID && t.PlanItemID == source.PlanItemID && active(t.Status) {
-			return "", errors.New("这张图片正在生成或优化，请等待完成")
+			return "", s.fail("agent.refine.busy")
 		}
 	}
 	var c Connection
 	if e := s.store.Get("connection", source.Connection.ID, &c); e != nil {
-		return "", errors.New("原生图连接已删除，请重新配置后再优化")
+		return "", s.fail("agent.refine.connectionGone")
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务")
+		return "", s.fail("agent.chooseImage")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
@@ -113,7 +113,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	t.RefineInstruction = in.Instruction
 	t.PreviousAssetIDs = nil
 	t.Language = s.Language() // a new request: the language chosen now
-	t.Prompt = refinePrompt(baseTaskPrompt(source), in.Instruction, len(t.SampleAssetIDs))
+	t.Prompt = refinePrompt(baseTaskPrompt(source), in.Instruction, len(t.SampleAssetIDs), t.Language)
 	// The original requirements often state the opposite of the change ("only the
 	// middle stocking has the design"); outnumbered, the change was ignored. With
 	// an LLM line they are first rewritten to agree with it (nothing sent meanwhile).
@@ -130,7 +130,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 		return "", e
 	}
 	// The instruction is a prompt and is not logged.
-	_ = s.store.appendLog("info", "agent", source.AgentRunID, "已提交图片优化请求（基于已完成图片，原图保留）")
+	_ = s.store.appendLog("info", "agent", source.AgentRunID, s.msg("agent.log.refineSubmitted"))
 	if held {
 		s.startRewordLocked(t.ID)
 	}
@@ -208,7 +208,7 @@ const refinePromptMarkerV1 = "\n\n原图制作要求（仅用于保持一致，�
 // baseTaskPrompt drops the refine wrapper of earlier rounds so prompts do not nest.
 func baseTaskPrompt(t Task) string {
 	if t.RefinedFrom != "" {
-		for _, marker := range []string{refinePromptMarker, refinePromptMarkerV1} {
+		for _, marker := range refineMarkers {
 			if _, base, ok := strings.Cut(t.Prompt, marker); ok {
 				return base
 			}
@@ -223,8 +223,18 @@ func baseTaskPrompt(t Task) string {
 // keeps the image as it was. The original's sample line points at a reference
 // position the edit no longer has; left in, the model took the image being edited
 // as the sample and copied its cuff unchanged, so it is replaced by withSample's line.
-func refinePrompt(base, instruction string, samples int) string {
+func refinePrompt(base, instruction string, samples int, lang string) string {
 	base = refineBase(base)
+	if !zhPrompt(lang) {
+		head := enRefineHead + instruction + enRefineHeadRest
+		switch {
+		case samples == 1:
+			head += "\n" + enRefineSampleLine
+		case samples > 1:
+			head += "\n" + fmt.Sprintf(enRefineSamplesLine, samples+1)
+		}
+		return head + enRefinePromptMarker + base
+	}
 	head := "以提供的第 1 张图片为底图修改。\n本次修改（必须做到，改完后要能明显看出变化）：" + instruction + "\n本次修改优先于原图现状和下面的原图制作要求，二者冲突时按本次修改画。为做到本次修改，可以一并调整与它直接相关的局部，例如要把袖口文字摆正时，把有刺绣的手臂和袖子改成在画面里竖直下垂、袖口接缝水平。除此以外保持完全一致：商品造型与比例、图案、文字内容、字体、颜色、人物、背景和构图都不要变化。"
 	switch {
 	case samples == 1:
@@ -240,7 +250,7 @@ func refineBase(base string) string {
 	// Prompts saved before 0.6.13 told the model to tilt cuff text with the sleeve,
 	// which argues against straightening it; use the current wording instead.
 	base = strings.ReplaceAll(base, p004TiltWording, p004LevelWording)
-	if strings.HasPrefix(base, "样板图：参考图第") {
+	if hasSampleLead(base) {
 		if _, rest, ok := strings.Cut(base, "\n"); ok {
 			base = rest
 		}
@@ -269,13 +279,13 @@ var removalWords = regexp.MustCompile(`去掉|删除|删掉|不要|取消|拿掉
 // longer contradict the change, and returns the refinement prompt built on them.
 func (s *Service) refineRequirements(ctx context.Context, c Connection, key string, t Task) (string, error) {
 	base := refineBase(baseTaskPrompt(t))
-	merged, e := s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, fmt.Sprintf(refineMergeInstruction, t.RefineInstruction)+base),"优化前改写原制作要求", func(text string) error {
-		return checkRefineRequirements(base, t.RefineInstruction, text)
+	merged, e := s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, fmt.Sprintf(refineMergeInstruction, t.RefineInstruction)+base),s.msg("agent.llmStage.refineMerge"), func(text string) error {
+		return s.localErr(checkRefineRequirements(base, t.RefineInstruction, text))
 	})
 	if e != nil {
 		return "", e
 	}
-	return refinePrompt(merged, t.RefineInstruction, len(sampleAssetsOf(t))), nil
+	return refinePrompt(merged, t.RefineInstruction, len(sampleAssetsOf(t)), t.Language), nil
 }
 
 // checkRefineRequirements guards the exact in-image text: the rewrite may not
@@ -283,7 +293,7 @@ func (s *Service) refineRequirements(ctx context.Context, c Connection, key stri
 // text the user wrote or asks to remove it.
 func checkRefineRequirements(base, instruction, text string) error {
 	if utf8.RuneCountInString(text) < utf8.RuneCountInString(base)/3 {
-		return errors.New("改写结果比原要求短太多，可能丢了内容")
+		return i18n.Fail("agent.rewrite.tooShort")
 	}
 	quoted := func(v string) []string {
 		out := []string{}
@@ -300,7 +310,7 @@ func checkRefineRequirements(base, instruction, text string) error {
 		case strings.Contains(instruction, g):
 			replaced = true
 		default:
-			return fmt.Errorf("改写结果加入了原要求和修改里都没有的画面文字“%s”", g)
+			return i18n.Fail("agent.rewrite.newText", "text", g)
 		}
 	}
 	if replaced || removalWords.MatchString(instruction) {
@@ -308,7 +318,7 @@ func checkRefineRequirements(base, instruction, text string) error {
 	}
 	for _, o := range original {
 		if !slices.Contains(got, o) {
-			return fmt.Errorf("改写结果没有保留画面文字“%s”", o)
+			return i18n.Fail("agent.rewrite.lostText", "text", o)
 		}
 	}
 	return nil

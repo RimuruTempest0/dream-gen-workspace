@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"math"
 	"net/http"
@@ -87,7 +88,7 @@ type upstreamUsage struct {
 type licenseState struct {
 	profile *license.Profile
 	mode    string
-	message string
+	message i18n.Message  // shown in the language current when the status is read
 	shared  sharedLicense // counter and activation kept outside the data folder
 	usage   upstreamUsage
 }
@@ -136,18 +137,18 @@ func (s *Service) LoadLicense(programDir string) error {
 			return s.releaseHostedLocked()
 		}
 		s.lic = licenseState{mode: "invalid", message: missingCustomerFile}
-		_ = s.store.appendLog("error", "license", "", missingCustomerFile)
+		_ = s.store.appendLog("error", "license", "", s.text(missingCustomerFile))
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e != nil {
-		s.lic = licenseState{mode: "invalid", message: "无法读取软件授权文件：" + e.Error()}
+		s.lic = licenseState{mode: "invalid", message: i18n.Msg("license.file.unreadable", "error", e)}
 		return nil
 	}
-	if msg := programSignatureProblem(); msg != "" {
+	if msg := programSignatureProblem(); !msg.IsZero() {
 		s.lic = licenseState{mode: "invalid", message: msg}
-		_ = s.store.appendLog("error", "license", "", msg)
+		_ = s.store.appendLog("error", "license", "", s.text(msg))
 		return nil
 	}
 	keys := []string{}
@@ -156,19 +157,19 @@ func (s *Service) LoadLicense(programDir string) error {
 	}
 	p, e := license.Verify(data, keys)
 	if e != nil {
-		s.lic = licenseState{mode: "invalid", message: "软件授权文件无效或已被修改，请联系软件提供方重新获取软件包。"}
+		s.lic = licenseState{mode: "invalid", message: i18n.Msg("license.file.invalidPackage")}
 		if productLine != "" {
 			s.lic.message = invalidHostedFile
 		}
-		_ = s.store.appendLog("error", "license", "", s.lic.message)
+		_ = s.store.appendLog("error", "license", "", s.text(s.lic.message))
 		return nil
 	}
 	s.lic = licenseState{profile: &p, mode: "trial"}
 	rec, exists := s.licenseRecordLocked()
 	if exists && rec.SoftwareID != p.SoftwareID {
 		s.lic.mode = "mismatch"
-		s.lic.message = fmt.Sprintf("此数据目录属于另一份软件（%s），不能沿用它的授权和额度。请使用对应的软件，或在“系统 → 连接”中选择新的保存位置。", rec.SoftwareID)
-		_ = s.store.appendLog("error", "license", "", s.lic.message)
+		s.lic.message = i18n.Msg("license.dataOfOther", "id", rec.SoftwareID)
+		_ = s.store.appendLog("error", "license", "", s.text(s.lic.message))
 		return nil
 	}
 	if !exists {
@@ -178,7 +179,7 @@ func (s *Service) LoadLicense(programDir string) error {
 	if tampered {
 		// An edited trial record ends the trial; a valid activation still counts.
 		shared.Used = max(shared.Used, p.TrialImages)
-		_ = s.store.appendLog("warn", "license", "", "试用记录被改动，试用已结束")
+		_ = s.store.appendLog("warn", "license", "", s.msg("license.log.trialTampered"))
 	}
 	s.lic.shared = shared
 	s.noteRunningLocked(time.Now())
@@ -202,13 +203,13 @@ func (s *Service) LoadLicense(programDir string) error {
 		}
 	} else if rec.Activated {
 		rec.Activated, rec.CodeRef = false, ""
-		s.lic.message = "激活码已更换，请重新输入激活码。"
+		s.lic.message = i18n.Msg("license.code.changed")
 	}
 	if e = s.applySkillSelectionLocked(&rec); e != nil {
 		return e
 	}
 	if e = s.applyLinesLocked(&rec); e != nil {
-		s.lic = licenseState{mode: "invalid", message: "软件授权文件中的线路无效，请联系软件提供方：" + e.Error()}
+		s.lic = licenseState{mode: "invalid", message: i18n.Msg("license.lines.invalid", "error", e)}
 		return nil
 	}
 	return s.store.Put("preferences", licensePrefKey, rec)
@@ -292,7 +293,7 @@ func (s *Service) upsertManagedLocked(c license.Connection) (Connection, error) 
 	}
 	saved, e := s.saveConnectionLocked(ConnectionInput{ID: id, Kind: c.Kind, Name: c.Name, BaseURL: c.BaseURL, Model: c.Model, Key: c.Key, Mode: c.Mode, AuthMode: c.AuthMode, MaxOutputTokens: c.MaxOutputTokens, Protocol: c.Protocol})
 	if e != nil {
-		return Connection{}, fmt.Errorf("线路 %s：%w", c.Name, e)
+		return Connection{}, i18n.Fail("license.lines.save", "name", c.Name, "error", e)
 	}
 	var full Connection
 	if e = s.store.Get("connection", saved.ID, &full); e != nil {
@@ -300,7 +301,7 @@ func (s *Service) upsertManagedLocked(c license.Connection) (Connection, error) 
 	}
 	full.Managed = c.Slot
 	if c.Kind == "llm" && c.Verified {
-		full.Capabilities = LLMCapabilities{Model: full.Model, Text: true, Vision: true, Tools: true, Streaming: true, CheckedAt: Now(), Details: []string{"由软件提供方验证"}}
+		full.Capabilities = LLMCapabilities{Model: full.Model, Text: true, Vision: true, Tools: true, Streaming: true, CheckedAt: Now(), Details: []string{s.msg("license.verifiedByProvider")}}
 	}
 	return full, s.store.Put("connection", full.ID, full)
 }
@@ -341,7 +342,7 @@ func (s *Service) releaseHostedLocked() error {
 	}
 	_ = s.store.Delete("preferences", ownGatewaysPrefKey)
 	_ = s.store.Delete("preferences", licensePrefKey)
-	_ = s.store.appendLog("info", "license", "", "程序目录里没有授权文件，已改为使用你自己配置的服务；提供方的线路已移除")
+	_ = s.store.appendLog("info", "license", "", s.msg("license.log.released"))
 	return nil
 }
 
@@ -367,9 +368,9 @@ func (s *Service) Activate(code string) (LicenseStatus, error) {
 	switch s.lic.mode {
 	case "", "developer":
 		s.mu.Unlock()
-		return LicenseStatus{}, errors.New("此版本不需要激活")
+		return LicenseStatus{}, s.fail("license.activate.notNeeded")
 	case "invalid", "mismatch":
-		msg := s.lic.message
+		msg := s.text(s.lic.message)
 		s.mu.Unlock()
 		return LicenseStatus{}, errors.New(msg)
 	}
@@ -380,12 +381,12 @@ func (s *Service) Activate(code string) (LicenseStatus, error) {
 	}
 	if e != nil {
 		s.mu.Unlock()
-		_ = s.store.appendLog("warn", "license", "", "激活失败："+e.Error())
-		return LicenseStatus{}, e
+		_ = s.store.appendLog("warn", "license", "", s.msg("license.log.activateFailed", "error", s.errText(e)))
+		return LicenseStatus{}, s.localErr(e)
 	}
 	rec, _ := s.licenseRecordLocked()
 	if e = s.rememberActivationLocked(&rec, norm); e == nil {
-		s.lic.mode, s.lic.message = "active", ""
+		s.lic.mode, s.lic.message = "active", i18n.Message{}
 		e = s.setLicenseGatewaysLocked(nil)
 	}
 	if e == nil {
@@ -395,7 +396,7 @@ func (s *Service) Activate(code string) (LicenseStatus, error) {
 		s.mu.Unlock()
 		return LicenseStatus{}, e
 	}
-	_ = s.store.appendLog("info", "license", "", "软件已激活，已启用全部线路")
+	_ = s.store.appendLog("info", "license", "", s.msg("license.log.activated"))
 	s.mu.Unlock()
 	s.signal()
 	return s.LicenseStatus(), nil
@@ -423,7 +424,7 @@ func (s *Service) trialCountLocked() (used, pending int) {
 }
 
 func (s *Service) licenseStatusLocked() LicenseStatus {
-	st := LicenseStatus{Mode: s.lic.mode, Message: s.lic.message, Hosted: s.hostedLocked()}
+	st := LicenseStatus{Mode: s.lic.mode, Message: s.text(s.lic.message), Hosted: s.hostedLocked()}
 	if st.Mode == "" {
 		st.Mode = "developer"
 		st.CanImport = productLine != "" && updatePublicKey != "" && s.programDir != ""
@@ -534,15 +535,13 @@ func fetchUsage(ctx context.Context, url, key string) (limited bool, remaining f
 
 func (s *Service) trialLocked() bool { return s.lic.mode == "trial" }
 
-const missingCustomerFile = "缺少软件授权文件 customer.dat，暂时不能生图。请完整解压软件提供方发来的软件包，或在“系统 → 连接 → 授权”导入授权文件。"
-
-const invalidHostedFile = "程序目录里的授权文件 customer.dat 无效或已被修改，暂时不能生图。请联系软件提供方重新获取；如果想改用自己的服务，关闭软件后删除程序目录里的 customer.dat 再打开。"
-
-const hostedLinesOnly = "托管版只使用软件提供方的线路。想用自己的服务，关闭软件后删除程序目录里的 customer.dat 再打开。"
-
-const trialUsedUp = "试用额度已用完，请在“系统 → 连接”输入激活码后继续使用。"
-
-const trialLinesOnly = "试用期只能使用图片线路 1 和 LLM 线路 1，输入激活码后可使用全部线路。"
+var (
+	missingCustomerFile = i18n.Msg("license.file.missing")
+	invalidHostedFile   = i18n.Msg("license.file.invalidHosted")
+	hostedLinesOnly     = i18n.Msg("license.hostedLinesOnly")
+	trialUsedUp         = i18n.Msg("license.trial.usedUp")
+	trialLinesOnly      = i18n.Msg("license.trial.linesOnly")
+)
 
 // trialLineLocked reports whether a connection may be used during the trial: only
 // the main lines, so backup keys are spent only after activation.
@@ -564,25 +563,25 @@ func (s *Service) ensureCanGenerateLocked(n int, lines ...string) error {
 		for _, id := range lines {
 			var c Connection
 			if id != "" && s.store.Get("connection", id, &c) == nil && c.Managed == "" {
-				return errors.New(hostedLinesOnly)
+				return errors.New(s.text(hostedLinesOnly))
 			}
 		}
 	}
 	switch s.lic.mode {
 	case "invalid", "mismatch":
-		return errors.New(s.lic.message)
+		return errors.New(s.text(s.lic.message))
 	case "trial":
 		for _, id := range lines {
 			if !s.trialLineLocked(id) {
-				return errors.New(trialLinesOnly)
+				return errors.New(s.text(trialLinesOnly))
 			}
 		}
 		st := s.licenseStatusLocked()
 		if st.TrialRemaining <= 0 {
-			return errors.New(trialUsedUp)
+			return errors.New(s.text(trialUsedUp))
 		}
 		if n > st.TrialRemaining {
-			return fmt.Errorf("试用剩余 %d 张，本次需要 %d 张。请减少张数，或输入激活码后继续。", st.TrialRemaining, n)
+			return s.fail("license.trial.notEnough", "left", st.TrialRemaining, "n", n)
 		}
 	}
 	return nil
@@ -609,7 +608,7 @@ func (s *Service) refuseManagedLocked(id string) error {
 	}
 	var c Connection
 	if s.store.Get("connection", id, &c) == nil && c.Managed != "" && s.lic.mode != "" {
-		return errors.New("此线路由软件授权管理，不能修改或删除")
+		return s.fail("license.managedLine")
 	}
 	return nil
 }
@@ -620,7 +619,7 @@ func (s *Service) licenseBlockMessageLocked() string {
 		return msg
 	}
 	if s.lic.mode == "invalid" || s.lic.mode == "mismatch" {
-		return strings.TrimSpace(s.lic.message)
+		return strings.TrimSpace(s.text(s.lic.message))
 	}
 	return ""
 }

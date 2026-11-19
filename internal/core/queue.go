@@ -100,7 +100,7 @@ func (s *Service) claimTask(download bool) bool {
 			// Past the trial limit (or with an invalid licence) nothing more is sent.
 			if !download && s.trialStopLocked() {
 				t.Status, t.UpdatedAt = "blocked", Now()
-				t.Error = s.msg("generation.unsent") + trialUsedUp
+				t.Error = s.msg("generation.unsent") + s.text(trialUsedUp)
 				if msg := s.licenseBlockMessageLocked(); msg != "" {
 					t.Error = s.msg("generation.unsent") + msg
 				}
@@ -227,7 +227,7 @@ func (s *Service) step(claimed Task) bool {
 		if unknown {
 			t.Status = "unknown"
 		}
-		t.Error = redact(e.Error(), key)
+		t.Error = s.redact(e.Error(), key)
 		switch {
 		case policy:
 			t.Error = s.msg("generation.policyRefused") + s.msg("generation.policyRefusedDetail", "status", t.Diagnostic.HTTPStatus, "note", s.policyRetryLocked(&t), "raw", t.Error)

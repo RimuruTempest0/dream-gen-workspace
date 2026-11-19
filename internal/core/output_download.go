@@ -17,10 +17,10 @@ const imageDownloadAttempts = 3
 func imageDownloadClient() *http.Client {
 	return &http.Client{Transport: newNetworkTransport(), CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) > 5 {
-			return errors.New("图片重定向次数过多")
+			return failCtx(r.Context(), "data.download.redirects")
 		}
 		if r.URL.Scheme != "http" && r.URL.Scheme != "https" || r.URL.User != nil {
-			return errors.New("不支持图片地址协议或认证信息")
+			return failCtx(r.Context(), "data.download.scheme")
 		}
 		// Result hosts and redirects must never receive provider credentials.
 		r.Header.Del("Authorization")

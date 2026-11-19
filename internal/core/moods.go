@@ -212,7 +212,7 @@ func resolveMood(m MoodChoice) (moodParts, error) {
 	p.expectation, ok[3] = findMood(moodExpectation, m.Expectation)
 	for _, v := range ok {
 		if !v {
-			return p, errors.New("心境选项无效，请重新选择心境")
+			return p, i18n.Fail("mood.invalid")
 		}
 	}
 	return p, nil
@@ -230,10 +230,10 @@ func resolveConceptChoice(c *ConceptChoice) (*conceptParts, error) {
 	form, ok1 := findConcept(conceptForms, c.Form)
 	stance, ok2 := findConcept(conceptStances, c.Stance)
 	if !ok1 || !ok2 {
-		return nil, errors.New("所选概念不存在，请重新选择")
+		return nil, i18n.Fail("concept.missing")
 	}
 	if c.Strength < 0 || c.Strength >= len(conceptStrengths) {
-		return nil, errors.New("概念强度无效")
+		return nil, i18n.Fail("concept.strength")
 	}
 	return &conceptParts{form, stance, c.Strength}, nil
 }
@@ -243,7 +243,6 @@ func moodLabel(m MoodChoice) string { return moodLabelIn(m, "zh-CN") }
 
 const (
 	rewordMood = "mood"
-	moodStage  = "按心境改写提示词"
 )
 
 const moodInstruction = `你要为一张图写一条生图提示词。用户挑了天气、时刻、远近和期待，它们决定画面的气氛；画什么由用户的提示词决定。下面的规则写的都是看得见的画面决定。
@@ -304,7 +303,12 @@ func moodRequest(base string, m moodParts, concept *conceptParts, rendering stri
 }
 
 // moodFallback appends the mood points when no AI 模型 can rewrite the prompt.
-func moodFallback(base string, m moodParts, concept *conceptParts, rendering string) string {
+// They are part of the 生图提示词, so they follow the prompt language of the
+// task: the hints in Chinese, otherwise the options' English phrases.
+func moodFallback(base string, m moodParts, concept *conceptParts, rendering, lang string) string {
+	if !zhPrompt(lang) {
+		return enMoodFallback(base, m, concept, rendering)
+	}
 	points := []string{m.weather.Hint, m.time.Hint, m.distance.Hint, m.expectation.Hint}
 	if r, ok := findMood(moodRenderings, rendering); ok {
 		points = append(points, r.Hint)
@@ -315,7 +319,7 @@ func moodFallback(base string, m moodParts, concept *conceptParts, rendering str
 		text = "一处与下面气氛相符的风景，不要商品，不要文字。\n" + text
 	}
 	if concept != nil {
-		text = conceptFallback(text, concept.form, concept.stance, true)
+		text = conceptFallback(text, concept.form, concept.stance, true, lang)
 	}
 	if base == "" {
 		return text
@@ -325,7 +329,7 @@ func moodFallback(base string, m moodParts, concept *conceptParts, rendering str
 
 // moodCheck guards a mood rewrite like a concept rewrite: every quoted in-image
 // text of the user's prompt survives, and the result is not overly long.
-func moodCheck(base string) func(string) error {
+func (s *Service) moodCheck(base string) func(string) error {
 	quoted := []string{}
 	for _, q := range quotedText.FindAllStringSubmatch(base, -1) {
 		quoted = append(quoted, q[1]+q[2])
@@ -333,11 +337,11 @@ func moodCheck(base string) func(string) error {
 	return func(text string) error {
 		for _, want := range quoted {
 			if !strings.Contains(text, want) {
-				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)
+				return s.fail("agent.rewrite.lostText", "text", want)
 			}
 		}
 		if len(text) > conceptPromptLimit || utf8.RuneCountInString(text) > 6000 {
-			return errors.New("改写结果过长")
+			return s.fail("concept.rewrite.tooLong")
 		}
 		return nil
 	}
@@ -346,17 +350,17 @@ func moodCheck(base string) func(string) error {
 // moodRewrite writes a held mood task's prompt with the AI 模型.
 func (s *Service) moodRewrite(ctx context.Context, c Connection, key string, t Task) (string, error) {
 	if t.MoodChoice == nil {
-		return "", errors.New("任务没有心境")
+		return "", s.fail("mood.noMood")
 	}
 	m, e := resolveMood(*t.MoodChoice)
 	if e != nil {
-		return "", e
+		return "", s.localErr(e)
 	}
 	concept, e := resolveConceptChoice(t.ConceptChoice)
 	if e != nil {
-		return "", e
+		return "", s.localErr(e)
 	}
-	return s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, moodRequest(t.BasePrompt, m, concept, t.Rendering, len(t.References) > 0)), moodStage, moodCheck(t.BasePrompt))
+	return s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, moodRequest(t.BasePrompt, m, concept, t.Rendering, len(t.References) > 0)), s.msg("mood.llmStage"), s.moodCheck(t.BasePrompt))
 }
 
 // moodLLMLocked picks the AI 模型 line for a mood rewrite with the concept
@@ -374,8 +378,12 @@ func (s *Service) moodLLMLocked(t Task) (Connection, string, bool) {
 // appended.
 func (s *Service) prepareMoodTask(t *Task, m moodParts, concept *conceptParts, llm bool) {
 	t.BasePrompt = t.Prompt
-	// Stored labels keep the language they were written in (ADR 0004).
-	lang := s.Language()
+	// Stored labels keep the language they were written in (ADR 0004): the
+	// language the task was started in.
+	lang := operationLanguage(t.Language)
+	if t.Language == "" {
+		lang = s.Language()
+	}
 	t.Mood = moodLabelIn(*t.MoodChoice, lang)
 	if concept != nil {
 		t.Concept = conceptLabelIn(concept.form, concept.stance, lang)
@@ -384,7 +392,7 @@ func (s *Service) prepareMoodTask(t *Task, m moodParts, concept *conceptParts, l
 		t.Rewording, t.RewordFor = true, rewordMood
 		return
 	}
-	t.Prompt = moodFallback(t.Prompt, m, concept, t.Rendering)
+	t.Prompt = moodFallback(t.Prompt, m, concept, t.Rendering, lang)
 }
 
 // ---- guide mode ----------------------------------------------------------------
@@ -470,11 +478,11 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if in.RequestID == "" || len(in.RequestID) > 128 {
-		return "", errors.New("请求标识无效")
+		return "", s.fail("agent.requestInvalid")
 	}
 	nudge, ok := findMood(moodNudges, in.Direction)
 	if !ok {
-		return "", errors.New("请选择一个方向")
+		return "", s.fail("mood.nudge.direction")
 	}
 	var submitted string
 	if s.store.db.QueryRow(`SELECT batch FROM submissions WHERE id=?`, in.RequestID).Scan(&submitted) == nil {
@@ -482,31 +490,31 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	}
 	var source Task
 	if e := s.store.Get("task", in.TaskID, &source); e != nil {
-		return "", errors.New("找不到这张图片的任务")
+		return "", s.fail("agent.image.noTask")
 	}
 	if source.MoodChoice == nil || source.AgentRunID != "" {
-		return "", errors.New("只有按心境生成的图可以再靠近一点")
+		return "", s.fail("mood.nudge.notMood")
 	}
 	if source.Status != "succeeded" {
-		return "", errors.New("只能对已完成的图片再靠近一点")
+		return "", s.fail("mood.nudge.notDone")
 	}
 	owned := false
 	for _, id := range source.AssetIDs {
 		owned = owned || id == in.AssetID
 	}
 	if !owned {
-		return "", errors.New("图片不属于这个任务")
+		return "", s.fail("agent.image.otherTask")
 	}
 	var asset Asset
 	if e := s.store.Get("asset", in.AssetID, &asset); e != nil || asset.TaskID != source.ID {
-		return "", errors.New("原图不可用，请刷新后重试")
+		return "", s.fail("agent.image.unavailable")
 	}
 	var c Connection
 	if e := s.store.Get("connection", source.Connection.ID, &c); e != nil {
-		return "", errors.New("原图片服务已删除，请重新配置后再试")
+		return "", s.fail("mood.nudge.connectionGone")
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务")
+		return "", s.fail("agent.chooseImage")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
@@ -524,7 +532,7 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	_ = s.store.appendLog("info", "image", source.BatchID, "已提交“再靠近一点”："+nudge.Name+"（基于已完成图片，原图保留）")
+	_ = s.store.appendLog("info", "image", source.BatchID, s.msg("mood.log.nudged", "name", moodIn(nudge, s.Language()).Name))
 	s.signal()
 	return batch, nil
 }
@@ -554,10 +562,10 @@ func freshAttempt(t Task, c Connection) Task {
 func (s *Service) retryMoodLocked(source Task) (string, error) {
 	var c Connection
 	if e := s.store.Get("connection", source.Connection.ID, &c); e != nil {
-		return "", missing(e, "这张图片使用的图片服务已删除")
+		return "", missing(e, s.msg("mood.retry.connectionGone"))
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务")
+		return "", s.fail("agent.chooseImage")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
@@ -570,11 +578,11 @@ func (s *Service) retryMoodLocked(source Task) (string, error) {
 	} else {
 		m, e := resolveMood(*source.MoodChoice)
 		if e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		concept, e := resolveConceptChoice(source.ConceptChoice)
 		if e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		if msg := s.licenseBlockMessageLocked(); msg != "" {
 			return "", errors.New(msg)

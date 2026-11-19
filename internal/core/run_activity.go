@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -31,26 +32,26 @@ var llmFirstReplyTimeout = 2 * time.Minute
 var agentAttemptLimit = 20 * time.Minute
 
 // llmFailureReason says in plain words why a request failed.
-func llmFailureReason(message string) string {
+func llmFailureReason(lang, message string) string {
 	switch {
 	case strings.Contains(message, "TLS handshake timeout"):
-		return "网络握手超时，请检查代理或网络"
+		return i18n.T(lang, "agent.llmFailure.tls")
 	case strings.Contains(message, "client connection lost"):
-		return "连接已断开且不再响应（网络或代理中断）"
+		return i18n.T(lang, "agent.llmFailure.lost")
 	case strings.Contains(message, "unexpected EOF"), strings.Contains(message, "connection reset"), strings.Contains(message, "forcibly closed"):
-		return "连接被中途切断（网络、代理或服务方）"
+		return i18n.T(lang, "agent.llmFailure.cut")
 	case strings.Contains(message, "first-reply limit"):
-		return "一直没有回复"
+		return i18n.T(lang, "agent.llmFailure.noReply")
 	case strings.Contains(message, "reasoning setting"):
-		return "服务方不接受关闭思考，已改回默认"
+		return i18n.T(lang, "agent.llmFailure.reasoning")
 	case strings.Contains(message, "deadline exceeded"):
-		return "已到本次制作的时间上限"
+		return i18n.T(lang, "agent.llmFailure.deadline")
 	}
 	return ""
 }
 
 // toolErrorText describes a failed tool call; a tool result is a string or a list of blocks.
-func toolErrorText(content json.RawMessage, clean func(string) string) string {
+func toolErrorText(lang string, content json.RawMessage, clean func(string) string) string {
 	var text string
 	if json.Unmarshal(content, &text) != nil {
 		var blocks []struct {
@@ -62,19 +63,19 @@ func toolErrorText(content json.RawMessage, clean func(string) string) string {
 		}
 	}
 	if strings.Contains(text, "could not be parsed as JSON") {
-		return "工具内容不完整：模型回复到达输出上限被截断，Agent 会重写"
+		return i18n.T(lang, "agent.toolError.truncated")
 	}
 	if strings.Contains(strings.ToLower(text), "timed out") {
-		return "工具调用超时（超过 60 秒没有结果），Agent 会自行处理"
+		return i18n.T(lang, "agent.toolError.timeout")
 	}
 	text = clean(strings.TrimSpace(text))
 	if utf8.RuneCountInString(text) > 80 {
 		text = string([]rune(text)[:80]) + "…"
 	}
 	if text == "" {
-		return "工具调用没有成功，Agent 会自行处理"
+		return i18n.T(lang, "agent.toolError.failed")
 	}
-	return "工具调用没有成功，Agent 会自行处理：" + text
+	return i18n.T(lang, "agent.toolError.failedWith", "error", text)
 }
 
 func cutActivityText(text string) string {
@@ -99,17 +100,19 @@ func (s *Service) addActivity(id, kind, text string) {
 	})
 }
 
+// skillNames are the catalog keys of the shipped skills' names in the feed.
 var skillNames = map[string]string{
-	"product-analysis": "商品与参考图分析",
-	"listing-suite":    "电商套图规划",
-	"embroidery-rules": "刺绣定制约束",
-	"p004-rules":       "P004 生图规则",
-	"image-prompting":  "生图提示词写法",
+	"product-analysis": "agent.skill.productAnalysis",
+	"listing-suite":    "agent.skill.listingSuite",
+	"embroidery-rules": "agent.skill.embroideryRules",
+	"p004-rules":       "agent.skill.p004Rules",
+	"image-prompting":  "agent.skill.imagePrompting",
 }
 
 // toolActivity describes a tool call without its content: a plan's prompts and a
 // skill's rules stay out of the feed.
-func toolActivity(name string, input json.RawMessage) string {
+func toolActivity(lang, name string, input json.RawMessage) string {
+	t := func(key string, args ...any) string { return i18n.T(lang, key, args...) }
 	var v struct {
 		AssetID   string            `json:"assetID"`
 		Skill     string            `json:"skill"`
@@ -125,23 +128,23 @@ func toolActivity(name string, input json.RawMessage) string {
 	json.Unmarshal(input, &v)
 	switch strings.TrimPrefix(name, "mcp__workbench__") {
 	case "get_run_context":
-		return "读取制作需求"
+		return t("agent.activity.context")
 	case "fetch_product":
-		return "读取商品页资料"
+		return t("agent.activity.product")
 	case "read_reference_image":
 		if len(v.AssetID) >= 8 {
-			return "查看参考图 " + v.AssetID[:8]
+			return t("agent.activity.referenceID", "id", v.AssetID[:8])
 		}
-		return "查看参考图"
+		return t("agent.activity.reference")
 	case "read_skill_attachment":
-		return "读取技能附件"
+		return t("agent.activity.attachment")
 	case "request_information":
-		return fmt.Sprintf("提出 %d 个补充问题", len(v.Questions))
+		return t("agent.activity.questions", "n", len(v.Questions))
 	case "crop_reference":
 		if v.Label != "" {
-			return "截取参考图局部：" + v.Label
+			return t("agent.activity.cropLabel", "label", v.Label)
 		}
-		return "截取参考图局部"
+		return t("agent.activity.crop")
 	case "answer_questions":
 		verify := 0
 		for _, a := range v.Answers {
@@ -150,21 +153,21 @@ func toolActivity(name string, input json.RawMessage) string {
 			}
 		}
 		if verify > 0 {
-			return fmt.Sprintf("自行回答 %d 个问题（其中 %d 项需核对）", len(v.Answers), verify)
+			return t("agent.activity.answersVerify", "n", len(v.Answers), "verify", verify)
 		}
-		return fmt.Sprintf("自行回答 %d 个问题", len(v.Answers))
+		return t("agent.activity.answers", "n", len(v.Answers))
 	case "save_suite_plan":
 		if v.Append {
-			return fmt.Sprintf("暂存套图方案：本批 %d 张", len(v.Items))
+			return t("agent.activity.planStaged", "n", len(v.Items))
 		}
-		return fmt.Sprintf("保存套图方案：本批 %d 张", len(v.Items))
+		return t("agent.activity.planSaved", "n", len(v.Items))
 	case "Skill":
-		if label := skillNames[v.Skill]; label != "" {
-			return "加载技能：" + label
+		if key := skillNames[v.Skill]; key != "" {
+			return t("agent.activity.skillNamed", "name", t(key))
 		}
-		return "加载技能"
+		return t("agent.activity.skill")
 	}
-	return "调用工具"
+	return t("agent.activity.tool")
 }
 
 // noteAgentEvent turns one line of Claude Code's event stream into feed entries.
@@ -198,10 +201,10 @@ func (s *Service) noteAgentEvent(id string, line []byte, clean func(string) stri
 		switch event.Subtype {
 		case "init":
 			version := event.Version
-			s.addActivity(id, "agent", fmt.Sprintf("Claude Code %s 已启动 · 模型 %s · %d 个工具", version, clean(event.Model), len(event.Tools)))
+			s.addActivity(id, "agent", s.msg("agent.activity.started", "version", version, "model", clean(event.Model), "tools", len(event.Tools)))
 			s.setProgress(id, func(p *RunProgress) { p.AgentVersion = version })
 		case "api_retry":
-			s.addActivity(id, "warn", fmt.Sprintf("Claude Code 正在重试 AI 模型请求（第 %d 次）", event.Attempt))
+			s.addActivity(id, "warn", s.msg("agent.activity.retry", "n", event.Attempt))
 		}
 	case "assistant":
 		for _, block := range event.Message.Content {
@@ -209,26 +212,26 @@ func (s *Service) noteAgentEvent(id string, line []byte, clean func(string) stri
 			case "text":
 				s.addActivity(id, "agent", clean(block.Text))
 			case "tool_use":
-				s.addActivity(id, "tool", toolActivity(block.Name, block.Input))
+				s.addActivity(id, "tool", toolActivity(s.Language(), block.Name, block.Input))
 			}
 		}
 	case "user":
 		for _, block := range event.Message.Content {
 			if block.Type == "tool_result" && block.IsError {
-				s.addActivity(id, "warn", toolErrorText(block.Content, clean))
+				s.addActivity(id, "warn", toolErrorText(s.Language(), block.Content, clean))
 			}
 		}
 	case "result":
-		s.addActivity(id, "agent", fmt.Sprintf("Claude Code 本轮结束 · %d 个回合 · 用时 %s", event.NumTurns, spanText(int64(event.DurationMS))))
+		s.addActivity(id, "agent", s.msg("agent.activity.finished", "turns", event.NumTurns, "time", spanText(s.Language(), int64(event.DurationMS))))
 	}
 }
 
-func spanText(ms int64) string {
+func spanText(lang string, ms int64) string {
 	seconds := ms / 1000
 	if seconds < 60 {
-		return fmt.Sprintf("%d 秒", seconds)
+		return i18n.T(lang, "agent.span.seconds", "s", seconds)
 	}
-	return fmt.Sprintf("%d 分 %d 秒", seconds/60, seconds%60)
+	return i18n.T(lang, "agent.span.minutes", "m", seconds/60, "s", seconds%60)
 }
 
 func groupDigits(n int64) string {
@@ -242,19 +245,19 @@ func groupDigits(n int64) string {
 // noteLLMCall records a finished LLM request in the feed and the running totals.
 func (s *Service) noteLLMCall(id string, number int, line string, call LLMCall, started time.Time) {
 	total := time.Since(started).Milliseconds()
-	kind, text := "llm", ""
+	kind, text, lang := "llm", "", s.Language()
 	switch call.Status {
 	case "completed":
-		text = fmt.Sprintf("AI 模型请求 #%d 完成 · %s · 输入 %s · 输出 %s tokens · 首字 %s · 共 %s", number, line, groupDigits(call.InputTokens), groupDigits(call.OutputTokens), spanText(call.FirstByteMS), spanText(total))
+		text = s.msg("agent.llmCall.completed", "n", number, "line", line, "input", groupDigits(call.InputTokens), "output", groupDigits(call.OutputTokens), "first", spanText(lang, call.FirstByteMS), "total", spanText(lang, total))
 	case "dropped":
-		kind, text = "warn", fmt.Sprintf("AI 模型请求 #%d 连接中断 · %s · 已等 %s", number, line, spanText(total))
+		kind, text = "warn", s.msg("agent.llmCall.dropped", "n", number, "line", line, "waited", spanText(lang, total))
 	default:
-		kind, text = "warn", fmt.Sprintf("AI 模型请求 #%d 没有成功 · %s · 已等 %s", number, line, spanText(total))
+		kind, text = "warn", s.msg("agent.llmCall.failed", "n", number, "line", line, "waited", spanText(lang, total))
 		if call.HTTPStatus != 0 {
 			text += fmt.Sprintf(" · HTTP %d", call.HTTPStatus)
 		}
 	}
-	if reason := llmFailureReason(call.Error); reason != "" {
+	if reason := llmFailureReason(lang, call.Error); reason != "" {
 		text += " · " + reason
 	}
 	s.addActivity(id, kind, text)
@@ -294,12 +297,13 @@ func (s *Service) backupLLMLine(current Connection) (Connection, string, bool) {
 	return Connection{}, "", false
 }
 
-const noReplyStopped = "模型一直没有回复，本次分析已停止。资料已保存，点“继续制作”即可再试。"
+// noReplyStopped is why an attempt stopped when the model never replied.
+func (s *Service) noReplyStopped() string { return s.msg("agent.noReplyStopped") }
 
 // stopForNoReply ends the attempt with a clear reason instead of waiting out its limit.
 func (s *Service) stopForNoReply(id string) {
 	_ = s.updateAgent(id, "", func(r *AgentRun) error {
-		r.StopReason = noReplyStopped
+		r.StopReason = s.noReplyStopped()
 		return nil
 	})
 	s.mu.Lock()
@@ -313,16 +317,16 @@ func (s *Service) stopForNoReply(id string) {
 
 // interruptedMessage says why an attempt ended early, and mentions a plan only when
 // one exists.
-func interruptedMessage(r AgentRun) string {
+func interruptedMessage(lang string, r AgentRun) string {
 	if r.StopReason != "" {
 		return r.StopReason
 	}
-	saved := "资料已保存"
+	saved := i18n.T(lang, "agent.interrupted.saved")
 	if len(r.Plans) > 0 {
-		saved = "资料和方案已保存"
+		saved = i18n.T(lang, "agent.interrupted.savedPlan")
 	}
 	if r.CancelRequested {
-		return "分析已取消，" + saved + "，可继续制作。"
+		return i18n.T(lang, "agent.interrupted.canceled", "saved", saved)
 	}
-	return fmt.Sprintf("分析超过 %d 分钟仍未完成，已停止，%s，可继续制作。", int(agentAttemptLimit/time.Minute), saved)
+	return i18n.T(lang, "agent.interrupted.timeout", "minutes", int(agentAttemptLimit/time.Minute), "saved", saved)
 }

@@ -14,8 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"os"
 	"path/filepath"
@@ -77,7 +76,7 @@ type signedFile struct {
 	Signature string `json:"signature"`
 }
 
-var ErrSignature = errors.New("更新清单无效或已被修改")
+var ErrSignature = i18n.Fail("update.manifest.invalid")
 
 var versionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
@@ -85,16 +84,16 @@ var versionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 func Sign(m Manifest, priv ed25519.PrivateKey) ([]byte, error) {
 	m.Format = formatFor(m.Line)
 	if m.Line != "" && !linePattern.MatchString(m.Line) {
-		return nil, errors.New("产品线名称无效")
+		return nil, i18n.Fail("update.sign.line")
 	}
 	if !versionPattern.MatchString(m.Version) || (m.MinVersion != "" && !versionPattern.MatchString(m.MinVersion)) {
-		return nil, errors.New("版本号格式应为 0.7.13 这样的三段数字")
+		return nil, i18n.Fail("update.sign.version")
 	}
 	if !strings.HasPrefix(m.URL, "https://") && !strings.HasPrefix(m.URL, "http://") {
-		return nil, errors.New("下载地址必须以 https:// 开头")
+		return nil, i18n.Fail("update.sign.url")
 	}
 	if len(m.SHA256) != 64 || m.Size <= 0 {
-		return nil, errors.New("缺少更新包的 SHA-256 或大小")
+		return nil, i18n.Fail("update.sign.sum")
 	}
 	if m.PublishedAt == "" {
 		m.PublishedAt = time.Now().UTC().Format(time.RFC3339)
@@ -162,15 +161,16 @@ func parse(v string) [3]int {
 	return out
 }
 
-// Applies reports whether m is an update this version can take in place.
-func (m Manifest) Applies(current string) (bool, string) {
+// Applies reports whether m is an update this version can take in place, and
+// why not when it is newer but cannot.
+func (m Manifest) Applies(current string) (bool, error) {
 	if Compare(m.Version, current) <= 0 {
-		return false, ""
+		return false, nil
 	}
 	if m.MinVersion != "" && Compare(current, m.MinVersion) < 0 {
-		return false, fmt.Sprintf("新版本 %s 不能从当前版本直接更新（需要 %s 以上），请向软件提供方获取完整包", m.Version, m.MinVersion)
+		return false, i18n.Fail("update.tooOld", "version", m.Version, "min", m.MinVersion)
 	}
-	return true, ""
+	return true, nil
 }
 
 // Manuals are the 《使用说明》 at the program folder's root, one per display
@@ -230,11 +230,11 @@ func FileSHA256(path string) (string, error) {
 func Extract(pkg, dir string) error {
 	z, e := zip.OpenReader(pkg)
 	if e != nil {
-		return errors.New("更新包无法打开")
+		return i18n.Fail("update.package.unreadable")
 	}
 	defer z.Close()
 	if len(z.File) > 5000 {
-		return errors.New("更新包内容异常")
+		return i18n.Fail("update.package.odd")
 	}
 	seen := map[string]bool{}
 	var total uint64
@@ -244,16 +244,16 @@ func Extract(pkg, dir string) error {
 			continue
 		}
 		if !AllowedEntry(name) || f.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("更新包包含不允许的文件：%s", name)
+			return i18n.Fail("update.package.forbidden", "name", name)
 		}
 		total += f.UncompressedSize64
 		if total > 2<<30 {
-			return errors.New("更新包过大")
+			return i18n.Fail("update.package.tooLarge")
 		}
 		seen[name] = true
 	}
 	if !seen["ImageWorkbench.exe"] || !seen["version.json"] {
-		return errors.New("更新包缺少程序或版本信息")
+		return i18n.Fail("update.package.incomplete")
 	}
 	if e = os.MkdirAll(dir, 0o700); e != nil {
 		return e
@@ -318,22 +318,22 @@ func TrimBOM(b []byte) []byte { return bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"
 func CheckComponents(stage, program string) error {
 	want, e := ReadInfo(filepath.Join(stage, "version.json"))
 	if e != nil {
-		return errors.New("更新包的版本信息无法读取")
+		return i18n.Fail("update.package.info")
 	}
-	check := func(dir, file, sum, label string) error {
+	check := func(dir, file, sum string, label i18n.Message) error {
 		if _, e := os.Stat(filepath.Join(stage, dir)); e == nil || sum == "" {
 			return nil // the package brings it, or the version does not pin it
 		}
 		have, e := FileSHA256(filepath.Join(program, dir, file))
 		if e != nil || !strings.EqualFold(have, sum) {
-			return fmt.Errorf("这个版本换了新的%s，不能一键更新，请向软件提供方获取完整包", label)
+			return i18n.Fail("update.package.newComponent", "component", label)
 		}
 		return nil
 	}
-	if e = check("runtime", "msedgewebview2.exe", want.RuntimeSHA256, "浏览器运行组件"); e != nil {
+	if e = check("runtime", "msedgewebview2.exe", want.RuntimeSHA256, i18n.Msg("update.component.runtime")); e != nil {
 		return e
 	}
-	return check("agent", filepath.Join("claude-code", "claude.exe"), want.ClaudeSHA256, "内置 Claude Code")
+	return check("agent", filepath.Join("claude-code", "claude.exe"), want.ClaudeSHA256, i18n.Msg("update.component.claude"))
 }
 
 // Apply moves the staged files into the program folder. Every replaced entry is
@@ -372,14 +372,14 @@ func Apply(stage, program, backup string) error {
 		if _, e = os.Lstat(target); e == nil {
 			if e = rename(target, filepath.Join(backup, name)); e != nil {
 				rollback()
-				return fmt.Errorf("无法替换 %s（%w），已恢复原文件", name, e)
+				return i18n.Fail("update.apply.replace", "name", name, "error", e)
 			}
 			s.hadOld = true
 		}
 		done = append(done, s)
 		if e = rename(filepath.Join(stage, name), target); e != nil {
 			rollback()
-			return fmt.Errorf("无法写入 %s（%w），已恢复原文件", name, e)
+			return i18n.Fail("update.apply.write", "name", name, "error", e)
 		}
 	}
 	return nil

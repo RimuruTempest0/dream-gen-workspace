@@ -578,20 +578,19 @@ export function AgentSettings() {
     await actions.run(async () => {
       const path = await call<string>("ChooseSkillSource", directory);
       if (!path) return;
-      try {
-        await call("ImportSkill", path, false);
-        notification.success({ message: t("agentSettings.skill.imported") });
-      } catch (e) {
-        if (/已存在|already exists/i.test(errorText(e))) {
-          actions.confirm(
-            t("agentSettings.skill.overwrite.title"),
-            t("agentSettings.skill.overwrite.body"),
-            () => call("ImportSkill", path, true),
-            true,
-            t("agentSettings.skill.overwrite.ok"),
-          );
-        } else throw e;
+      // A skill of the same name comes back flagged, not as an error text.
+      const r = await call<SkillRecord>("ImportSkill", path, false);
+      if (r?.conflict) {
+        actions.confirm(
+          t("agentSettings.skill.overwrite.title"),
+          t("agentSettings.skill.overwrite.body"),
+          () => call("ImportSkill", path, true),
+          true,
+          t("agentSettings.skill.overwrite.ok"),
+        );
+        return;
       }
+      notification.success({ message: t("agentSettings.skill.imported") });
     });
   }
   async function save() {

@@ -26,11 +26,11 @@ func (s *Service) SaveConnection(in ConnectionInput) (Connection, error) {
 	// A customer build whose licence is missing or invalid cannot be turned into a
 	// free build by adding its own lines.
 	if s.lic.mode == "invalid" || s.lic.mode == "mismatch" {
-		return Connection{}, errors.New(strings.TrimSpace(s.lic.message))
+		return Connection{}, errors.New(strings.TrimSpace(s.text(s.lic.message)))
 	}
 	// The hosted edition of the mass-market line runs on the provider's lines only.
 	if s.hostedLocked() {
-		return Connection{}, errors.New(hostedLinesOnly)
+		return Connection{}, errors.New(s.text(hostedLinesOnly))
 	}
 	return s.saveConnectionLocked(in)
 }
@@ -152,7 +152,7 @@ func (s *Service) TestConnection(in ConnectionInput) (result TestResult, resultE
 		if result.Models != "" && !listed {
 			level = "warn"
 		}
-		_ = s.store.appendLog(level, "connection", in.ID, redact(text, strings.TrimSpace(in.Key)))
+		_ = s.store.appendLog(level, "connection", in.ID, s.redact(text, strings.TrimSpace(in.Key)))
 	}()
 	s.mu.Lock()
 	base, e := NormalizeURL(in.BaseURL, s.Language())

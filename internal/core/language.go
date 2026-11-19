@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/json"
-	"errors"
 
 	"imageworkbench/internal/i18n"
 )
@@ -36,7 +35,7 @@ func (s *Service) Language() string {
 // from now on; work already started finishes in the language it began in.
 func (s *Service) SetLanguage(code string) error {
 	if !i18n.Supported(code) {
-		return errors.New("界面语言无效")
+		return s.fail("app.languageInvalid")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

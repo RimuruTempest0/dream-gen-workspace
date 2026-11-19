@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"net/url"
 	"regexp"
 	"strings"
@@ -29,7 +30,7 @@ var logURLPattern = regexp.MustCompile(`https?://[^\s"<>]+`)
 func (st *Store) safeLogText(text string) string {
 	// Compare with saved secrets before persisting. No raw request/response bodies
 	// or credential configuration is sent to the log writer.
-	return redactLogText(text, st.savedSecrets())
+	return redactLogText(text, st.savedSecrets(), st.language())
 }
 
 // savedSecrets returns the plain text of every saved connection key.
@@ -51,20 +52,20 @@ func (st *Store) savedSecrets() []string {
 	return out
 }
 
-func redactLogText(text string, secrets []string) string {
+func redactLogText(text string, secrets []string, lang string) string {
 	for _, secret := range secrets {
-		text = strings.ReplaceAll(text, secret, "[已隐藏]")
+		text = strings.ReplaceAll(text, secret, i18n.T(lang, "log.hidden"))
 	}
-	text = logAuthPattern.ReplaceAllString(text, "${1}[已隐藏]")
+	text = logAuthPattern.ReplaceAllString(text, "${1}"+i18n.T(lang, "log.hidden"))
 	text = logURLPattern.ReplaceAllStringFunc(text, func(raw string) string {
 		u, e := url.Parse(raw)
 		if e != nil {
-			return "[地址已隐藏]"
+			return i18n.T(lang, "log.addressHidden")
 		}
 		u.User = nil
 		if u.RawQuery != "" {
 			u.RawQuery = ""
-			u.Fragment = "查询参数已隐藏"
+			u.Fragment = i18n.T(lang, "log.queryHidden")
 		}
 		return u.String()
 	})
@@ -108,13 +109,13 @@ func (st *Store) logObjectChange(kind, id string, before, after []byte) {
 		source = "image"
 		message = st.msg("log.task.status", "status", next.Status, "stage", next.Diagnostic.Stage, "model", next.Model)
 		if next.Diagnostic.HTTPStatus != 0 {
-			message += fmt.Sprintf("；HTTP %d", next.Diagnostic.HTTPStatus)
+			message += st.msg("log.sep") + fmt.Sprintf("HTTP %d", next.Diagnostic.HTTPStatus)
 		}
 		if next.Diagnostic.UpstreamRequestID != "" {
 			message += st.msg("log.task.requestID", "id", next.Diagnostic.UpstreamRequestID)
 		}
 		if next.Error != "" {
-			message += "；" + next.Error
+			message += st.msg("log.sep") + next.Error
 		}
 		if next.Status == "failed" || next.Status == "download_failed" {
 			level = "error"
@@ -132,17 +133,17 @@ func (st *Store) logObjectChange(kind, id string, before, after []byte) {
 			return
 		}
 		source = "agent"
-		message = fmt.Sprintf("智能分析：%s；%s", next.Status, next.Stage)
+		message = st.msg("log.agent.status", "status", next.Status, "stage", next.Stage)
 		if next.Product.Error != "" && next.Product.Error != old.Product.Error {
-			message += "；" + next.Product.Error
+			message += st.msg("log.sep") + next.Product.Error
 			level = "warn"
 		}
 		if next.Product.ImageNote != "" && next.Product.ImageNote != old.Product.ImageNote {
-			message += "；" + next.Product.ImageNote
+			message += st.msg("log.sep") + next.Product.ImageNote
 			level = "warn"
 		}
 		if next.Error != "" {
-			message += "；" + next.Error
+			message += st.msg("log.sep") + next.Error
 		}
 		if next.Status == "failed" {
 			level = "error"

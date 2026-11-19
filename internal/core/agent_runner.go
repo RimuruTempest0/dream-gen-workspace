@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,7 +48,7 @@ func runNativeAgent(ctx context.Context, in agentInvocation) error {
 		return e
 	}
 	if e = cmd.Start(); e != nil {
-		return fmt.Errorf("无法启动内置 Claude Code：%w", e)
+		return i18n.Fail("agent.runner.startFailed", "error", e)
 	}
 	release, e := attachAgentProcess(cmd)
 	if e != nil {
@@ -66,13 +67,13 @@ func runNativeAgent(ctx context.Context, in agentInvocation) error {
 	}
 	waitErr := cmd.Wait()
 	if e != nil {
-		return fmt.Errorf("Agent 输出读取失败：%w", e)
+		return i18n.Fail("agent.runner.readFailed", "error", e)
 	}
 	if waitErr != nil {
 		if stderr.Len() > 0 {
-			return fmt.Errorf("Claude Code 执行失败：%s", strings.TrimSpace(stderr.String()))
+			return i18n.Fail("agent.runner.failed", "error", strings.TrimSpace(stderr.String()))
 		}
-		return fmt.Errorf("Claude Code 执行失败：%w", waitErr)
+		return i18n.Fail("agent.runner.failed", "error", waitErr)
 	}
 	return nil
 }
@@ -151,7 +152,8 @@ func (s *Service) executeAgent(ctx context.Context, r AgentRun, instruction stri
 		return e
 	}
 	if runner == nil {
-		if e = verifyBundled(exe, expectedClaudeSHA256, "内置 Claude Code "); e != nil {
+		if e = verifyBundled(exe, expectedClaudeSHA256, i18n.Msg("update.component.claude")); e != nil {
+			e = s.localErr(e)
 			return e
 		}
 	}
@@ -241,7 +243,7 @@ func (s *Service) executeAgent(ctx context.Context, r AgentRun, instruction stri
 		if bytes.Contains(line, []byte(`"max_output_tokens"`)) {
 			outputLimit = true
 		}
-		s.noteAgentEvent(r.ID, line, func(text string) string { return redact(redact(text, key), token) })
+		s.noteAgentEvent(r.ID, line, func(text string) string { return s.redact(s.redact(text, key), token) })
 		var event struct {
 			Type    string   `json:"type"`
 			IsError bool     `json:"is_error"`
@@ -255,7 +257,7 @@ func (s *Service) executeAgent(ctx context.Context, r AgentRun, instruction stri
 		if event.Type == "result" {
 			seenResult = true
 			if event.IsError {
-				resultErr = errors.New(redact(redact(event.Result+" "+strings.Join(event.Errors, "; "), key), token))
+				resultErr = errors.New(s.redact(s.redact(event.Result+" "+strings.Join(event.Errors, "; "), key), token))
 			}
 		}
 	}})
@@ -263,18 +265,18 @@ func (s *Service) executeAgent(ctx context.Context, r AgentRun, instruction stri
 		c := normalizeConnection(r.LLMConnection)
 		// Customers cannot edit the lines in customer.dat; only the provider can raise the limit.
 		if c.Managed != "" {
-			return fmt.Errorf("AI 模型单次输出超过上限（%d tokens），方案没有保存。请联系软件提供方调高 LLM 线路的单次输出上限，按提供方发来的新版本覆盖安装后继续制作", c.MaxOutputTokens)
+			return s.fail("agent.runner.outputLimitManaged", "limit", c.MaxOutputTokens)
 		}
-		return fmt.Errorf("AI 模型单次输出超过上限（%d tokens），方案没有保存。可在“系统 → 连接 → AI 模型 → 编辑”调高“单次输出上限”后继续制作", c.MaxOutputTokens)
+		return s.fail("agent.runner.outputLimit", "limit", c.MaxOutputTokens)
 	}
 	if e != nil {
-		return errors.New(redact(redact(e.Error(), key), token))
+		return errors.New(s.redact(s.redact(s.errText(e), key), token))
 	}
 	if resultErr != nil {
 		return resultErr
 	}
 	if !seenResult {
-		return errors.New("Claude Code 未返回完整的结果事件")
+		return s.fail("agent.runner.noResult")
 	}
 	return nil
 }

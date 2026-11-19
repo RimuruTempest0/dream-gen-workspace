@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -137,22 +136,22 @@ func (b *agentBridge) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		seconds := int(llmFirstReplyTimeout / time.Second)
 		if b.switchLine(connection) {
-			note := fmt.Sprintf("主线路 %d 秒没有回复，已改用备用线路", seconds)
+			note := b.service.msg("agent.bridge.switchedLine", "n", seconds)
 			b.service.addActivity(b.runID, "warn", note)
 			b.service.setProgress(b.runID, func(p *RunProgress) { p.LineNote = note })
 			continue
 		}
 		if attempt == 0 {
-			note := fmt.Sprintf("模型 %d 秒没有回复，正在重试", seconds)
+			note := b.service.msg("agent.bridge.retrying", "n", seconds)
 			b.service.addActivity(b.runID, "warn", note)
 			b.service.setProgress(b.runID, func(p *RunProgress) { p.LineNote = note })
 			continue
 		}
-		b.service.addActivity(b.runID, "warn", noReplyStopped)
+		b.service.addActivity(b.runID, "warn", b.service.noReplyStopped())
 		b.service.stopForNoReply(b.runID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(529)
-		json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{"type": "overloaded_error", "message": noReplyStopped}})
+		json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{"type": "overloaded_error", "message": b.service.noReplyStopped()}})
 		return
 	}
 }
@@ -204,12 +203,12 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 	started := time.Now()
 	finish := func(status string, httpStatus int, message string) {
 		if call != nil {
-			call.Status, call.HTTPStatus, call.Error = status, httpStatus, redact(message, key)
+			call.Status, call.HTTPStatus, call.Error = status, httpStatus, b.service.redact(message, key)
 			b.service.saveLLMCall(*call, started)
 			b.service.noteLLMCall(b.runID, number, connection.Name, *call, started)
 		}
 	}
-	b.service.updateAgent(b.runID, "等待 AI 模型响应", func(run *AgentRun) error {
+	b.service.updateAgent(b.runID, b.service.msg("agent.stage.waitingLLM"), func(run *AgentRun) error {
 		// Asking the model again after reading the page means it is now analyzing.
 		if p := progressOf(run); call != nil && (p.Step == stepProduct || p.Step == stepImages) {
 			p.enter(stepReferences)
@@ -242,7 +241,7 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 			return forwardSilent
 		}
 		finish("error", 0, e.Error())
-		http.Error(w, redact(e.Error(), key), 502)
+		http.Error(w, b.service.redact(e.Error(), key), 502)
 		return forwardDone
 	}
 	defer resp.Body.Close()
@@ -298,7 +297,7 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 				}
 				hitLimit = hitLimit || reply.hitLimit
 			}
-			frame = bytes.ReplaceAll(frame, []byte(key), []byte("[已隐藏]"))
+			frame = bytes.ReplaceAll(frame, []byte(key), []byte(b.service.msg("log.hidden")))
 			_, err := w.Write(frame)
 			if flush != nil {
 				flush.Flush()
@@ -313,7 +312,7 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 			w.WriteHeader(200)
 		}
 		if e != nil {
-			b.service.noteLLMReconnect(b.runID, redact(e.Error(), key))
+			b.service.noteLLMReconnect(b.runID, b.service.redact(e.Error(), key))
 			finish("dropped", 200, e.Error())
 		} else {
 			finish("completed", 200, "")
@@ -324,7 +323,7 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 				b.lineMu.Lock()
 				b.thinkingOff = true
 				b.lineMu.Unlock()
-				b.service.addActivity(b.runID, "warn", fmt.Sprintf("模型这次回复用完了单次 %s tokens 的上限（主要用在思考上），内容没有写完；接下来关闭思考，直接写方案", groupDigits(int64(connection.MaxOutputTokens))))
+				b.service.addActivity(b.runID, "warn", b.service.msg("agent.bridge.thinkingOff", "limit", groupDigits(int64(connection.MaxOutputTokens))))
 			}
 		}
 	} else {
@@ -342,7 +341,7 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 		}
 		finish("completed", 200, "")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(bytes.ReplaceAll(raw, []byte(key), []byte("[已隐藏]")))
+		w.Write(bytes.ReplaceAll(raw, []byte(key), []byte(b.service.msg("log.hidden"))))
 	}
 	return forwardDone
 }
@@ -442,7 +441,7 @@ func (b *agentBridge) mcp(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal(rpc.Params, &p)
 		content, e := b.callTool(p.Name, p.Arguments)
 		if e != nil {
-			result = map[string]any{"content": mcpText(map[string]any{"error": redact(e.Error(), b.key)}), "isError": true}
+			result = map[string]any{"content": mcpText(map[string]any{"error": b.service.redact(b.service.errText(e), b.key)}), "isError": true}
 		} else {
 			result = map[string]any{"content": content, "isError": false}
 		}
@@ -489,10 +488,10 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 			}
 		}
 		if !allowed {
-			return nil, errors.New("只能读取本次需求的参考图")
+			return nil, b.service.fail("agent.tool.foreignReference")
 		}
 		if !r.LLMConnection.Capabilities.Vision {
-			return nil, errors.New("当前 AI 模型未通过图片验证")
+			return nil, b.service.fail("agent.tool.noVision")
 		}
 		uri, e := b.service.ReadAsset(v.AssetID, false)
 		if e != nil {
@@ -514,7 +513,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		b.seenRefs[v.AssetID] = true
 		seen := len(b.seenRefs)
 		b.stagedMu.Unlock()
-		b.service.updateAgent(b.runID, "分析参考图", func(run *AgentRun) error {
+		b.service.updateAgent(b.runID, b.service.msg("agent.stage.readingReferences"), func(run *AgentRun) error {
 			p := progressOf(run)
 			p.enter(stepReferences)
 			p.ReferencesSeen = seen
@@ -547,7 +546,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 				}
 				if strings.HasPrefix(http.DetectContentType(data), "image/") {
 					if !r.LLMConnection.Capabilities.Vision {
-						return nil, errors.New("当前 AI 模型未通过图片能力验证")
+						return nil, b.service.fail("agent.tool.noVision")
 					}
 					block, e := visionImageBlock(data)
 					if e != nil {
@@ -558,7 +557,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 				return mcpText(map[string]any{"name": a.Name, "content": string(data)}), nil
 			}
 		}
-		return nil, errors.New("附件不属于本次选定的 Skill")
+		return nil, b.service.fail("agent.tool.foreignAttachment")
 	case "request_information":
 		var v struct {
 			Questions []AgentQuestion `json:"questions"`
@@ -567,16 +566,16 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 			return nil, e
 		}
 		if len(v.Questions) > 30 {
-			return nil, errors.New("一次最多 30 个补充问题")
+			return nil, b.service.fail("agent.tool.tooManyQuestions")
 		}
-		e = b.service.updateAgent(b.runID, "需要补充资料", func(run *AgentRun) error {
+		e = b.service.updateAgent(b.runID, b.service.msg("agent.stage.needsInfo"), func(run *AgentRun) error {
 			byID := map[string]int{}
 			for i, q := range run.Questions {
 				byID[q.ID] = i
 			}
 			for _, q := range v.Questions {
 				if q.ID == "" || len(q.Label) > 2000 {
-					return errors.New("补充问题缺少 ID 或描述过长")
+					return b.service.fail("agent.tool.badQuestion")
 				}
 				q.Answer = ""
 				if i, ok := byID[q.ID]; ok {
@@ -602,7 +601,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		return b.answerQuestions(r, args)
 	case "crop_reference":
 		if !r.LLMConnection.Capabilities.Vision {
-			return nil, errors.New("当前 AI 模型未通过图片验证")
+			return nil, b.service.fail("agent.tool.noVision")
 		}
 		return b.cropReference(r, args)
 	case "save_suite_plan":
@@ -634,7 +633,7 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 			if len(plan.Items) > 6 {
 				b.staged.Items = b.staged.Items[:len(b.staged.Items)-len(plan.Items)]
 				b.stagedMu.Unlock()
-				return nil, errors.New("每批最多暂存6张，请拆成更小的批次")
+				return nil, b.service.fail("agent.tool.batchTooLarge")
 			}
 			count := len(b.staged.Items)
 			b.stagedMu.Unlock()
@@ -653,11 +652,11 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 		if staged := len(plan.Items) - len(callItems); staged > 0 {
 			if r, err := b.service.GetAgentRun(b.runID); err == nil && completePlan(r, len(callItems)) {
 				plan.Items = callItems
-				b.service.addActivity(b.runID, "tool", fmt.Sprintf("最后一次保存又带上了完整的 %d 张，按这份完整方案保存，之前暂存的 %d 张不重复计入", len(callItems), staged))
+				b.service.addActivity(b.runID, "tool", b.service.msg("agent.tool.fullResave", "n", len(callItems), "staged", staged))
 			}
 		}
 		if len(plan.Locked) == 0 {
-			return nil, errors.New("方案缺少 locked 统一设计规格")
+			return nil, b.service.fail("agent.tool.noLocked")
 		}
 		if plan.Editable == nil {
 			plan.Editable = []string{}
@@ -668,13 +667,13 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 				b.service.setProgress(b.runID, func(p *RunProgress) { p.PlanWritten = 0 })
 			}
 		}()
-		e = b.service.updateAgent(b.runID, "套图方案已保存", func(run *AgentRun) error {
+		e = b.service.updateAgent(b.runID, b.service.msg("agent.stage.planSaved"), func(run *AgentRun) error {
 			progressOf(run).enter(stepPlan)
 			if len(plan.Items) < run.Input.TargetCount {
-				return fmt.Errorf("方案应至少包含 %d 张图", run.Input.TargetCount)
+				return b.service.fail("agent.tool.tooFew", "n", run.Input.TargetCount)
 			}
 			if plan.CuffEmbroidery == nil && usesP004(*run) {
-				return errors.New("方案缺少 cuffEmbroidery：请说明商品袖口有没有刺绣（true/false）")
+				return b.service.fail("agent.tool.noCuff")
 			}
 			if run.AutoGeneration {
 				if e := b.service.validateAutoPlan(run, &plan); e != nil {
@@ -690,11 +689,11 @@ func (b *agentBridge) callTool(name string, args json.RawMessage) ([]any, error)
 			return nil
 		})
 		if e != nil {
-			return nil, fmt.Errorf("%w（暂存的张数已清空，请重新完整保存方案）", e)
+			return nil, b.service.fail("agent.tool.stagedCleared", "error", e)
 		}
 		return mcpText(map[string]any{"revision": plan.Revision, "count": len(plan.Items)}), nil
 	}
-	return nil, errors.New("工具不可用")
+	return nil, b.service.fail("agent.tool.unavailable")
 }
 
 // completePlan reports whether n images make a whole plan for the run: exactly the
@@ -710,7 +709,7 @@ func (s *Service) readSkillAttachment(path string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !strings.HasPrefix(path, "skills/") {
-		return nil, errors.New("附件路径无效")
+		return nil, s.fail("agent.tool.attachmentPath")
 	}
 	full, e := owned(s.store.Root, path)
 	if e != nil {
@@ -726,7 +725,7 @@ func (s *Service) readSkillAttachment(path string) ([]byte, error) {
 	}
 	relative, e := filepath.Rel(root, resolved)
 	if e != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
-		return nil, errors.New("附件不在技能目录")
+		return nil, s.fail("agent.tool.attachmentOutside")
 	}
 	return readOwned(s.store.Root, path)
 }
@@ -734,7 +733,7 @@ func (s *Service) readSkillAttachment(path string) ([]byte, error) {
 // noteLLMReconnect records a cut LLM stream. Claude Code retries it itself, so it
 // is shown as a note; the run fails only if the analysis then gives up.
 func (s *Service) noteLLMReconnect(runID, message string) {
-	s.updateAgent(runID, "AI 模型连接中断，自动重试", func(run *AgentRun) error {
+	s.updateAgent(runID, s.msg("agent.stage.reconnecting"), func(run *AgentRun) error {
 		run.LLMReconnects++
 		run.LLMReconnectError = message
 		return nil

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"context"
 	"encoding/json"
 	"io"
@@ -152,7 +153,7 @@ func TestTrialStopsWithAReasonInsteadOfUsingTheBackup(t *testing.T) {
 		t.Fatal("expected one retry on the main line, then a stop", rec.Code, silent.Load(), answered.Load())
 	}
 	r := runOf(t, s, id)
-	if r.StopReason != noReplyStopped || interruptedMessage(r) != noReplyStopped || !strings.Contains(r.Progress.LineNote, "正在重试") {
+	if r.StopReason != s.noReplyStopped() || interruptedMessage(i18n.ZhCN, r) != s.noReplyStopped() || !strings.Contains(r.Progress.LineNote, "正在重试") {
 		t.Fatalf("%+v", r.StopReason)
 	}
 }
@@ -197,10 +198,10 @@ func TestInterruptedMessageOnlyMentionsAPlanThatExists(t *testing.T) {
 		{AgentRun{}, "资料已保存", "方案"},
 		{AgentRun{Plans: []SuitePlan{{}}}, "资料和方案已保存", ""},
 		{AgentRun{CancelRequested: true}, "已取消", "20 分钟"},
-		{AgentRun{StopReason: noReplyStopped}, "模型一直没有回复", "20 分钟"},
+		{AgentRun{StopReason: i18n.T(i18n.ZhCN, "agent.noReplyStopped")}, "模型一直没有回复", "20 分钟"},
 	}
 	for _, c := range cases {
-		got := interruptedMessage(c.run)
+		got := interruptedMessage(i18n.ZhCN, c.run)
 		if !strings.Contains(got, c.want) || (c.not != "" && strings.Contains(got, c.not)) {
 			t.Errorf("%q", got)
 		}
@@ -221,7 +222,7 @@ func TestActivityFeedNamesActionsNotContent(t *testing.T) {
 	s := testService(t)
 	r := AgentRun{ID: NewID(), CreatedAt: Now(), Status: "analyzing", Progress: newRunProgress()}
 	s.store.Put("agent_run", r.ID, r)
-	clean := func(text string) string { return redact(text, "sk-secret") }
+	clean := func(text string) string { return redactIn(i18n.ZhCN, text, "sk-secret") }
 	plan, _ := json.Marshal(map[string]any{"type": "assistant", "message": map[string]any{"content": []map[string]any{
 		{"type": "text", "text": "现在保存方案 sk-secret"},
 		{"type": "tool_use", "name": "mcp__workbench__save_suite_plan", "input": map[string]any{"append": true, "locked": []string{"秘密锁定项"}, "items": []map[string]string{{"prompt": "秘密提示词"}, {"prompt": "第二条"}}}},
@@ -318,18 +319,18 @@ func TestFailureReasonsAreInPlainWords(t *testing.T) {
 		"context deadline exceeded":             "时间上限",
 		"no reply within the first-reply limit": "一直没有回复",
 	} {
-		if !strings.Contains(llmFailureReason(message), want) {
-			t.Errorf("%q: %q", message, llmFailureReason(message))
+		if !strings.Contains(llmFailureReason(i18n.ZhCN, message), want) {
+			t.Errorf("%q: %q", message, llmFailureReason(i18n.ZhCN, message))
 		}
 	}
 	clean := func(v string) string { return strings.ReplaceAll(v, "sk-1", "[隐藏]") }
-	if got := toolErrorText(json.RawMessage(`"<tool_use_error>InputValidationError: x was called with input that could not be parsed as JSON."`), clean); !strings.Contains(got, "截断") {
+	if got := toolErrorText(i18n.ZhCN, json.RawMessage(`"<tool_use_error>InputValidationError: x was called with input that could not be parsed as JSON."`), clean); !strings.Contains(got, "截断") {
 		t.Fatal(got)
 	}
-	if got := toolErrorText(json.RawMessage(`"The operation timed out."`), clean); !strings.Contains(got, "超时") {
+	if got := toolErrorText(i18n.ZhCN, json.RawMessage(`"The operation timed out."`), clean); !strings.Contains(got, "超时") {
 		t.Fatal(got)
 	}
-	if got := toolErrorText(json.RawMessage(`[{"type":"text","text":"坏了 sk-1"}]`), clean); !strings.Contains(got, "坏了 [隐藏]") {
+	if got := toolErrorText(i18n.ZhCN, json.RawMessage(`[{"type":"text","text":"坏了 sk-1"}]`), clean); !strings.Contains(got, "坏了 [隐藏]") {
 		t.Fatal(got)
 	}
 }
