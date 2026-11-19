@@ -75,19 +75,33 @@ export function AgentTiming({ run, tasks }: { run: AgentRun; tasks: Task[] }) {
   );
 }
 
-// Stage texts written by the Go product browser (internal/core/product_browser.go).
-// They are compared with run.stage; stageText shows them in the interface language.
-export const browserReadingStage = "正在用浏览器读取商品页";
-export const browserVerifyStage = "需要你在弹出的窗口里完成验证";
-const prepareStage = "准备素材";
+// Stages the page reacts to come with a code (AgentRun.stageCode, 0.8.0), so
+// the stage text may be in any language; stageText shows them in the
+// interface language.
 const knownStages: Record<string, MessageKey> = {
-  [browserReadingStage]: "run.browserReading",
-  [browserVerifyStage]: "smart.stage.verify",
-  [prepareStage]: "run.step.prepare",
+  "browser-reading": "run.browserReading",
+  "browser-verify": "smart.stage.verify",
+  preparing: "run.step.prepare",
 };
-export const isKnownStage = (stage: string) => !!knownStages[stage];
-export function stageText(stage: string) {
-  return knownStages[stage] ? t(knownStages[stage]) : stage;
+// Runs saved before 0.8.0 carry only the Chinese stage text.
+const legacyStages: Record<string, string> = {
+  正在用浏览器读取商品页: "browser-reading",
+  需要你在弹出的窗口里完成验证: "browser-verify",
+  准备素材: "preparing",
+};
+type Staged = {
+  stage?: string;
+  text?: string;
+  stageCode?: string;
+  code?: string;
+};
+export const stageCodeOf = (s: Staged) =>
+  s.stageCode || s.code || legacyStages[s.stage ?? s.text ?? ""] || "";
+export const isKnownStage = (s: Staged) => !!knownStages[stageCodeOf(s)];
+export const isVerifyStage = (s: Staged) => stageCodeOf(s) === "browser-verify";
+export function stageText(s: Staged) {
+  const key = knownStages[stageCodeOf(s)];
+  return key ? t(key) : s.stage || "";
 }
 
 // Counts from the saved verification event, outside the live region so screen
@@ -98,9 +112,7 @@ export function VerificationWait({ run }: { run: AgentRun }) {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
-  const event = [...run.events]
-    .reverse()
-    .find((e) => e.text === browserVerifyStage);
+  const event = [...run.events].reverse().find((e) => isVerifyStage(e));
   const since = Date.parse(event?.at || run.updatedAt);
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   return (

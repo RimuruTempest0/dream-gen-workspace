@@ -29,7 +29,16 @@ import type {
   SkillRecord,
 } from "./agent-api";
 import { DataState, SecretInput, useActions, useData } from "./ui";
-import { t } from "./i18n";
+import { t, type MessageKey } from "./i18n";
+
+// The backend stores a skill's source as a fixed code (its Chinese name).
+const skillSources: Record<string, MessageKey> = {
+  内置: "agentSettings.skill.source.builtin",
+  自定义: "agentSettings.skill.source.custom",
+  导入: "agentSettings.skill.source.imported",
+};
+const skillSource = (source: string) =>
+  skillSources[source] ? t(skillSources[source]) : source;
 
 export function ConnectionFields({
   editing,
@@ -567,20 +576,19 @@ export function AgentSettings() {
     await actions.run(async () => {
       const path = await call<string>("ChooseSkillSource", directory);
       if (!path) return;
-      try {
-        await call("ImportSkill", path, false);
-        notification.success({ message: t("agentSettings.skill.imported") });
-      } catch (e) {
-        if (/已存在|already exists/i.test(errorText(e))) {
-          actions.confirm(
-            t("agentSettings.skill.overwrite.title"),
-            t("agentSettings.skill.overwrite.body"),
-            () => call("ImportSkill", path, true),
-            true,
-            t("agentSettings.skill.overwrite.ok"),
-          );
-        } else throw e;
+      // A skill of the same name comes back flagged, not as an error text.
+      const r = await call<SkillRecord>("ImportSkill", path, false);
+      if (r?.conflict) {
+        actions.confirm(
+          t("agentSettings.skill.overwrite.title"),
+          t("agentSettings.skill.overwrite.body"),
+          () => call("ImportSkill", path, true),
+          true,
+          t("agentSettings.skill.overwrite.ok"),
+        );
+        return;
       }
+      notification.success({ message: t("agentSettings.skill.imported") });
     });
   }
   async function save() {
@@ -660,7 +668,7 @@ export function AgentSettings() {
                 <strong>
                   {v.name}{" "}
                   <Tag>
-                    {v.source} · v{v.version}
+                    {skillSource(v.source)} · v{v.version}
                   </Tag>
                 </strong>
                 <p>{v.description}</p>

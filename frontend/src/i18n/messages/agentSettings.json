@@ -102,7 +102,10 @@
     "agentSettings.category.title": "设置品类：{name}",
     "agentSettings.category.hint": "留空表示通用：每次制作都用。填了品类的技能只在创作选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。",
     "agentSettings.category.label": "品类",
-    "agentSettings.category.placeholder": "通用"
+    "agentSettings.category.placeholder": "通用",
+    "agentSettings.skill.source.builtin": "内置",
+    "agentSettings.skill.source.custom": "自定义",
+    "agentSettings.skill.source.imported": "导入"
   },
   "en": {
     "agentSettings.name": "Connection name",
@@ -207,7 +210,10 @@
     "agentSettings.category.title": "Set category: {name}",
     "agentSettings.category.hint": "Leave empty for general: used every time. A skill with a category is used only when that category is chosen in Create. Name categories as you like, e.g. “embroidered hoodie” or “mug”.",
     "agentSettings.category.label": "Category",
-    "agentSettings.category.placeholder": "General"
+    "agentSettings.category.placeholder": "General",
+    "agentSettings.skill.source.builtin": "Built-in",
+    "agentSettings.skill.source.custom": "Custom",
+    "agentSettings.skill.source.imported": "Imported"
   },
   "vi": {
     "agentSettings.name": "Tên kết nối",
@@ -312,7 +318,10 @@
     "agentSettings.category.title": "Đặt ngành hàng: {name}",
     "agentSettings.category.hint": "Để trống là dùng chung: lần nào cũng dùng. Kỹ năng có ngành hàng chỉ được dùng khi chọn đúng ngành hàng đó trong Sáng tác. Tên ngành hàng tùy bạn đặt, ví dụ “áo hoodie thêu”, “cốc”.",
     "agentSettings.category.label": "Ngành hàng",
-    "agentSettings.category.placeholder": "Chung"
+    "agentSettings.category.placeholder": "Chung",
+    "agentSettings.skill.source.builtin": "Có sẵn",
+    "agentSettings.skill.source.custom": "Tự tạo",
+    "agentSettings.skill.source.imported": "Đã nhập"
   },
   "ja": {
     "agentSettings.name": "接続名",
@@ -417,7 +426,10 @@
     "agentSettings.category.title": "カテゴリーを設定：{name}",
     "agentSettings.category.hint": "空欄なら共通で、毎回使われます。カテゴリーを設定したスキルは、創作でそのカテゴリーを選んだときだけ使われます。カテゴリー名は自由です（例：「刺繍パーカー」「マグカップ」）。",
     "agentSettings.category.label": "カテゴリー",
-    "agentSettings.category.placeholder": "共通"
+    "agentSettings.category.placeholder": "共通",
+    "agentSettings.skill.source.builtin": "内蔵",
+    "agentSettings.skill.source.custom": "カスタム",
+    "agentSettings.skill.source.imported": "インポート"
   },
   "ko": {
     "agentSettings.name": "연결 이름",
@@ -522,6 +534,9 @@
     "agentSettings.category.title": "품목 설정: {name}",
     "agentSettings.category.hint": "비워 두면 공통이며 매번 사용합니다. 품목을 정한 스킬은 창작에서 그 품목을 골랐을 때만 사용합니다. 품목 이름은 자유롭게 정하세요. 예: “자수 후드티”, “머그컵”.",
     "agentSettings.category.label": "품목",
-    "agentSettings.category.placeholder": "공통"
+    "agentSettings.category.placeholder": "공통",
+    "agentSettings.skill.source.builtin": "내장",
+    "agentSettings.skill.source.custom": "사용자 지정",
+    "agentSettings.skill.source.imported": "가져옴"
   }
 }
