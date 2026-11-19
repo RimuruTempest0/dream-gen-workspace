@@ -21,7 +21,14 @@ import {
   Tag,
 } from "antd";
 import { EyeOutlined, EyeInvisibleOutlined } from "@ant-design/icons";
-import { call, errorText, stateNames, type Asset, type Task } from "./api";
+import {
+  call,
+  errorText,
+  stateNames,
+  type Asset,
+  type Connection,
+  type Task,
+} from "./api";
 import { formatDateTime, formatTime, t, type MessageKey } from "./i18n";
 
 export function useData<T>(
@@ -34,47 +41,32 @@ export function useData<T>(
     queryKey: key,
     queryFn: () => call<T>(method, ...args),
     refetchInterval: interval,
-    select: localizeLines<T>,
   });
 }
 
 // The admin tool writes each hosted line's name into the license file as
-// 图片线路 N / LLM 线路 N. Such a default name is shown in the display
-// language; any other name is the provider's or customer's data.
+// 图片线路 N / LLM 线路 N. Such a default name on a hosted line is shown in the
+// display language; any other name is the provider's or customer's data and is
+// shown as written. These are for display only: never put the result into
+// data that is edited or saved.
 const defaultLineName = /^(?:(图片线路)|LLM 线路) (\d+)$/;
-export function lineName(name: string): string {
+function lineName(name: string): string {
   const m = defaultLineName.exec(name);
   if (!m) return name;
   return t(m[1] ? "ui.line.image" : "ui.line.llm", { n: m[2] });
 }
-// Fields that hold a line's name (connections, tasks, monitors).
-const lineNameFields = new Set(["name", "connectionName", "routedFromName"]);
-// Copies only what changes, so unchanged data keeps its identity.
-export function localizeLines<T>(data: T): T;
-export function localizeLines(data: unknown): unknown {
-  if (Array.isArray(data)) {
-    let changed = false;
-    const out = data.map((v) => {
-      const n = localizeLines(v);
-      if (n !== v) changed = true;
-      return n;
-    });
-    return changed ? out : data;
-  }
-  if (data && typeof data === "object") {
-    let out: Record<string, unknown> | undefined;
-    for (const [k, v] of Object.entries(data)) {
-      const n =
-        typeof v === "string"
-          ? lineNameFields.has(k)
-            ? lineName(v)
-            : v
-          : localizeLines(v);
-      if (n !== v) (out ??= { ...(data as Record<string, unknown>) })[k] = n;
-    }
-    return out ?? data;
-  }
-  return data;
+// A connection's name for display: localized only for a hosted line.
+export function hostedLineName(c: { name: string; managed?: string }): string {
+  return c.managed ? lineName(c.name) : c.name;
+}
+// For a name stored without its connection (a task's earlier gateway, monitor
+// rows): localized only when a hosted line currently carries that name.
+export function useLineNames(): (name: string) => string {
+  const connections = useData<Connection[]>(["connections"], "ListConnections");
+  const hosted = new Set(
+    (connections.data || []).filter((c) => c.managed).map((c) => c.name),
+  );
+  return (name) => (hosted.has(name) ? lineName(name) : name);
 }
 // A saved image never changes, so refreshing after an action skips the images.
 export const notImages = {
@@ -536,7 +528,10 @@ export function TaskTiming({ task }: { task: Task }) {
 }
 // Which gateway produced the image when it was moved or re-generated automatically.
 function TaskRoute({ task }: { task: Task }) {
-  const name = task.connection?.name || t("ui.route.backup");
+  const lineNames = useLineNames();
+  const name = task.connection?.name
+    ? hostedLineName(task.connection)
+    : t("ui.route.backup");
   if (task.policyRetryOf)
     return (
       <small className="task-route">
@@ -563,7 +558,10 @@ function TaskRoute({ task }: { task: Task }) {
   if (task.routedFrom)
     return (
       <small className="task-route" title={task.routeReason}>
-        {t("ui.route.moved", { from: task.routedFromName || "", to: name })}
+        {t("ui.route.moved", {
+          from: lineNames(task.routedFromName || ""),
+          to: name,
+        })}
       </small>
     );
   return null;

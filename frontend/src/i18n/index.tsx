@@ -6,10 +6,13 @@
 //   formatNumber(1234), formatDateTime(iso), formatTime(iso), formatDate(iso)
 //   const { lang, setLanguage } = useI18n();
 //
-// Switching re-mounts the page tree (see LanguageProvider), so t() and the
-// formatters can be called anywhere during render, including plain helper
-// functions. Do not call them at module level: a constant computed on import
-// keeps the language of the first start. Keep keys there and call t() later.
+// Switching re-renders the whole page tree from LanguageProvider down, keeping
+// its state (typed text, open dialogs), so t() and the formatters can be called
+// anywhere during render, including plain helper functions. Do not keep their
+// results where a re-render does not recompute them: a constant computed on
+// import, useMemo/useCallback/React.memo without the language, a useState or
+// useRef initial value, or an effect without the language in its deps. Keep
+// keys there and call t() at render.
 import {
   createContext,
   useCallback,
@@ -173,9 +176,9 @@ export async function loadLanguage(): Promise<Lang> {
 }
 
 /**
- * Holds the interface language. children is a function of the language so the
- * caller can key the page tree on it: everything re-renders in the new
- * language at once, without a restart.
+ * Holds the interface language. children is a function of the language, so a
+ * switch re-renders everything below in the new language at once, without a
+ * restart and without re-mounting (page state stays).
  */
 export function LanguageProvider({
   initial,

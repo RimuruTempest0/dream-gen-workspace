@@ -7,7 +7,7 @@ import {
   SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { call, type Connection } from "./api";
-import { useActions, useData, time } from "./ui";
+import { hostedLineName, useActions, useData, time } from "./ui";
 import { t, type MessageKey } from "./i18n";
 
 export type GatewaySettings = {
@@ -86,7 +86,12 @@ export function gatewayLabel(
         : "";
   const state =
     h && h.state !== "unknown" ? ` · ${gatewayStateText(h.state)}` : "";
-  return c.name + role + state + (c.hasKey ? "" : ` · ${t("gateways.noKey")}`);
+  return (
+    hostedLineName(c) +
+    role +
+    state +
+    (c.hasKey ? "" : ` · ${t("gateways.noKey")}`)
+  );
 }
 
 function seconds(ms: number) {
@@ -145,7 +150,9 @@ export function GatewayRow({
               size="small"
               checked={backupIndex >= 0}
               disabled={actions.busy}
-              aria-label={t("gateways.setBackup", { name: connection.name })}
+              aria-label={t("gateways.setBackup", {
+                name: hostedLineName(connection),
+              })}
               onChange={(on) =>
                 save({
                   backupIDs: on
@@ -165,7 +172,9 @@ export function GatewayRow({
                   size="small"
                   type="text"
                   icon={<ArrowUpOutlined aria-hidden="true" />}
-                  aria-label={t("gateways.moveUp", { name: connection.name })}
+                  aria-label={t("gateways.moveUp", {
+                    name: hostedLineName(connection),
+                  })}
                   disabled={backupIndex === 0 || actions.busy}
                   onClick={() => move(-1)}
                 />
@@ -173,7 +182,9 @@ export function GatewayRow({
                   size="small"
                   type="text"
                   icon={<ArrowDownOutlined aria-hidden="true" />}
-                  aria-label={t("gateways.moveDown", { name: connection.name })}
+                  aria-label={t("gateways.moveDown", {
+                    name: hostedLineName(connection),
+                  })}
                   disabled={
                     backupIndex === g.backupIDs.length - 1 || actions.busy
                   }

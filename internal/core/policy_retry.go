@@ -30,34 +30,34 @@ func policyRejected(status int, message string) bool {
 // returns the note for it.
 func (s *Service) policyRetryLocked(t *Task) string {
 	if t.PolicyStep >= 2 {
-		return s.msg("generation.policy.gaveUp")
+		return s.taskMsg(*t, "generation.policy.gaveUp")
 	}
 	reword := t.PolicyStep == 1
 	if reword {
 		if _, _, ok := s.rewordLLMLocked(*t); !ok {
-			return s.msg("generation.policy.noLLM")
+			return s.taskMsg(*t, "generation.policy.noLLM")
 		}
 	}
 	var live Connection
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
-		return s.msg("generation.retry.serviceDeleted")
+		return s.taskMsg(*t, "generation.retry.serviceDeleted")
 	}
 	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
 	if e != nil {
-		return s.msg("generation.policy.notQueued", "error", e.Error())
+		return s.taskMsg(*t, "generation.policy.notQueued", "error", e.Error())
 	}
 	next.PolicyRetryOf, next.PolicyStep, next.Rewording = t.ID, t.PolicyStep+1, reword
 	if e = s.store.Put("task", next.ID, next); e != nil {
-		return s.msg("generation.policy.notQueued", "error", e.Error())
+		return s.taskMsg(*t, "generation.policy.notQueued", "error", e.Error())
 	}
 	t.PolicyRetriedAs = next.ID
 	if reword {
 		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyReword", "from", t.ID, "to", next.ID))
 		s.startRewordLocked(next.ID)
-		return s.msg("generation.policy.rewording")
+		return s.taskMsg(*t, "generation.policy.rewording")
 	}
 	_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyResend", "from", t.ID, "to", next.ID))
-	return s.msg("generation.policy.resent")
+	return s.taskMsg(*t, "generation.policy.resent")
 }
 
 // rewordLLMLocked picks the LLM line that rewrites a refused prompt: the smart

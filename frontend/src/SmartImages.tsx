@@ -40,6 +40,7 @@ import { TemplateBar, type TemplateMode } from "./Templates";
 import { RunActivity, RunSteps, runStepLabel } from "./RunSteps";
 import {
   ModelSelect,
+  hostedLineName,
   assetLabel,
   coalesce,
   presetQualities,
@@ -50,7 +51,6 @@ import {
   withViewTransition,
   AssetOption,
   CancelTaskButton,
-  localizeLines,
   DataState,
   Header,
   ImageViewer,
@@ -159,7 +159,6 @@ export function SmartImages() {
     queryFn: () => call<Task[]>("GetAgentTasks", runID),
     enabled: !!runID,
     refetchInterval: 2500,
-    select: localizeLines<Task[]>,
   });
   const run = runQuery.data,
     tasks = taskQuery.data || [];
@@ -734,7 +733,7 @@ export function SmartImages() {
                         disabled={!!run || actions.busy}
                         options={llms.map((c) => ({
                           value: c.id,
-                          label: c.name,
+                          label: hostedLineName(c),
                         }))}
                         onChange={(llmConnectionID) =>
                           change({ llmConnectionID })

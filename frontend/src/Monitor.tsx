@@ -9,7 +9,14 @@ import {
 } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { call, type Connection } from "./api";
-import { DataState, Header, useActions, useData } from "./ui";
+import {
+  DataState,
+  Header,
+  hostedLineName,
+  useActions,
+  useData,
+  useLineNames,
+} from "./ui";
 import {
   currentLanguage,
   formatNumber,
@@ -375,7 +382,10 @@ function FilterBar({
           style={{ width: 200 }}
           options={[
             { value: "", label: allLabel },
-            ...connections.map((c) => ({ value: c.id, label: c.name })),
+            ...connections.map((c) => ({
+              value: c.id,
+              label: hostedLineName(c),
+            })),
           ]}
           onChange={(connectionID) => change({ connectionID })}
         />
@@ -412,6 +422,7 @@ const gatewayResult = {
 export function GatewayMonitorPage() {
   const { q, setQ, change } = useMonitorQuery();
   const connections = useData<Connection[]>(["connections"], "ListConnections");
+  const lineNames = useLineNames();
   const data = useData<GatewayMonitor>(
     ["gateway-monitor", q],
     "GatewayMonitor",
@@ -520,7 +531,7 @@ export function GatewayMonitorPage() {
                         style={{ background: colorOf(g.connectionID) }}
                         aria-hidden="true"
                       />
-                      {g.name}
+                      {lineNames(g.name)}
                     </strong>
                     {g.deleted ? (
                       <Tag>{t("monitor.deleted")}</Tag>
@@ -625,7 +636,7 @@ export function GatewayMonitorPage() {
                         style={{ background: colorOf(g.connectionID) }}
                         aria-hidden="true"
                       />
-                      {g.name}
+                      {lineNames(g.name)}
                     </span>
                   ))}
                 </div>
@@ -660,7 +671,7 @@ export function GatewayMonitorPage() {
                           <span
                             key={g.connectionID}
                             title={t("monitor.gw.daily.bar", {
-                              name: g.name,
+                              name: lineNames(g.name),
                               count: d.counts[g.connectionID],
                             })}
                             style={{
@@ -736,6 +747,7 @@ export function GatewayMonitorPage() {
                       title: t("monitor.gw.connection"),
                       dataIndex: "name",
                       width: 150,
+                      render: (v: string) => lineNames(v),
                     },
                     {
                       title: t("monitor.gw.source"),
@@ -746,7 +758,7 @@ export function GatewayMonitorPage() {
                           {c.routedFromName && (
                             <Tag color="blue">
                               {t("monitor.gw.routedFrom", {
-                                name: c.routedFromName,
+                                name: lineNames(c.routedFromName),
                               })}
                             </Tag>
                           )}
@@ -833,6 +845,7 @@ const llmResult = {
 export function LLMMonitorPage() {
   const { q, setQ, change } = useMonitorQuery();
   const connections = useData<Connection[]>(["connections"], "ListConnections");
+  const lineNames = useLineNames();
   const data = useData<LLMMonitor>(["llm-monitor", q], "LLMMonitor", [q], 5000);
   const exporter = useCSVExport(
     "ExportLLMCallsToPath",
@@ -911,7 +924,7 @@ export function LLMMonitorPage() {
                 <article className="monitor-card" key={p.connectionID}>
                   <div className="monitor-card-head">
                     <div>
-                      <strong>{p.name}</strong>
+                      <strong>{lineNames(p.name)}</strong>
                       <small className="monitor-sub">
                         {t("monitor.llm.model", {
                           model: p.model || t("monitor.llm.model.unset"),
@@ -1070,6 +1083,7 @@ export function LLMMonitorPage() {
                       title: t("monitor.col.provider"),
                       dataIndex: "connectionName",
                       width: 150,
+                      render: (v: string) => lineNames(v),
                     },
                     {
                       title: t("monitor.col.requests"),

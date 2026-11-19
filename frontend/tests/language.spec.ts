@@ -317,3 +317,43 @@ test("the chosen language is kept after the program restarts", async () => {
   expect(await go("InterfaceLanguage")).toBe("ko");
   await expect(page.locator(".rail-wordmark")).toHaveText("Image Workbench");
 });
+
+test("switching keeps what is on the page: typed requirement stays, page in the new language", async () => {
+  await firstStart("zh-CN");
+  await page.goto("http://wails.localhost/#/");
+  const field = page.getByLabel("完整制作指令", { exact: true });
+  await expect(field).toBeEditable();
+  const typed = "保温杯，白底主图 + 场景图 4 张";
+  await field.fill(typed);
+  // Mark the element: a re-mounted page would have a new one.
+  await field.evaluate(
+    (el) => ((el as unknown as { qaMark: number }).qaMark = 1),
+  );
+  await page
+    .getByRole("button", { name: "界面语言：中文", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "English" }).click();
+  await expect(
+    page.getByRole("link", { name: "Create", exact: true }),
+  ).toBeVisible();
+  const after = page.getByLabel("Full instructions", { exact: true });
+  await expect(after).toHaveValue(typed);
+  expect(
+    await after.evaluate((el) => (el as unknown as { qaMark?: number }).qaMark),
+  ).toBe(1);
+  await expect(page).toHaveTitle("Create · Image Workbench");
+  await expect(
+    page.getByRole("heading", {
+      name: "What would you like to make?",
+      level: 1,
+    }),
+  ).toBeVisible();
+  // And back: still the same text, now in Chinese.
+  await page
+    .getByRole("button", { name: "Display language: English", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "中文" }).click();
+  await expect(page.getByLabel("完整制作指令", { exact: true })).toHaveValue(
+    typed,
+  );
+});

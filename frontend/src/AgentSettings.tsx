@@ -28,7 +28,13 @@ import type {
   LLMCapabilities,
   SkillRecord,
 } from "./agent-api";
-import { DataState, SecretInput, useActions, useData } from "./ui";
+import {
+  DataState,
+  hostedLineName,
+  SecretInput,
+  useActions,
+  useData,
+} from "./ui";
 import { t, textIn, type MessageKey } from "./i18n";
 
 // The backend stores where a skill came from as a fixed Chinese word.
@@ -319,7 +325,10 @@ export function LLMConnections() {
   function validate(c: Connection) {
     actions.confirm(
       t("agentSettings.validate.title"),
-      t("agentSettings.validate.body", { name: c.name, model: c.model }),
+      t("agentSettings.validate.body", {
+        name: hostedLineName(c),
+        model: c.model,
+      }),
       async () => {
         const id = crypto.randomUUID();
         validationID.current = id;
@@ -380,7 +389,7 @@ export function LLMConnections() {
               </div>
               <div className="connection-info">
                 <strong>
-                  {c.name}{" "}
+                  {hostedLineName(c)}{" "}
                   <Tag color={c.hasKey ? "success" : "warning"}>
                     {c.hasKey
                       ? t("agentSettings.key.saved")
@@ -464,12 +473,14 @@ export function LLMConnections() {
                     danger
                     disabled={!!validating}
                     aria-label={t("agentSettings.llm.delete.aria", {
-                      name: c.name,
+                      name: hostedLineName(c),
                     })}
                     icon={<DeleteOutlined aria-hidden="true" />}
                     onClick={() =>
                       actions.confirm(
-                        t("agentSettings.llm.delete.title", { name: c.name }),
+                        t("agentSettings.llm.delete.title", {
+                          name: hostedLineName(c),
+                        }),
                         t("agentSettings.llm.delete.body"),
                         () => call("DeleteConnection", c.id),
                         true,

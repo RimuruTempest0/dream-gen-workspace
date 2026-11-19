@@ -541,37 +541,37 @@ func (s *Service) retryMayGoLocked(t *Task) bool {
 func (s *Service) autoRegenerateLocked(t *Task) string {
 	g := s.gatewaySettingsLocked()
 	if t.AutoRetryOf != "" {
-		return s.msg("generation.retry.alreadyRetried")
+		return s.taskMsg(*t, "generation.retry.alreadyRetried")
 	}
 	if t.Diagnostic.UpstreamJobID != "" {
-		return s.msg("generation.retry.asyncPending", "job", t.Diagnostic.UpstreamJobID)
+		return s.taskMsg(*t, "generation.retry.asyncPending", "job", t.Diagnostic.UpstreamJobID)
 	}
 	tasks, e := workingTasks(s.store, healthWindow)
 	if e != nil {
-		return s.msg("generation.retry.failed")
+		return s.taskMsg(*t, "generation.retry.failed")
 	}
 	hc := &healthCache{s: s, tasks: tasks, now: time.Now(), seen: map[string]GatewayHealth{}}
 	target, onBackup := s.backupLocked(*t, g, hc)
 	if !onBackup {
 		var live Connection
 		if s.store.Get("connection", t.Connection.ID, &live) != nil {
-			return s.msg("generation.retry.serviceDeleted")
+			return s.taskMsg(*t, "generation.retry.serviceDeleted")
 		}
 		target = normalizeConnection(live)
 	}
 	next, e := s.queueAttemptLocked(*t, target, t.ID)
 	if e != nil {
-		return s.msg("generation.retry.notQueued", "error", e.Error())
+		return s.taskMsg(*t, "generation.retry.notQueued", "error", e.Error())
 	}
 	t.AutoRetriedAs = next.ID
 	_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.autoRetry", "from", t.ID, "to", next.ID, "name", target.Name))
 	if onBackup {
-		return s.msg("generation.retry.onBackup", "to", target.Name, "from", t.Connection.Name)
+		return s.taskMsg(*t, "generation.retry.onBackup", "to", target.Name, "from", t.Connection.Name)
 	}
 	if !s.gatewaySetupLocked() {
-		return s.msg("generation.retry.sameService", "name", target.Name)
+		return s.taskMsg(*t, "generation.retry.sameService", "name", target.Name)
 	}
-	return s.msg("generation.retry.whenReachable", "name", target.Name)
+	return s.taskMsg(*t, "generation.retry.whenReachable", "name", target.Name)
 }
 
 // ---- relay rejections -------------------------------------------------------

@@ -1,10 +1,6 @@
 package core
 
-import (
-	"encoding/json"
-
-	"imageworkbench/internal/i18n"
-)
+import "imageworkbench/internal/i18n"
 
 // ---- 界面语言 (0.8.0) --------------------------------------------------------
 //
@@ -54,9 +50,22 @@ func loadLanguage(st *Store) (string, error) {
 		return saved, nil
 	}
 	lang := i18n.FromSystem(systemUILanguages()...)
-	// Any earlier preference means this data directory was used before 0.8.0.
-	if prefs, e := List[json.RawMessage](st, "preferences"); e == nil && len(prefs) > 0 {
+	// Anything already saved (preferences, connections, tasks, assets, logs, …)
+	// means this data directory was used before 0.8.0.
+	used, e := st.hasData()
+	if e != nil {
+		return "", e
+	}
+	if used {
 		lang = i18n.Default
 	}
 	return lang, st.Put("preferences", interfaceLanguagePrefKey, lang)
+}
+
+// hasData reports whether the database holds any record at all: a saved
+// object of any kind, a log line, a submission or an Agent request.
+func (st *Store) hasData() (bool, error) {
+	var used bool
+	e := st.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM objects) OR EXISTS(SELECT 1 FROM app_logs) OR EXISTS(SELECT 1 FROM submissions) OR EXISTS(SELECT 1 FROM agent_requests)`).Scan(&used)
+	return used, e
 }
