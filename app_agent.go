@@ -89,17 +89,17 @@ func (a *App) ImportSkill(path string, replace bool) (core.SkillRecord, error) {
 }
 func (a *App) ChooseSkillSource(directory bool) (string, error) {
 	if directory {
-		return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择含 SKILL.md 的技能文件夹"})
+		return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.skillFolder")})
 	}
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 Skill ZIP", Filters: []runtime.FileFilter{{DisplayName: "Skill ZIP", Pattern: "*.zip"}}})
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.skillZip"), Filters: []runtime.FileFilter{{DisplayName: "Skill ZIP", Pattern: "*.zip"}}})
 }
 func (a *App) ImportAgentFiles() ([]core.Asset, error) {
-	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "添加分析参考图（最多 20 张）", Filters: []runtime.FileFilter{{DisplayName: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.webp"}}})
+	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.analysisReferences"), Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.images"), Pattern: "*.png;*.jpg;*.jpeg;*.webp"}}})
 	if e != nil {
 		return nil, e
 	}
 	if len(paths) > 20 {
-		return nil, errors.New("分析参考图最多 20 张")
+		return nil, errors.New(a.msg("app.analysisReferences.max"))
 	}
 	out := []core.Asset{}
 	for _, path := range paths {
@@ -108,7 +108,7 @@ func (a *App) ImportAgentFiles() ([]core.Asset, error) {
 			return out, e
 		}
 		if info.Size() > core.MaxImageBytes {
-			return out, errors.New("图片超过 32 MB")
+			return out, errors.New(a.msg("app.image.tooLarge"))
 		}
 		data, e := os.ReadFile(path)
 		if e != nil {
@@ -146,7 +146,7 @@ func (a *App) RemoveShopRuleFile(id, name string) (core.ShopRule, error) {
 
 // AddShopRuleFiles picks image or text files and attaches them to a shop rule.
 func (a *App) AddShopRuleFiles(id string) (core.ShopRule, error) {
-	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择店铺规则附件", Filters: []runtime.FileFilter{{DisplayName: "图片或文本", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.md;*.txt;*.json"}}})
+	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.shopRuleFiles"), Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.imagesOrText"), Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.md;*.txt;*.json"}}})
 	if e != nil || len(paths) == 0 {
 		return core.ShopRule{}, e
 	}

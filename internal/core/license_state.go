@@ -30,7 +30,9 @@ var licenseStateDir = func() string {
 	return filepath.Join(base, "ImageWorkbench", "licenses")
 }
 
-var errLicenseTampered = errors.New("试用记录被改动")
+// errLicenseTampered never reaches the interface: loadShared turns it into the
+// tampered flag.
+var errLicenseTampered = errors.New("trial record changed")
 
 // IsolateLicenseStateForTest keeps trial records of this process in dir and the
 // given registry key (under HKCU), so tests never touch the user's own records.

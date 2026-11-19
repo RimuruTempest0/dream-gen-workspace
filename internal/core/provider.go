@@ -38,9 +38,10 @@ func NormalizeURL(raw, lang string) (string, error) {
 	}
 	return strings.TrimRight(u.String(), "/"), nil
 }
-func redact(text, key string) string {
+// redactIn hides key in text with the hidden marker in lang and caps the length.
+func redactIn(lang, text, key string) string {
 	if key != "" {
-		text = strings.ReplaceAll(text, key, "[已隐藏]")
+		text = strings.ReplaceAll(text, key, i18n.T(lang, "log.hidden"))
 	}
 	if len(text) > 600 {
 		text = text[:600]
@@ -61,7 +62,7 @@ func (p *Provider) Models(ctx context.Context, c Connection, key string) ([]stri
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil, failCtx(ctx, "connection.test.canceled")
 		}
-		return nil, failCtx(ctx, "connection.models.failed", "error", redact(e.Error(), key))
+		return nil, failCtx(ctx, "connection.models.failed", "error", redactCtx(ctx, e.Error(), key))
 	}
 	defer resp.Body.Close()
 	reader := &responseReader{Reader: io.LimitReader(resp.Body, (4<<20)+1)}
@@ -112,10 +113,10 @@ func apiMessage(b []byte, key, lang string) string {
 	}
 	if json.Unmarshal(b, &r) == nil {
 		if r.Error.Message != "" {
-			return redact(r.Error.Message, key)
+			return redactIn(lang, r.Error.Message, key)
 		}
 		if r.Message != "" {
-			return redact(r.Message, key)
+			return redactIn(lang, r.Message, key)
 		}
 	}
 	return i18n.T(lang, "connection.refused")
@@ -190,7 +191,7 @@ func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asse
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }}))
 	resp, e := p.Client.Do(req)
 	if e != nil {
-		detail := redact(e.Error(), key)
+		detail := redactCtx(ctx, e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
 		if !connected.Load() {
 			return nil, false, failCtx(ctx, "generation.notConnected", "error", detail)
@@ -200,8 +201,8 @@ func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asse
 	defer resp.Body.Close()
 	report(func(d *GenerationDiagnostic) {
 		d.HTTPStatus = resp.StatusCode
-		d.ContentType = redact(resp.Header.Get("Content-Type"), key)
-		d.UpstreamRequestID = redact(resp.Header.Get("X-Request-Id"), key)
+		d.ContentType = redactCtx(ctx, resp.Header.Get("Content-Type"), key)
+		d.UpstreamRequestID = redactCtx(ctx, resp.Header.Get("X-Request-Id"), key)
 		d.ContentLength = resp.ContentLength
 		d.TransferEncoding = strings.Join(resp.TransferEncoding, ", ")
 		d.HTTPProtocol = resp.Proto
@@ -216,7 +217,7 @@ func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asse
 		return nil, true, failCtx(ctx, "generation.responseTooLarge")
 	}
 	if e != nil {
-		detail := redact(e.Error(), key)
+		detail := redactCtx(ctx, e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
 		return nil, true, failCtx(ctx, "generation.partialResponse", "problem", networkProblem(ctx, e, "generation.incompleteJSON"), "status", resp.StatusCode, "bytes", reader.received, "error", detail)
 	}
@@ -356,3 +357,11 @@ func buildImageRequest(ctx context.Context, t Task, key string, refs []Asset, ro
 	req.Header.Set("X-Client-Request-Id", t.ID)
 	return req, nil
 }
+
+// redactCtx is redactIn in the language carried by ctx.
+func redactCtx(ctx context.Context, text, key string) string {
+	return redactIn(i18n.FromContext(ctx), text, key)
+}
+
+// redact is redactIn in the current interface language.
+func (s *Service) redact(text, key string) string { return redactIn(s.Language(), text, key) }

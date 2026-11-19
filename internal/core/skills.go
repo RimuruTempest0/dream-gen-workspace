@@ -1,9 +1,9 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"archive/zip"
 	"embed"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,20 +20,20 @@ var forbiddenSkillFrontmatter = regexp.MustCompile(`(?m)^\s*(hooks|context|agent
 
 func validateSkill(content string) (string, string, error) {
 	if len(content) > 128<<10 || !utf8.ValidString(content) || strings.ContainsRune(content, 0) {
-		return "", "", errors.New("SKILL.md 必须为 UTF-8 文本且不超过 128 KB")
+		return "", "", i18n.Fail("skill.file.encoding")
 	}
 	content = strings.TrimSpace(strings.TrimPrefix(content, "\ufeff"))
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	if !strings.HasPrefix(content, "---\n") {
-		return "", "", errors.New("SKILL.md 需要 YAML 头部，包含 name 和 description")
+		return "", "", i18n.Fail("skill.file.frontmatter")
 	}
 	end := strings.Index(content[4:], "\n---")
 	if end < 0 {
-		return "", "", errors.New("SKILL.md YAML 头部未结束")
+		return "", "", i18n.Fail("skill.file.frontmatterOpen")
 	}
 	head := content[4 : 4+end]
 	if forbiddenSkillFrontmatter.MatchString(head) || dynamicSkillPattern.MatchString(content) {
-		return "", "", errors.New("第一版仅支持指令与素材型 Skill，不能包含动态命令、执行权限、模型覆盖、hooks 或子 Agent 配置")
+		return "", "", i18n.Fail("skill.file.unsupported")
 	}
 	name, description := "", ""
 	for _, line := range strings.Split(head, "\n") {
@@ -50,7 +50,7 @@ func validateSkill(content string) (string, string, error) {
 		}
 	}
 	if !skillNamePattern.MatchString(name) || description == "" || description == "|" || description == ">" {
-		return "", "", errors.New("name 需为小写字母、数字和连字符，description 需为非空单行描述")
+		return "", "", i18n.Fail("skill.file.name")
 	}
 	return name, description, nil
 }
@@ -65,7 +65,7 @@ func (s *Service) initializeAgents() error {
 	for _, r := range runs {
 		if r.Status == "analyzing" {
 			r.Status = "interrupted"
-			r.Error = "上次分析已中断，已保存资料和方案，可明确继续"
+			r.Error = s.msg("agent.interruptedAtStart")
 			r.UpdatedAt = Now()
 			if e = s.store.Put("agent_run", r.ID, r); e != nil {
 				return e
@@ -315,10 +315,10 @@ func (s *Service) SaveSkill(v SkillRecord) (SkillRecord, error) {
 	v.Sealed = false
 	_, description, e := validateSkill(v.Content)
 	if e != nil {
-		return v, e
+		return v, s.localErr(e)
 	}
 	if strings.TrimSpace(v.Name) == "" {
-		return v, errors.New("请填写技能名称")
+		return v, s.fail("skill.name")
 	}
 	if v.ID != "" {
 		var old SkillRecord
@@ -365,11 +365,11 @@ func validSkillFile(name string) bool {
 }
 func skillRelative(name string) (string, error) {
 	if strings.ContainsAny(name, "\\:") || strings.HasPrefix(name, "/") {
-		return "", errors.New("Skill 文件路径无效")
+		return "", i18n.Fail("skill.path.invalid")
 	}
 	for _, part := range strings.Split(name, "/") {
 		if part == ".." || part == "." || part == "" {
-			return "", errors.New("Skill 文件路径包含非法片段")
+			return "", i18n.Fail("skill.path.illegal")
 		}
 	}
 	return name, nil
@@ -379,18 +379,18 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 	var total int64
 	add := func(name string, r io.Reader) error {
 		if _, e := skillRelative(name); e != nil {
-			return e
+			return s.localErr(e)
 		}
 		if !validSkillFile(name) {
-			return fmt.Errorf("不支持 Skill 文件 %s：不导入脚本、配置或可执行文件", name)
+			return s.fail("skill.import.fileType", "name", name)
 		}
 		if _, ok := files[name]; ok {
-			return errors.New("Skill 包含重复文件")
+			return s.fail("skill.import.duplicate")
 		}
 		b, e := io.ReadAll(io.LimitReader(r, MaxImageBytes+1))
 		total += int64(len(b))
 		if len(b) > MaxImageBytes || total > 64<<20 {
-			return errors.New("Skill 超过 64 MB，或单文件超过 32 MB")
+			return s.fail("skill.import.tooLarge")
 		}
 		if e != nil {
 			return e
@@ -403,7 +403,7 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 		return SkillRecord{}, e
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return SkillRecord{}, errors.New("不能导入链接目录")
+		return SkillRecord{}, s.fail("skill.import.linkedFolder")
 	}
 	if info.IsDir() {
 		e = filepath.WalkDir(source, func(path string, d os.DirEntry, err error) error {
@@ -411,13 +411,13 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 				return err
 			}
 			if d.Type()&os.ModeSymlink != 0 {
-				return errors.New("Skill 不能包含链接")
+				return s.fail("skill.import.links")
 			}
 			if d.IsDir() {
 				return nil
 			}
 			if len(files) >= 200 {
-				return errors.New("Skill 最多包含 200 个文件")
+				return s.fail("skill.import.maxFiles")
 			}
 			rel, err := filepath.Rel(source, path)
 			if err != nil {
@@ -436,14 +436,14 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 		if e == nil {
 			defer z.Close()
 			if len(z.File) > 250 {
-				return SkillRecord{}, errors.New("Skill 包含过多文件")
+				return SkillRecord{}, s.fail("skill.import.tooManyFiles")
 			}
 			for _, f := range z.File {
 				if f.FileInfo().IsDir() {
 					continue
 				}
 				if f.Mode()&os.ModeSymlink != 0 || f.UncompressedSize64 > MaxImageBytes {
-					return SkillRecord{}, errors.New("Skill 文件过大或包含链接")
+					return SkillRecord{}, s.fail("skill.import.fileTooLarge")
 				}
 				r, err := f.Open()
 				if err != nil {
@@ -458,7 +458,7 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 			}
 		}
 	} else {
-		return SkillRecord{}, errors.New("请选择 Skill 文件夹或 ZIP")
+		return SkillRecord{}, s.fail("skill.import.choose")
 	}
 	if e != nil {
 		return SkillRecord{}, e
@@ -467,22 +467,22 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 	for name := range files {
 		if filepath.Base(name) == "SKILL.md" {
 			if main != "" {
-				return SkillRecord{}, errors.New("一次只能导入一个包含 SKILL.md 的 Skill")
+				return SkillRecord{}, s.fail("skill.import.one")
 			}
 			main = name
 		}
 	}
 	if main == "" {
-		return SkillRecord{}, errors.New("未找到 SKILL.md")
+		return SkillRecord{}, s.fail("skill.import.noSkillMD")
 	}
 	slug, description, e := validateSkill(string(files[main]))
 	if e != nil {
-		return SkillRecord{}, e
+		return SkillRecord{}, s.localErr(e)
 	}
 	prefix := strings.TrimSuffix(main, "SKILL.md")
 	for name := range files {
 		if !strings.HasPrefix(name, prefix) {
-			return SkillRecord{}, errors.New("ZIP 只能包含一个 Skill 根目录")
+			return SkillRecord{}, s.fail("skill.import.oneRoot")
 		}
 	}
 	s.mu.Lock()
@@ -496,7 +496,9 @@ func (s *Service) ImportSkill(source string, replace bool) (SkillRecord, error) 
 		oldSlug, _, _ := validateSkill(old.Content)
 		if oldSlug == slug {
 			if !replace {
-				return rec, fmt.Errorf("Skill %s 已存在，请明确选择覆盖", slug)
+				// The interface asks before replacing; the flag is the signal, not the text.
+				rec.Conflict = true
+				return rec, nil
 			}
 			rec.ID = old.ID
 			rec.Version = old.Version + 1

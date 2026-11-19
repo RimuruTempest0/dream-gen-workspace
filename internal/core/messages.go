@@ -45,3 +45,31 @@ func (st *Store) language() string {
 }
 
 func (st *Store) msg(key string, args ...any) string { return i18n.T(st.language(), key, args...) }
+
+// text writes a deferred message (i18n.Message) in the current language.
+func (s *Service) text(m i18n.Message) string { return m.In(s.Language()) }
+
+// errText is an error's text in the current language: catalog errors from
+// packages without a language (update, license) are put into it, any other
+// error keeps its own text.
+func (s *Service) errText(e error) string { return i18n.Text(e, s.Language()) }
+
+// localErr is e with its text in the current language; errors.Is still sees e.
+func (s *Service) localErr(e error) error {
+	if e == nil {
+		return nil
+	}
+	return localizedError{s.errText(e), e}
+}
+
+type localizedError struct {
+	text  string
+	cause error
+}
+
+func (e localizedError) Error() string { return e.text }
+func (e localizedError) Unwrap() error { return e.cause }
+
+// LocalError is e with its text in the current interface language, for the
+// app layer (dialogs, folders) that returns catalog errors (i18n.Fail).
+func (s *Service) LocalError(e error) error { return s.localErr(e) }

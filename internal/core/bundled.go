@@ -3,7 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"os"
 	"strings"
@@ -32,13 +32,13 @@ var bundledHashes = struct {
 
 // verifyBundled refuses to start a shipped helper whose file differs from the one
 // this build was packaged with. The hash is remembered until the file changes.
-func verifyBundled(path, expected, label string) error {
+func verifyBundled(path, expected string, label i18n.Message) error {
 	if expected == "" {
 		return nil
 	}
 	info, e := os.Stat(path)
 	if e != nil {
-		return fmt.Errorf("%s缺失，请重新完整解压软件包", label)
+		return i18n.Fail("data.bundled.missing", "name", label)
 	}
 	bundledHashes.Lock()
 	cached, ok := bundledHashes.m[path]
@@ -46,13 +46,13 @@ func verifyBundled(path, expected, label string) error {
 	if !ok || cached.size != info.Size() || !cached.mod.Equal(info.ModTime()) {
 		f, e := os.Open(path)
 		if e != nil {
-			return fmt.Errorf("无法读取%s：%w", label, e)
+			return i18n.Fail("data.bundled.unreadable", "name", label, "error", e)
 		}
 		h := sha256.New()
 		_, e = io.Copy(h, f)
 		f.Close()
 		if e != nil {
-			return fmt.Errorf("无法读取%s：%w", label, e)
+			return i18n.Fail("data.bundled.unreadable", "name", label, "error", e)
 		}
 		cached = bundledHash{size: info.Size(), mod: info.ModTime(), hash: hex.EncodeToString(h.Sum(nil))}
 		bundledHashes.Lock()
@@ -60,7 +60,7 @@ func verifyBundled(path, expected, label string) error {
 		bundledHashes.Unlock()
 	}
 	if !strings.EqualFold(cached.hash, expected) {
-		return fmt.Errorf("%s与本版本不一致（文件可能损坏或被替换），已停止运行。请关闭软件，重新完整解压软件包后再试。", label)
+		return i18n.Fail("data.bundled.changed", "name", label)
 	}
 	return nil
 }

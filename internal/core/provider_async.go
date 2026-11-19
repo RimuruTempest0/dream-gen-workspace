@@ -31,7 +31,7 @@ const (
 	protocolAsyncJobs    = "async-jobs"
 )
 
-var imageProtocols = map[string]string{protocolOpenAIImages: "OpenAI Images（同步）", protocolAsyncJobs: "异步任务（提交后轮询）"}
+var imageProtocols = map[string]string{protocolOpenAIImages: "OpenAI Images (sync)", protocolAsyncJobs: "Async jobs (submit, then poll)"}
 
 func imageProtocol(c Connection) string {
 	if c.Protocol == protocolAsyncJobs {
@@ -114,14 +114,14 @@ func (p *Provider) submitAsync(ctx context.Context, t Task, key string, refs []A
 	report(func(d *GenerationDiagnostic) { d.Stage = "connecting" })
 	resp, e := p.Client.Do(req)
 	if e != nil {
-		detail := redact(e.Error(), key)
+		detail := redactCtx(ctx, e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
 		return asyncJob{}, true, failCtx(ctx, "generation.sentNoResult", "problem", networkProblem(ctx, e, "generation.noResultAfterSubmit"), "error", detail)
 	}
 	defer resp.Body.Close()
 	report(func(d *GenerationDiagnostic) {
 		d.HTTPStatus = resp.StatusCode
-		d.UpstreamRequestID = redact(resp.Header.Get("X-Request-Id"), key)
+		d.UpstreamRequestID = redactCtx(ctx, resp.Header.Get("X-Request-Id"), key)
 		d.HTTPProtocol = resp.Proto
 	})
 	b, e := io.ReadAll(io.LimitReader(resp.Body, 96<<20))
@@ -161,7 +161,7 @@ func (p *Provider) pollAsync(ctx context.Context, base, jobID, key string, repor
 				if msg == "" {
 					msg = msgCtx(ctx, "generation.async.failed", "status", job.Status)
 				}
-				return nil, false, errors.New(redact(msg, key))
+				return nil, false, errors.New(redactCtx(ctx, msg, key))
 			}
 		} else {
 			lastProblem = problem
@@ -190,12 +190,12 @@ func (p *Provider) pollOnce(ctx context.Context, address, key string) (asyncJob,
 	req.Header.Set("Authorization", "Bearer "+key)
 	resp, e := p.Client.Do(req)
 	if e != nil {
-		return asyncJob{}, redact(e.Error(), key), nil
+		return asyncJob{}, redactCtx(ctx, e.Error(), key), nil
 	}
 	defer resp.Body.Close()
 	b, e := io.ReadAll(io.LimitReader(resp.Body, 96<<20))
 	if e != nil {
-		return asyncJob{}, redact(e.Error(), key), nil
+		return asyncJob{}, redactCtx(ctx, e.Error(), key), nil
 	}
 	switch {
 	case resp.StatusCode >= 500 || resp.StatusCode == 408 || resp.StatusCode == 429:

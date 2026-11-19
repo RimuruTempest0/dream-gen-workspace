@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/json"
 	"net/url"
 	"strings"
@@ -50,7 +51,7 @@ func walmartFixture(t *testing.T, withData bool) string {
 }
 
 func TestWalmartListingUsesPageData(t *testing.T) {
-	info, images, e := parseProductPage([]byte(walmartFixture(t, true)), "https://www.walmart.com/ip/Brand-Sweatshirt/19990250082?classType=VARIANT")
+	info, images, e := parseProductPage([]byte(walmartFixture(t, true)), "https://www.walmart.com/ip/Brand-Sweatshirt/19990250082?classType=VARIANT", i18n.ZhCN)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -84,7 +85,7 @@ func TestWalmartListingUsesPageData(t *testing.T) {
 }
 
 func TestWalmartWithoutPageDataDropsIconsAndThumbnailSizes(t *testing.T) {
-	_, images, e := parseProductPage([]byte(walmartFixture(t, false)), "https://www.walmart.com/ip/x/1")
+	_, images, e := parseProductPage([]byte(walmartFixture(t, false)), "https://www.walmart.com/ip/x/1", i18n.ZhCN)
 	if e != nil {
 		t.Fatal(e)
 	}

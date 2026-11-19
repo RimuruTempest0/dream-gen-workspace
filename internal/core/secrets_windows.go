@@ -3,7 +3,7 @@
 package core
 
 import (
-	"errors"
+	"imageworkbench/internal/i18n"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -21,7 +21,7 @@ var freeMem = syscall.NewLazyDLL("kernel32.dll").NewProc("LocalFree")
 
 func crypt(data []byte, decrypt bool) ([]byte, error) {
 	if len(data) == 0 {
-		return nil, errors.New("密钥为空")
+		return nil, i18n.Fail("data.key.empty")
 	}
 	in := blob{uint32(len(data)), &data[0]}
 	var out blob

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -151,7 +150,7 @@ func (s *Service) reword(id string) {
 	if t.RewordFor == rewordMood {
 		if e != nil {
 			t.Status = "failed"
-			t.Error = s.msg("generation.moodRewriteFailed", "error", redact(e.Error(), key))
+			t.Error = s.msg("generation.moodRewriteFailed", "error", s.redact(e.Error(), key))
 			// The reason may quote in-image text of the prompt, so it stays on the task.
 			_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.moodRewriteFailed", "task", t.ID))
 		} else {
@@ -165,8 +164,8 @@ func (s *Service) reword(id string) {
 	if t.RewordFor == rewordRefine {
 		if e != nil {
 			t.Status = "failed"
-			t.Error = s.msg("generation.refineRewriteFailed", "error", redact(e.Error(), key))
-			_ = s.store.appendLog("warn", "agent", t.AgentRunID, s.msg("generation.log.refineRewriteFailed", "error", redact(e.Error(), key)))
+			t.Error = s.msg("generation.refineRewriteFailed", "error", s.redact(e.Error(), key))
+			_ = s.store.appendLog("warn", "agent", t.AgentRunID, s.msg("generation.log.refineRewriteFailed", "error", s.redact(e.Error(), key)))
 		} else {
 			t.Prompt = prompt
 			_ = s.store.appendLog("info", "agent", t.AgentRunID, s.msg("generation.log.refineRewritten", "task", t.ID))
@@ -176,8 +175,8 @@ func (s *Service) reword(id string) {
 	}
 	if e != nil {
 		t.Status = "failed"
-		t.Error = s.msg("generation.policyRefused") + s.msg("generation.policy.rewordFailed", "error", redact(e.Error(), key))
-		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyRewordFailed", "error", redact(e.Error(), key)))
+		t.Error = s.msg("generation.policyRefused") + s.msg("generation.policy.rewordFailed", "error", s.redact(e.Error(), key))
+		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyRewordFailed", "error", s.redact(e.Error(), key)))
 	} else {
 		t.Prompt = prompt
 		_ = s.store.appendLog("info", "image", t.BatchID, s.msg("generation.log.policyReworded", "task", t.ID))
@@ -200,15 +199,15 @@ var quotedText = regexp.MustCompile(`“([^”]+)”|"([^"]+)"`)
 // added is kept as it is, and every quoted in-image text must survive verbatim.
 func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, lang, prompt string) (string, error) {
 	head, body := "", prompt
-	if strings.HasPrefix(prompt, "样板图：参考图第") {
+	if hasSampleLead(prompt) {
 		if line, rest, ok := strings.Cut(prompt, "\n"); ok {
 			head, body = line+"\n", rest
 		}
 	}
-	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body),"内容审核拒绝后改写提示词", func(text string) error {
+	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body),s.msg("agent.llmStage.reword"), func(text string) error {
 		for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
 			if want := q[1] + q[2]; !strings.Contains(text, want) {
-				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)
+				return s.fail("agent.rewrite.lostText", "text", want)
 			}
 		}
 		return nil
@@ -259,7 +258,7 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 	started := time.Now()
 	finish := func(e error) error {
 		if e != nil {
-			call.Status, call.Error = "error", redact(e.Error(), key)
+			call.Status, call.Error = "error", s.redact(e.Error(), key)
 		} else {
 			call.Status = "completed"
 		}

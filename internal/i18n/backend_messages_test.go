@@ -36,10 +36,10 @@ func TestBackendCatalogComplete(t *testing.T) {
 
 // messageCallers are the helpers that take a catalog key, with the position
 // of the key argument; name/value pairs follow it.
-var messageCallers = map[string]int{"msg": 0, "fail": 0, "msgCtx": 1, "failCtx": 1, "T": 1}
+var messageCallers = map[string]int{"msg": 0, "fail": 0, "msgCtx": 1, "failCtx": 1, "T": 1, "Fail": 0, "Msg": 0, "bootMsg": 0}
 
 // backendSources are the Go packages whose messages come from the catalogs.
-var backendSources = []string{"../core", "../.."}
+var backendSources = []string{"../core", "../..", "../update", "../license"}
 
 // TestBackendMessageCalls reads the Go sources: every message call names a
 // key in the catalog with exactly its placeholders, and every catalog key is

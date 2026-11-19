@@ -3,6 +3,8 @@ package core
 import (
 	"os"
 	"path/filepath"
+
+	"imageworkbench/internal/i18n"
 )
 
 // expectSigned is set to "1" by scripts/build.ps1 when it signs the program
@@ -13,17 +15,17 @@ import (
 var expectSigned = ""
 
 // programSignatureProblem returns why this signed build must not trust
-// customer.dat, or "".
-func programSignatureProblem() string {
+// customer.dat, or no message.
+func programSignatureProblem() i18n.Message {
 	if expectSigned != "1" {
-		return ""
+		return i18n.Message{}
 	}
 	exe, e := os.Executable()
 	if e != nil {
-		return "无法确认程序文件"
+		return i18n.Msg("license.program.unknown")
 	}
 	if exe, e = filepath.EvalSymlinks(exe); e == nil && authenticodeValid(exe) {
-		return ""
+		return i18n.Message{}
 	}
-	return "程序文件的数字签名无效（可能被修改或损坏），已停止使用软件授权。请重新完整解压软件提供方发来的软件包。"
+	return i18n.Msg("license.program.signature")
 }

@@ -1,8 +1,6 @@
 package core
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,7 +20,7 @@ func (s *Service) ChangeDataDirectory(destination string, persist func(string) e
 	}
 	for _, t := range tasks {
 		if active(t.Status) {
-			return errors.New("请先停止待执行任务，并等待正在生成或下载的任务结束，再更改保存位置")
+			return s.fail("data.location.busy")
 		}
 	}
 	source, e := filepath.Abs(s.store.Root)
@@ -35,10 +33,10 @@ func (s *Service) ChangeDataDirectory(destination string, persist func(string) e
 	}
 	target, e := filepath.Abs(strings.TrimSpace(destination))
 	if e != nil || strings.TrimSpace(destination) == "" {
-		return errors.New("请选择本地保存目录")
+		return s.fail("data.location.choose")
 	}
 	if strings.HasPrefix(target, `\\`) {
-		return errors.New("请选择本地磁盘目录，暂不支持网络共享")
+		return s.fail("data.location.local")
 	}
 	if _, err := os.Stat(target); err == nil {
 		target, e = filepath.EvalSymlinks(target)
@@ -57,34 +55,34 @@ func (s *Service) ChangeDataDirectory(destination string, persist func(string) e
 	a, b := strings.ToLower(filepath.Clean(source)), strings.ToLower(filepath.Clean(target))
 	sep := string(filepath.Separator)
 	if a == b {
-		return errors.New("这个目录已经是当前数据位置")
+		return s.fail("data.location.same")
 	}
 	if strings.HasPrefix(a, strings.TrimRight(b, sep)+sep) || strings.HasPrefix(b, strings.TrimRight(a, sep)+sep) {
-		return errors.New("新目录不能是当前数据目录的上级或子目录，请选择独立的空文件夹")
+		return s.fail("data.location.nested")
 	}
 	if entries, err := os.ReadDir(target); err == nil {
 		if len(entries) > 0 {
-			return errors.New("新保存目录必须为空，以免覆盖已有文件。请创建或选择一个空文件夹")
+			return s.fail("data.location.notEmpty")
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 	if e = os.MkdirAll(target, 0700); e != nil {
-		return fmt.Errorf("新目录无法写入：%w", e)
+		return s.fail("data.location.unwritable", "error", e)
 	}
 	if e = s.store.Snapshot(filepath.Join(target, "app.db")); e != nil {
-		return fmt.Errorf("复制数据库失败，仍使用原目录：%w", e)
+		return s.fail("data.location.copyDatabase", "error", e)
 	}
 	for _, dir := range []string{"images", "references", "thumbnails", "secrets", "skills"} {
 		if e = os.Mkdir(filepath.Join(target, dir), 0700); e != nil {
-			return fmt.Errorf("迁移未完成，仍使用原目录：%w", e)
+			return s.fail("data.location.incomplete", "error", e)
 		}
 		e = filepath.WalkDir(filepath.Join(source, dir), func(path string, d os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
 			if d.Type()&os.ModeSymlink != 0 {
-				return errors.New("数据目录包含链接，无法安全迁移")
+				return s.fail("data.location.links")
 			}
 			if path == filepath.Join(source, dir) {
 				return nil
@@ -106,17 +104,17 @@ func (s *Service) ChangeDataDirectory(destination string, persist func(string) e
 			return copyExclusive(path, dest)
 		})
 		if e != nil {
-			return fmt.Errorf("复制文件失败，仍使用原目录。目标可能留有不完整副本：%w", e)
+			return s.fail("data.location.copyFiles", "error", e)
 		}
 	}
 	next, e := Open(target)
 	if e != nil {
-		return fmt.Errorf("新目录数据库无法打开，仍使用原目录：%w", e)
+		return s.fail("data.location.openDatabase", "error", e)
 	}
 	var check string
 	if e = next.db.QueryRow("PRAGMA integrity_check").Scan(&check); e != nil || check != "ok" {
 		next.Close()
-		return errors.New("新目录的数据校验失败，仍使用原目录")
+		return s.fail("data.location.check")
 	}
 	assets, e := List[Asset](next, "asset")
 	if e != nil {
@@ -126,12 +124,12 @@ func (s *Service) ChangeDataDirectory(destination string, persist func(string) e
 	for _, asset := range assets {
 		if _, e = readOwned(target, asset.Path); e != nil {
 			next.Close()
-			return fmt.Errorf("图片迁移校验失败，仍使用原目录：%s", asset.Name)
+			return s.fail("data.location.imageCheck", "name", asset.Name)
 		}
 	}
 	if e = persist(target); e != nil {
 		next.Close()
-		return fmt.Errorf("保存目录偏好失败，仍使用原目录：%w", e)
+		return s.fail("data.location.savePreference", "error", e)
 	}
 	old := s.store
 	s.store = next

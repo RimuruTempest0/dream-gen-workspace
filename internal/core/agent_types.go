@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/json"
 	"strings"
 )
@@ -61,7 +62,8 @@ func (p *ProductInfo) UnmarshalJSON(b []byte) error {
 	// Before 0.6.14 Amazon's "Continue shopping" page was saved as the product;
 	// marking it unread makes continuing read the page again.
 	if p.Error == "" && challengeInfo(*p) {
-		p.Title, p.Description, p.Error = "", "", "商品页返回人机验证页，继续制作时会重新读取；也可上传图片或粘贴商品描述"
+		// Runs saved before 0.6.14 were made in Chinese.
+		p.Title, p.Description, p.Error = "", "", i18n.T(i18n.ZhCN, "product.challengeSaved")
 	}
 	return nil
 }
@@ -118,7 +120,16 @@ type SuitePlan struct {
 type AgentEvent struct {
 	At   string `json:"at"`
 	Text string `json:"text"`
+	// Code is the StageCode the event set, if any.
+	Code string `json:"code,omitempty"`
 }
+
+// Stage codes the interface reacts to, whatever the language of the stage text.
+const (
+	stagePreparing      = "preparing"
+	stageBrowserReading = "browser-reading"
+	stageBrowserVerify  = "browser-verify"
+)
 type SkillAttachment struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
@@ -131,6 +142,9 @@ type SkillRecord struct {
 	Version     int               `json:"version"`
 	Enabled     bool              `json:"enabled"`
 	Source      string            `json:"source"`
+	// Conflict is set on the record ImportSkill returns when a skill of that name
+	// exists and replacing was not asked for; nothing was imported.
+	Conflict bool `json:"conflict,omitempty"`
 	Attachments []SkillAttachment `json:"attachments"`
 	// Sealed marks a built-in skill that 0.7.10–0.7.16 stored only by reference in
 	// customer packages; it is restored to its full text at start (skill_unseal.go).
@@ -156,6 +170,9 @@ type AgentRun struct {
 	UpdatedAt            string     `json:"updatedAt"`
 	Status               string     `json:"status"`
 	Stage                string     `json:"stage"`
+	// StageCode names a stage the interface reacts to (stagePreparing,
+	// stageBrowserReading, stageBrowserVerify) in any language; "" for others.
+	StageCode string `json:"stageCode,omitempty"`
 	Error                string     `json:"error"`
 	// LLMReconnects counts LLM streams cut during this analysis; Claude Code
 	// retries them itself, so they are a note, not an error, unless it fails.

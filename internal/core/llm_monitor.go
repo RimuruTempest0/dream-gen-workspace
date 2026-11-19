@@ -1,6 +1,7 @@
 package core
 
 import (
+	"slices"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -84,10 +85,15 @@ func (c *LLMCall) readBodyUsage(raw []byte) {
 
 // waitingStages are set by the bridge itself; the stage worth showing is the
 // last step the Agent reported before the request.
-// The second row is the wording saved by versions before 0.7.24.
-var waitingStages = map[string]bool{
-	"等待 AI 模型响应": true, "AI 模型连接中断，自动重试": true, "AI 模型流中断": true,
+// The current wording is recognised in every language (agent.stage.*); the
+// map holds wording saved by earlier versions.
+var legacyWaitingStages = map[string]bool{
+	"AI 模型流中断": true,
 	"等待 LLM 响应": true, "LLM 连接中断，自动重试": true, "LLM 流中断": true,
+}
+
+func waitingStage(text string) bool {
+	return legacyWaitingStages[text] || slices.Contains(i18n.Variants("agent.stage.waitingLLM"), text) || slices.Contains(i18n.Variants("agent.stage.reconnecting"), text)
 }
 
 // newLLMCallLocked starts a record for a request about to be sent.
@@ -107,7 +113,7 @@ func (s *Service) newLLMCallLocked(kind, runID string, c Connection, body []byte
 		var r AgentRun
 		if s.store.Get("agent_run", runID, &r) == nil {
 			for i := len(r.Events) - 1; i >= 0; i-- {
-				if !waitingStages[r.Events[i].Text] {
+				if !waitingStage(r.Events[i].Text) {
 					call.Stage = r.Events[i].Text
 					break
 				}
@@ -240,24 +246,24 @@ func runName(r AgentRun) string {
 	return shortText(r.Input.Instruction, 24)
 }
 
-func runResult(r AgentRun) (string, string) {
+func runResult(lang string, r AgentRun) (string, string) {
 	switch r.Status {
 	case "submitted":
 		n := r.AuthorizedCount
 		if n == 0 && len(r.Plans) > 0 {
 			n = len(r.Plans[len(r.Plans)-1].Items)
 		}
-		return fmt.Sprintf("已提交 %d 张", n), "success"
+		return i18n.T(lang, "agent.result.submitted", "n", n), "success"
 	case "ready", "review":
-		return "方案已保存", "success"
+		return i18n.T(lang, "agent.result.planSaved"), "success"
 	case "needs_input":
-		return "等待补充资料", "warning"
+		return i18n.T(lang, "agent.stage.needsInput"), "warning"
 	case "analyzing":
-		return "分析中", "warning"
+		return i18n.T(lang, "agent.result.analyzing"), "warning"
 	case "interrupted":
-		return "已中断", "danger"
+		return i18n.T(lang, "agent.result.interrupted"), "danger"
 	case "failed":
-		return "制作未完成", "danger"
+		return i18n.T(lang, "agent.stage.unfinished"), "danger"
 	}
 	return r.Status, ""
 }
@@ -371,7 +377,7 @@ func (s *Service) LLMMonitor(q MonitorQuery) (LLMMonitorResult, error) {
 		run, ok := runs[c.RunID]
 		if !ok {
 			ar := getRun(c.RunID)
-			res, tone := runResult(ar)
+			res, tone := runResult(s.Language(), ar)
 			run = &LLMRunStat{RunID: c.RunID, Name: runName(ar), ConnectionName: c.ConnectionName, Result: res, ResultTone: tone}
 			runs[c.RunID] = run
 			runOrder = append(runOrder, c.RunID)

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"bufio"
 	"bytes"
 	"context"
@@ -24,9 +25,7 @@ import (
 // It only returns HTML and requested image bytes; the Agent never drives it.
 const (
 	productBrowserDir = "product-browser"
-	// Stage texts are matched by the smart-generation page.
-	productBrowserReadingStage = "正在用浏览器读取商品页"
-	productBrowserVerifyStage  = "需要你在弹出的窗口里完成验证"
+	// Stage texts come from the catalog (agent.stage.browser*); the page matches StageCode.
 )
 
 // Variables so tests can shorten waits and limits.
@@ -98,7 +97,7 @@ type browserSession struct {
 }
 
 func startProductBrowser(cfg productBrowserConfig, profile, target string) (*browserSession, error) {
-	if e := verifyBundled(cfg.Executable, expectedProductBrowserSHA256, "浏览器辅助程序 product-browser.exe "); e != nil {
+	if e := verifyBundled(cfg.Executable, expectedProductBrowserSHA256, i18n.Msg("data.bundled.productBrowser")); e != nil {
 		return nil, e
 	}
 	args := append(append([]string{}, cfg.Args...),
@@ -116,7 +115,7 @@ func startProductBrowser(cfg productBrowserConfig, profile, target string) (*bro
 		return nil, e
 	}
 	if e = b.cmd.Start(); e != nil {
-		return nil, fmt.Errorf("无法启动浏览器辅助程序：%w", e)
+		return nil, i18n.Fail("product.browser.startFailed", "error", e)
 	}
 	if b.release, e = attachAgentProcess(b.cmd); e != nil {
 		b.cmd.Process.Kill()
@@ -135,7 +134,7 @@ func startProductBrowser(cfg productBrowserConfig, profile, target string) (*bro
 			}
 		}
 		if e := scanner.Err(); e != nil {
-			b.readErr = errors.New("浏览器辅助程序输出超过大小限制")
+			b.readErr = i18n.Fail("product.browser.outputTooLarge")
 			b.cmd.Process.Kill()
 		}
 		b.cmd.Wait()
@@ -179,18 +178,18 @@ func (b *browserSession) diagnostic() string {
 func browserFailure(ev browserEvent) error {
 	switch ev.Code {
 	case "timeout":
-		return errors.New("浏览器读取超时")
+		return i18n.Fail("product.browser.timeout")
 	case "closed":
-		return errors.New("验证窗口已关闭")
+		return i18n.Fail("product.browser.verifyClosed")
 	case "crashed":
-		return errors.New("浏览器进程异常退出")
+		return i18n.Fail("product.browser.crashed")
 	case "too_large":
-		return errors.New("商品页超过大小限制")
+		return i18n.Fail("product.pageTooLarge")
 	}
 	if ev.Message != "" {
 		return errors.New(cutProductText(ev.Message, 300))
 	}
-	return errors.New("浏览器读取失败")
+	return i18n.Fail("product.browser.failed")
 }
 
 // readProductWithBrowser returns the rendered page and an open session that can
@@ -200,10 +199,10 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 	cfg := s.productBrowser
 	s.mu.Unlock()
 	if cfg.Executable == "" {
-		return nil, "", nil, errors.New("未配置浏览器辅助程序")
+		return nil, "", nil, s.fail("product.browser.notConfigured")
 	}
 	if info, e := os.Stat(cfg.Executable); e != nil || info.IsDir() {
-		return nil, "", nil, errors.New("缺少浏览器辅助程序，请完整解压应用文件")
+		return nil, "", nil, s.fail("product.browser.missing")
 	}
 	// One helper at a time: WebView2 locks its profile directory.
 	s.browserMu.Lock()
@@ -219,7 +218,7 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 	}
 	// The returned session keeps the profile locked until it is closed.
 	b.onClose = s.browserMu.Unlock
-	s.updateAgent(id, productBrowserReadingStage, nil)
+	s.setAgentStage(id, stageBrowserReading, s.msg("agent.stage.browserReading"))
 	deadline := time.NewTimer(productBrowserTimeout)
 	defer deadline.Stop()
 	for {
@@ -229,31 +228,31 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 			return nil, "", nil, ctx.Err()
 		case <-deadline.C:
 			b.kill()
-			return nil, "", nil, errors.New("浏览器读取超时")
+			return nil, "", nil, i18n.Fail("product.browser.timeout")
 		case ev, ok := <-b.events:
 			if !ok {
 				failure := b.readErr
 				if failure == nil {
-					failure = errors.New("浏览器辅助程序意外退出")
+					failure = i18n.Fail("product.browser.exited")
 				}
 				diag := b.diagnostic()
 				b.Close()
 				if diag != "" {
-					failure = fmt.Errorf("%w（%s）", failure, diag)
+					failure = i18n.Fail("product.browser.withDetail", "error", failure, "detail", diag)
 				}
 				return nil, "", nil, failure
 			}
 			switch ev.Event {
 			case "retry":
-				_ = s.store.appendLog("warn", "agent", id, fmt.Sprintf("浏览器打不开商品页（网络连接失败），稍后第 %d 次重新打开", ev.Attempt))
+				_ = s.store.appendLog("warn", "agent", id, s.msg("product.log.browserRetry", "n", ev.Attempt))
 			case "verify":
-				_ = s.store.appendLog("warn", "agent", id, "商品页出现人机验证，已弹出验证窗口")
+				_ = s.store.appendLog("warn", "agent", id, s.msg("product.log.verify"))
 				// The page shows live waiting seconds from this event's time.
-				s.updateAgent(id, productBrowserVerifyStage, nil)
+				s.setAgentStage(id, stageBrowserVerify, s.msg("agent.stage.browserVerify"))
 			case "page":
 				if len(ev.HTML) > productBrowserMaxHTML {
 					b.kill()
-					return nil, "", nil, errors.New("商品页超过大小限制")
+					return nil, "", nil, i18n.Fail("product.pageTooLarge")
 				}
 				return []byte(ev.HTML), ev.URL, b, nil
 			case "error":
@@ -261,7 +260,7 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 				b.Close()
 				failure := browserFailure(ev)
 				if diag != "" && ev.Code == "webview" {
-					failure = fmt.Errorf("%w（%s）", failure, diag)
+					failure = i18n.Fail("product.browser.withDetail", "error", failure, "detail", diag)
 				}
 				return nil, "", nil, failure
 			}
@@ -272,7 +271,7 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 // productFromBrowser renders the page in the helper and parses it with the same
 // parser as the direct request. Stages and errors are logged; page content is not.
 func (s *Service) productFromBrowser(ctx context.Context, id, target, reason string) (ProductInfo, []string, *browserSession, error) {
-	_ = s.store.appendLog("info", "agent", id, "商品页直连受阻（"+reason+"），改用浏览器读取："+target)
+	_ = s.store.appendLog("info", "agent", id, s.msg("product.log.browserFallback", "reason", reason, "url", target))
 	started := time.Now()
 	s.setProgress(id, func(p *RunProgress) { p.ProductVia = "browser" })
 	page, finalURL, b, e := s.readProductWithBrowser(ctx, id, target)
@@ -280,14 +279,14 @@ func (s *Service) productFromBrowser(ctx context.Context, id, target, reason str
 	if e == nil {
 		if u, err := url.Parse(finalURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			// The browser's own error page: the site could not be reached.
-			e = errors.New("浏览器也打不开商品页（网络连接失败）")
+			e = i18n.Fail("product.browser.unreachable")
 		} else if s.allowLocalProduct {
 			e = validateProductURL(finalURL)
 		} else {
 			e = publicProductURL(ctx, finalURL)
 		}
 		if errors.Is(e, errProductTarget) {
-			e = fmt.Errorf("页面跳转到不受支持的地址：%w", e)
+			e = i18n.Fail("product.browser.redirected", "error", e)
 		}
 		if e != nil {
 			b.Close()
@@ -296,9 +295,9 @@ func (s *Service) productFromBrowser(ctx context.Context, id, target, reason str
 	var info ProductInfo
 	var images []string
 	if e == nil {
-		if info, images, e = parseProductPage(page, finalURL); e == nil && (looksLikeChallenge(page) || challengeInfo(info)) {
+		if info, images, e = parseProductPage(page, finalURL, s.Language()); e == nil && (looksLikeChallenge(page) || challengeInfo(info)) {
 			// Never pass a block page on as product data.
-			e = errors.New("浏览器中仍是人机验证页")
+			e = i18n.Fail("product.browser.stillChallenge")
 		}
 		if e != nil {
 			b.Close()
@@ -306,11 +305,11 @@ func (s *Service) productFromBrowser(ctx context.Context, id, target, reason str
 	}
 	if e != nil {
 		if ctx.Err() == nil {
-			_ = s.store.appendLog("warn", "agent", id, fmt.Sprintf("浏览器读取商品页失败（%d 秒）：%v", int(time.Since(started).Seconds()), e))
+			_ = s.store.appendLog("warn", "agent", id, s.msg("product.log.browserFailed", "s", int(time.Since(started).Seconds()), "error", e))
 		}
 		return ProductInfo{}, nil, nil, e
 	}
-	_ = s.store.appendLog("info", "agent", id, fmt.Sprintf("浏览器读取商品页完成（%d 秒）；页面 %d KB，候选图片 %d 张", int(time.Since(started).Seconds()), len(page)>>10, len(images)))
+	_ = s.store.appendLog("info", "agent", id, s.msg("product.log.browserDone", "s", int(time.Since(started).Seconds()), "kb", len(page)>>10, "n", len(images)))
 	return info, images, b, nil
 }
 
@@ -320,7 +319,7 @@ func (b *browserSession) Image(ctx context.Context, target string) ([]byte, erro
 	id := strconv.Itoa(b.nextID)
 	line, _ := json.Marshal(map[string]string{"op": "image", "id": id, "url": target})
 	if _, e := b.stdin.Write(append(line, '\n')); e != nil {
-		return nil, errors.New("浏览器会话已结束")
+		return nil, i18n.Fail("product.browser.sessionEnded")
 	}
 	timer := time.NewTimer(productBrowserImageTimeout)
 	defer timer.Stop()
@@ -329,10 +328,10 @@ func (b *browserSession) Image(ctx context.Context, target string) ([]byte, erro
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timer.C:
-			return nil, errors.New("浏览器补取图片超时")
+			return nil, i18n.Fail("product.browser.imageTimeout")
 		case ev, ok := <-b.events:
 			if !ok {
-				return nil, errors.New("浏览器会话已结束")
+				return nil, i18n.Fail("product.browser.sessionEnded")
 			}
 			if ev.Event != "image" || ev.ID != id {
 				continue
@@ -341,14 +340,14 @@ func (b *browserSession) Image(ctx context.Context, target string) ([]byte, erro
 				return nil, errors.New(cutProductText(ev.Error, 300))
 			}
 			if ev.Status != 200 {
-				return nil, fmt.Errorf("浏览器补取图片 HTTP %d", ev.Status)
+				return nil, i18n.Fail("product.browser.imageStatus", "status", ev.Status)
 			}
 			data, e := base64.StdEncoding.DecodeString(ev.Data)
 			if e != nil {
 				return nil, e
 			}
 			if len(data) > MaxImageBytes {
-				return nil, errors.New("图片超过大小限制")
+				return nil, i18n.Fail("product.browser.imageTooLarge")
 			}
 			return data, nil
 		}
@@ -358,7 +357,7 @@ func (b *browserSession) Image(ctx context.Context, target string) ([]byte, erro
 // ClearProductBrowserData removes saved cookies and cache of the product browser.
 func (s *Service) ClearProductBrowserData() error {
 	if !s.browserMu.TryLock() {
-		return errors.New("正在读取商品页，请稍后再清除")
+		return s.fail("product.browser.busy")
 	}
 	defer s.browserMu.Unlock()
 	return os.RemoveAll(s.productBrowserProfile())
@@ -367,7 +366,11 @@ func (s *Service) ClearProductBrowserData() error {
 type productHTTPError struct{ Status int }
 
 func (e productHTTPError) Error() string {
-	return fmt.Sprintf("商品资料 HTTP %d；请上传图片或粘贴商品描述", e.Status)
+	return e.In(i18n.Default)
+}
+
+func (e productHTTPError) In(lang string) string {
+	return i18n.T(lang, "product.httpStatus", "status", e.Status)
 }
 
 var challengeMarkers = [][]byte{
@@ -425,11 +428,11 @@ func browserFallbackReason(ctx context.Context, page []byte, info ProductInfo, e
 	case errors.Is(e, errProductTarget), errors.Is(e, errProductTooLarge):
 		return ""
 	case e != nil:
-		return "请求失败"
+		return msgCtx(ctx, "product.reason.request")
 	case looksLikeChallenge(page), challengeInfo(info):
-		return "返回人机验证页"
+		return msgCtx(ctx, "product.reason.challenge")
 	case info.Error != "":
-		return "页面缺少商品资料"
+		return msgCtx(ctx, "product.reason.noData")
 	}
 	return ""
 }

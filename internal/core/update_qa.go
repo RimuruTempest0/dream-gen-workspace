@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +35,7 @@ func (s *Service) PrepareTestUpdate(base string) (manifest, pkg []byte, e error)
 	}
 	licensePublicKey = base64.StdEncoding.EncodeToString(pub)
 	// The QA package is not a program: the one-click update stops at the restart.
-	startUpdater = func(string, ...string) error { return errors.New("测试环境不安装更新") }
+	startUpdater = func(string, ...string) error { return s.fail("update.qa.noInstall") }
 	updateManifestURL = strings.TrimSuffix(base, "/") + "/update.json"
 	s.mu.Lock()
 	program := s.programDir

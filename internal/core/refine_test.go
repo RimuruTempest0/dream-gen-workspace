@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"archive/zip"
 	"encoding/base64"
 	"encoding/json"
@@ -202,7 +203,7 @@ func TestRefineStripsWrappersSavedBefore0611(t *testing.T) {
 	if baseTaskPrompt(old) != "原始提示词" {
 		t.Fatal("old refine wrapper not stripped", baseTaskPrompt(old))
 	}
-	p := refinePrompt("原始提示词", "把狗掌移到名字左边", 0)
+	p := refinePrompt("原始提示词", "把狗掌移到名字左边", 0, i18n.ZhCN)
 	if strings.Index(p, "把狗掌移到名字左边") > strings.Index(p, "原始提示词") || baseTaskPrompt(Task{RefinedFrom: "x", Prompt: p}) != "原始提示词" {
 		t.Fatal("change must come before the original prompt and strip cleanly", p)
 	}

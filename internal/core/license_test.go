@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -296,7 +297,7 @@ func TestActivationUnlocksBackupsAndKeepsData(t *testing.T) {
 	s.Start(func() {})
 	waitFor(t, "trial image", func() bool { return countStatus(s, "succeeded") == 1 })
 	other, _ := license.NewCode()
-	if _, e := s.Activate(other); e != license.ErrCode {
+	if _, e := s.Activate(other); !errors.Is(e, license.ErrCode) || e.Error() != "激活码与本软件不匹配，请核对后重新输入" {
 		t.Fatal("wrong code accepted", e)
 	}
 	if _, e := s.Activate("too-short"); e == nil {

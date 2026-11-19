@@ -3,7 +3,6 @@ package core
 // Projects and prompt templates.
 
 import (
-	"errors"
 	"strings"
 )
 
@@ -17,7 +16,7 @@ func (s *Service) SaveProject(p Project) (Project, error) {
 	defer s.mu.Unlock()
 	p.Name = strings.TrimSpace(p.Name)
 	if p.Name == "" {
-		return p, errors.New("请填写项目名称")
+		return p, s.fail("data.project.name")
 	}
 	if p.ID == "" {
 		p.ID = NewID()
@@ -51,7 +50,7 @@ func (s *Service) SaveTemplate(t Template) (Template, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if strings.TrimSpace(t.Name) == "" || strings.TrimSpace(t.Prompt) == "" {
-		return t, errors.New("请填写模板名称与提示词")
+		return t, s.fail("data.template.required")
 	}
 	if t.ID == "" {
 		t.ID = NewID()

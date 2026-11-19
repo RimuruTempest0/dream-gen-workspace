@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -16,7 +15,7 @@ func (s *Service) AskText(connectionID, stage, prompt string) (string, error) {
 	c = normalizeConnection(c)
 	var key string
 	if e == nil && c.Kind != "llm" {
-		e = errors.New("请选择 AI 模型")
+		e = s.fail("agent.chooseLLM")
 	}
 	if e == nil {
 		key, e = s.key(c.Credential)

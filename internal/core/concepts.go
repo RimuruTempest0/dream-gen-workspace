@@ -409,7 +409,7 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 	wg.Wait()
 	for i, e := range errs {
 		if e != nil {
-			return ConceptResult{}, fmt.Errorf("“%s”改写没有成功：%s", result.Labels[i], redact(e.Error(), key))
+			return ConceptResult{}, fmt.Errorf("“%s”改写没有成功：%s", result.Labels[i], s.redact(e.Error(), key))
 		}
 	}
 	result.UsedLLM = true

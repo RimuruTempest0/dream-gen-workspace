@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/jpeg"
 	"image/png"
+	"imageworkbench/internal/i18n"
 	"io"
 	"net/http"
 	"os"
@@ -22,11 +22,11 @@ const MaxImageBytes = 32 << 20
 
 func owned(root, path string) (string, error) {
 	if filepath.IsAbs(path) {
-		return "", errors.New("非法文件路径")
+		return "", i18n.Fail("data.path.invalid")
 	}
 	clean := filepath.Clean(filepath.FromSlash(path))
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", errors.New("非法文件路径")
+		return "", i18n.Fail("data.path.invalid")
 	}
 	return filepath.Join(root, clean), nil
 }
@@ -42,7 +42,7 @@ func readOwned(root, path string) ([]byte, error) {
 	defer f.Close()
 	b, e := io.ReadAll(io.LimitReader(f, MaxImageBytes+1))
 	if len(b) > MaxImageBytes {
-		return nil, errors.New("图片超过 32 MB")
+		return nil, i18n.Fail("app.image.tooLarge")
 	}
 	return b, e
 }
@@ -68,18 +68,18 @@ func atomicWrite(path string, data []byte) error {
 }
 func (s *Service) saveImage(data []byte, name, kind, taskID, project string, id string) (Asset, error) {
 	if len(data) > MaxImageBytes {
-		return Asset{}, errors.New("图片超过 32 MB")
+		return Asset{}, s.fail("app.image.tooLarge")
 	}
 	config, format, e := image.DecodeConfig(bytes.NewReader(data))
 	if e != nil {
-		return Asset{}, errors.New("请选择 PNG、JPEG 或 WebP 图片")
+		return Asset{}, s.fail("data.image.format")
 	}
 	if config.Width*config.Height > 64_000_000 {
-		return Asset{}, errors.New("图片像素过大，限制为 6400 万像素")
+		return Asset{}, s.fail("data.image.pixels")
 	}
 	img, _, e := image.Decode(bytes.NewReader(data))
 	if e != nil {
-		return Asset{}, errors.New("图片文件损坏")
+		return Asset{}, s.fail("data.image.damaged")
 	}
 	ext := format
 	if ext == "jpeg" {
@@ -131,11 +131,11 @@ func (s *Service) ImportImage(name, data string) (Asset, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(data) > MaxImageBytes*4/3+16 {
-		return Asset{}, errors.New("图片超过 32 MB")
+		return Asset{}, s.fail("app.image.tooLarge")
 	}
 	b, e := base64.StdEncoding.DecodeString(data)
 	if e != nil {
-		return Asset{}, errors.New("图片内容无法读取")
+		return Asset{}, s.fail("data.image.unreadable")
 	}
 	return s.saveImage(b, name, "reference", "", "", "")
 }
@@ -213,10 +213,10 @@ const maxBatchAssets = 500
 // or unknown id rejects the whole batch instead of applying it halfway.
 func (s *Service) selectedAssets(ids []string) ([]Asset, error) {
 	if len(ids) == 0 {
-		return nil, errors.New("请先选择素材")
+		return nil, s.fail("data.assets.none")
 	}
 	if len(ids) > maxBatchAssets {
-		return nil, fmt.Errorf("一次最多处理 %d 张素材", maxBatchAssets)
+		return nil, s.fail("data.assets.max", "n", maxBatchAssets)
 	}
 	seen := map[string]bool{}
 	out := []Asset{}
@@ -227,7 +227,7 @@ func (s *Service) selectedAssets(ids []string) ([]Asset, error) {
 		seen[id] = true
 		var a Asset
 		if e := s.store.Get("asset", id, &a); e != nil {
-			return nil, missing(e, "部分素材已不存在，请刷新后重新选择")
+			return nil, missing(e, s.msg("data.assets.missing"))
 		}
 		out = append(out, a)
 	}
@@ -246,7 +246,7 @@ func (s *Service) UpdateAssets(ids []string, project string, hidden bool) (int, 
 	if project != "" {
 		var p Project
 		if e := s.store.Get("project", project, &p); e != nil {
-			return 0, missing(e, "所选项目已不存在")
+			return 0, missing(e, s.msg("data.project.missing"))
 		}
 	}
 	for _, a := range assets {
@@ -278,7 +278,7 @@ func (s *Service) ExportAssets(ids []string, path string) (int, error) {
 		}
 		names[i] = fmt.Sprintf("%03d-%s%s", i+1, base, filepath.Ext(a.Path))
 	}
-	return len(assets), writeAssetZip(root, assets, names, path)
+	return len(assets), writeAssetZip(root, assets, names, path, s.Language())
 }
 
 func (s *Service) outputBytes(ctx context.Context, out Output) ([]byte, error) {
