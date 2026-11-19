@@ -13,7 +13,7 @@ import { PictureOutlined } from "@ant-design/icons";
 import { call, stateNames, type Task, type Page } from "../api";
 import {
   useData,
-  localizeLines,
+  hostedLineName,
   useActions,
   DataState,
   Header,
@@ -36,7 +36,6 @@ export function Tasks() {
     queryFn: () => call<Task>("GetTask", selected!.id),
     enabled: !!selected,
     refetchInterval: 2500,
-    select: localizeLines<Task>,
   });
   const detail = selected ? detailQuery.data || selected : null;
   const q = useData<Page<Task>>(
@@ -215,7 +214,8 @@ export function Tasks() {
             <dl className="details">
               <dt>{tr("tasks.detail.connection")}</dt>
               <dd>
-                {detail.connection.name} · {detail.connection.baseURL}
+                {hostedLineName(detail.connection)} ·{" "}
+                {detail.connection.baseURL}
               </dd>
               <dt>{tr("tasks.col.model")}</dt>
               <dd>{detail.model}</dd>

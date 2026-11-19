@@ -185,7 +185,7 @@ func (s *Service) step(claimed Task) bool {
 		s.mu.Unlock()
 		return false
 	}
-	ctx, cancel := context.WithCancel(s.langCtx(s.ctx))
+	ctx, cancel := context.WithCancel(i18n.WithLanguage(s.ctx, operationLanguage(t.Language)))
 	defer cancel()
 	s.genCancel[t.ID] = cancel
 	s.mu.Unlock()
@@ -205,7 +205,7 @@ func (s *Service) step(claimed Task) bool {
 	// cancellation is recorded instead of a failure.
 	if userCanceled && e != nil {
 		t.Status, t.UpdatedAt = "canceled", Now()
-		t.Error = s.msg("task.canceledInFlight")
+		t.Error = s.taskMsg(t, "task.canceledInFlight")
 		saveErr := s.store.Put("task", t.ID, t)
 		_ = s.store.appendLog("warn", "image", t.ID, s.msg("task.log.canceledInFlight", "seconds", t.Diagnostic.ElapsedMS/1000))
 		s.mu.Unlock()
@@ -227,17 +227,17 @@ func (s *Service) step(claimed Task) bool {
 		if unknown {
 			t.Status = "unknown"
 		}
-		t.Error = s.redact(e.Error(), key)
+		t.Error = redactIn(operationLanguage(t.Language), e.Error(), key)
 		switch {
 		case policy:
-			t.Error = s.msg("generation.policyRefused") + s.msg("generation.policyRefusedDetail", "status", t.Diagnostic.HTTPStatus, "note", s.policyRetryLocked(&t), "raw", t.Error)
+			t.Error = s.taskMsg(t, "generation.policyRefused") + s.taskMsg(t, "generation.policyRefusedDetail", "status", t.Diagnostic.HTTPStatus, "note", s.policyRetryLocked(&t), "raw", t.Error)
 		case rejected == "balance" && t.Trial:
 			// The trial key's upstream quota is the hard trial limit.
-			t.Error = s.msg("generation.trialQuota", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
+			t.Error = s.taskMsg(t, "generation.trialQuota", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
 		case rejected == "balance":
-			t.Error = s.msg("generation.balance", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
+			t.Error = s.taskMsg(t, "generation.balance", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
 		case rejected == "auth":
-			t.Error = s.msg("generation.keyRejected", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
+			t.Error = s.taskMsg(t, "generation.keyRejected", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
 			// Re-check the key right away with the free probe.
 			delete(s.probes, t.Connection.ID)
 		}
@@ -252,11 +252,11 @@ func (s *Service) step(claimed Task) bool {
 		if unknown {
 			note := s.autoRegenerateLocked(&t)
 			if connectionLost(e) {
-				t.Error = s.msg("generation.connectionLost", "seconds", t.Diagnostic.ElapsedMS/1000, "note", note, "raw", t.Error)
+				t.Error = s.taskMsg(t, "generation.connectionLost", "seconds", t.Diagnostic.ElapsedMS/1000, "note", note, "raw", t.Error)
 			} else if relayTimedOut(t.Diagnostic) {
-				t.Error = s.msg("generation.relayTimeout", "seconds", t.Diagnostic.ElapsedMS/1000, "cause", timeoutLabel(s.Language(), t.Diagnostic), "note", note, "raw", t.Error)
+				t.Error = s.taskMsg(t, "generation.relayTimeout", "seconds", t.Diagnostic.ElapsedMS/1000, "cause", timeoutLabel(operationLanguage(t.Language), t.Diagnostic), "note", note, "raw", t.Error)
 			} else {
-				t.Error = s.msg("generation.unknown", "note", note, "raw", t.Error)
+				t.Error = s.taskMsg(t, "generation.unknown", "note", note, "raw", t.Error)
 			}
 		}
 	} else {
@@ -304,6 +304,14 @@ func timeoutLabel(lang string, d GenerationDiagnostic) string {
 // pauseBatchForRejectionLocked blocks the batch's queued, unsent images after the
 // relay rejected the API key or the account has no balance. Requests already in
 // flight finish on their own.
+// taskMsg is a message written on a task once its image request has started:
+// in the language the task was started in, so a task under way when the
+// interface language is switched finishes in its own language. Log lines keep
+// using s.msg.
+func (s *Service) taskMsg(t Task, key string, args ...any) string {
+	return i18n.T(operationLanguage(t.Language), key, args...)
+}
+
 func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
 	note, logKey := "generation.paused.auth", "generation.log.paused.auth"
 	if kind == "balance" {
@@ -322,7 +330,7 @@ func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
 	for _, t := range tasks {
 		if t.BatchID == failed.BatchID && t.Status == "queued" && t.Connection.ID == failed.Connection.ID {
 			t.Status = "blocked"
-			t.Error = s.msg(note)
+			t.Error = s.taskMsg(t, note)
 			t.UpdatedAt = Now()
 			if s.store.Put("task", t.ID, t) == nil {
 				paused++
@@ -349,7 +357,7 @@ func (s *Service) download(t *Task) {
 		already := s.store.Get("asset", assetID, &existing) == nil
 		s.mu.Unlock()
 		if !already {
-			b, e := s.outputBytes(s.langCtx(s.ctx), out)
+			b, e := s.outputBytes(i18n.WithLanguage(s.ctx, operationLanguage(t.Language)), out)
 			if e != nil {
 				s.downloadError(t, e)
 				return

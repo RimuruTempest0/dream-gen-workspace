@@ -25,7 +25,7 @@ import {
   type Summary,
   type TestResult,
 } from "../api";
-import { useData, useActions, DataState, Header } from "../ui";
+import { useData, useActions, DataState, Header, hostedLineName } from "../ui";
 import { LicensePanel, useLicense } from "../License";
 import { UpdatePanel } from "../Updates";
 import { LanguagePanel } from "../i18n/LanguageSwitch";
@@ -223,7 +223,7 @@ export function Settings() {
                   </div>
                   <div className="connection-info">
                     <strong>
-                      {c.name}{" "}
+                      {hostedLineName(c)}{" "}
                       <Tag color={c.hasKey ? "success" : "warning"}>
                         {c.hasKey
                           ? t("settings.key.saved")
@@ -272,11 +272,15 @@ export function Settings() {
                       )}
                       <Button
                         danger
-                        aria-label={t("settings.delete.aria", { name: c.name })}
+                        aria-label={t("settings.delete.aria", {
+                          name: hostedLineName(c),
+                        })}
                         icon={<DeleteOutlined aria-hidden="true" />}
                         onClick={() =>
                           actions.confirm(
-                            t("settings.delete.title", { name: c.name }),
+                            t("settings.delete.title", {
+                              name: hostedLineName(c),
+                            }),
                             t("settings.delete.body"),
                             () => call("DeleteConnection", c.id),
                             true,

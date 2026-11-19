@@ -33,7 +33,7 @@ import { Workbench } from "./pages/Workbench";
 import { Tasks } from "./pages/Tasks";
 import { Assets } from "./pages/Assets";
 import { Settings } from "./pages/Settings";
-import { appName, t, type MessageKey } from "./i18n";
+import { appName, t, useI18n, type MessageKey } from "./i18n";
 import { RailLanguageSwitch } from "./i18n/LanguageSwitch";
 
 // Shows the newest smart-generation run while it is unfinished: a ring filled by
@@ -152,9 +152,10 @@ export default function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
+  const { lang } = useI18n();
   useEffect(() => {
     document.title = `${pageName(loc.pathname)} · ${appName()}`;
-  }, [loc.pathname]);
+  }, [loc.pathname, lang]);
   useEffect(() => {
     const refresh = coalesce(() => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
