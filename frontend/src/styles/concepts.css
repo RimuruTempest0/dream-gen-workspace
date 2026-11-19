@@ -403,3 +403,21 @@
     outline: 2px solid Highlight;
   }
 }
+
+/* Longer names in the other interface languages (0.8.0) wrap instead of being
+   cut off; the wide Chinese letter spacing is for Han characters only. */
+html:not([lang="zh-CN"]) .concept-pick strong {
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+html:not([lang="zh-CN"]) .concept-pick span,
+html:not([lang="zh-CN"]) .concept-card-en {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+html:not([lang="zh-CN"]) .concept-card-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  letter-spacing: 0.02em;
+}
