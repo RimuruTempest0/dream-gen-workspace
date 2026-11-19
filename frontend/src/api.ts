@@ -1,4 +1,5 @@
 import type { LLMCapabilities } from "./agent-api";
+import { t, type MessageKey } from "./i18n";
 export type Connection = {
   // Set on lines provided by the customer licence; they cannot be edited.
   managed?: string;
@@ -230,7 +231,7 @@ export async function call<T = void>(
   ...args: unknown[]
 ): Promise<T> {
   const fn = window.go?.main?.App?.[name];
-  if (!fn) throw new Error("桌面服务尚未连接，请使用完整便携包启动应用。");
+  if (!fn) throw new Error(t("ui.desktopMissing"));
   return (await fn(...args)) as T;
 }
 export const blankDraft: GenerateInput = {
@@ -244,18 +245,29 @@ export const blankDraft: GenerateInput = {
   quality: "auto",
   projectID: "",
 };
-export const stateNames: Record<string, string> = {
-  queued: "等待执行",
-  submitting: "等待图片服务",
-  running: "生成中",
-  downloading: "保存图片",
-  succeeded: "已完成",
-  failed: "生成失败",
-  unknown: "结果未知",
-  download_failed: "下载失败",
-  canceled: "已取消",
-  blocked: "已暂停",
+// Task status names. Each is a getter, so the text follows the interface
+// language when a page reads it (t() must not run on import).
+const stateKeys: Record<string, MessageKey> = {
+  queued: "ui.state.queued",
+  submitting: "ui.state.submitting",
+  running: "ui.state.running",
+  downloading: "ui.state.downloading",
+  succeeded: "ui.state.succeeded",
+  failed: "ui.state.failed",
+  unknown: "ui.state.unknown",
+  download_failed: "ui.state.download_failed",
+  canceled: "ui.state.canceled",
+  blocked: "ui.state.blocked",
 };
+export const stateNames: Record<string, string> = Object.defineProperties(
+  {},
+  Object.fromEntries(
+    Object.entries(stateKeys).map(([state, key]) => [
+      state,
+      { enumerable: true, get: () => t(key) },
+    ]),
+  ),
+);
 export function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
