@@ -151,8 +151,10 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 			s.prepareMoodTask(&tasks[i], mood, concept, llm)
 		}
 	}
+	lang := s.Language()
 	for i := range tasks {
 		tasks[i].Trial = s.trialLocked()
+		tasks[i].Language = lang
 	}
 	result, e := s.store.Submit(in.RequestID, batch, tasks)
 	if e == nil {
@@ -331,6 +333,7 @@ func (s *Service) retryAgentLocked(t Task) error {
 	}
 	// A manual retry starts the automatic resends after a content refusal afresh.
 	t.PolicyStep = 0
+	t.Language = s.Language() // a new request: the language chosen now
 	_, e := s.queueAttemptLocked(t, c, "")
 	return e
 }

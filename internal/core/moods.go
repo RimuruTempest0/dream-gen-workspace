@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"imageworkbench/internal/i18n"
 )
 
 // MoodOption is one choice of a guide step. Phrase builds the confirmation
@@ -363,7 +365,7 @@ func (s *Service) moodRewrite(ctx context.Context, c Connection, key string, t T
 	if e != nil {
 		return "", e
 	}
-	return s.llmRewrite(ctx, c, key, moodRequest(t.BasePrompt, m, concept, t.Rendering, len(t.References) > 0), moodStage, moodCheck(t.BasePrompt))
+	return s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, moodRequest(t.BasePrompt, m, concept, t.Rendering, len(t.References) > 0)), moodStage, moodCheck(t.BasePrompt))
 }
 
 // moodLLMLocked picks the AI 模型 line for a mood rewrite with the concept
@@ -427,12 +429,45 @@ const nudgePromptMarker = "\n\n原图提示词（只用于保持没有要求修�
 // nudgePrompt changes one thing of the image and keeps the rest. It is a fixed
 // template, so no AI 模型 is involved.
 func nudgePrompt(base, rule string) string {
-	if _, rest, ok := strings.Cut(base, nudgePromptMarker); ok {
-		base = rest
+	for _, marker := range []string{nudgePromptMarker, nudgePromptMarkerEn} {
+		if _, rest, ok := strings.Cut(base, marker); ok {
+			base = rest
+		}
 	}
 	return "以提供的第 1 张图片为底图修改，只改这一点：" + rule +
 		"\n除这一点直接带来的变化外，其余保持一致：主体、构图、天气、时刻、颜色倾向、画法和画面里的文字都与底图相同。" +
 		nudgePromptMarker + base
+}
+
+// ---- 再靠近一点 in an English 生图提示词 (0.8.0) ----------------------------------
+
+const nudgePromptMarkerEn = "\n\nOriginal image prompt (only for keeping what is not asked to change; do not recompose):\n"
+
+// nudgeRulesEn are the nudge rules for a non-Chinese interface, whose 生图提示词
+// are English.
+var nudgeRulesEn = map[string]string{
+	"quieter":  "Make the image quieter: less motion (weaker wind, rain and waves), fewer objects and details, slightly lower contrast and saturation.",
+	"stronger": "Make the image more powerful: stronger contrast between light and dark and more motion, more concentrated light, more tension in the composition.",
+	"brighter": "Brighten the whole image by one step: higher exposure, brighter shadows; keep the weather and the time of day.",
+	"darker":   "Darken the whole image by one step: lower exposure, deeper shadows, more concentrated highlights; keep the weather and the time of day.",
+	"closer":   "Move the camera one step closer: the subject is larger in the frame, less of the surroundings, a softer background.",
+	"farther":  "Move the camera one step back: the subject is smaller in the frame, showing more of the surroundings and the sky.",
+}
+
+// nudgePromptIn is nudgePrompt in the 生图提示词 language of lang.
+func nudgePromptIn(lang, base string, nudge MoodOption) string {
+	rule, ok := nudgeRulesEn[nudge.ID]
+	if promptLanguage(lang) == i18n.ZhCN || !ok {
+		return nudgePrompt(base, nudge.Rules)
+	}
+	for _, marker := range []string{nudgePromptMarker, nudgePromptMarkerEn} {
+		if _, rest, ok := strings.Cut(base, marker); ok {
+			base = rest
+		}
+	}
+	return "Edit the first image provided, changing only this: " + rule +
+		"\nApart from what this change directly causes, keep everything the same as the base image: subject, composition, weather, time of day, colour tendency, rendering and any text in the image." +
+		nudgePromptMarkerEn + base
 }
 
 // NudgeMoodImage queues one image that moves a finished mood image one step in a
@@ -485,7 +520,8 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	}
 	t := freshAttempt(source, c)
 	t.References = []string{in.AssetID}
-	t.Prompt = nudgePrompt(source.Prompt, nudge.Rules)
+	t.Language = s.Language() // a new request: the language chosen now
+	t.Prompt = nudgePromptIn(t.Language, source.Prompt, nudge)
 	t.NudgeOf, t.Nudge = source.ID, nudge.Name
 	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
 		return "", e
@@ -535,6 +571,7 @@ func (s *Service) retryMoodLocked(source Task) (string, error) {
 	}
 	t := freshAttempt(source, c)
 	t.BatchID = NewID()
+	t.Language = s.Language() // a new request: the language chosen now
 	if source.NudgeOf != "" {
 		t.NudgeOf, t.Nudge = source.NudgeOf, source.Nudge
 	} else {

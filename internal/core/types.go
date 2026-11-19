@@ -67,6 +67,9 @@ type Task struct {
 	BasePrompt    string         `json:"basePrompt,omitempty"`
 	NudgeOf       string         `json:"nudgeOf,omitempty"`
 	Nudge         string         `json:"nudge,omitempty"`
+	// Language is the interface language when the image was requested (0.8.0):
+	// its AI rewrites keep it after a switch. Empty before 0.8.0 (Chinese).
+	Language string `json:"language,omitempty"`
 	AgentRunID    string         `json:"agentRunID,omitempty"`
 	PlanItemID    string         `json:"planItemID,omitempty"`
 	// RefinedFrom is the task whose image this attempt adjusts; RefineInstruction is the user's request.
