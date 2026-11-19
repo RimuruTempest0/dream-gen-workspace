@@ -13,6 +13,7 @@ import { PictureOutlined } from "@ant-design/icons";
 import { call, stateNames, type Task, type Page } from "../api";
 import {
   useData,
+  hostedLineName,
   useActions,
   DataState,
   Header,
@@ -24,6 +25,7 @@ import {
   taskTitle,
   time,
 } from "../ui";
+import { t as tr } from "../i18n";
 
 export function Tasks() {
   const [status, setStatus] = useState("");
@@ -48,23 +50,18 @@ export function Tasks() {
       setPage(Math.max(1, Math.ceil(q.data.total / 10)));
   }, [q.data]);
   function retry(t: Task) {
-    actions.confirm(
-      "重新生成这张图片？",
-      "这会提交新的计费请求。结果未知的任务请先核对平台记录。",
-      () => call("Retry", t.id),
+    actions.confirm(tr("tasks.retry.title"), tr("tasks.retry.body"), () =>
+      call("Retry", t.id),
     );
   }
   return (
     <>
-      <Header
-        title="生成记录"
-        sub="每一张图的生成过程、参数和结果。离开页面不会中断生成。"
-      />
+      <Header title={tr("shell.nav.tasks")} sub={tr("tasks.sub")} />
       <section className="panel records-panel">
         <div className="panel-heading">
-          <h2>生成任务</h2>
+          <h2>{tr("tasks.heading")}</h2>
           <UISelect
-            aria-label="任务状态"
+            aria-label={tr("tasks.statusFilter")}
             value={status}
             onChange={(v) => {
               setStatus(v);
@@ -72,7 +69,7 @@ export function Tasks() {
             }}
             style={{ width: 160 }}
             options={[
-              { value: "", label: "全部状态" },
+              { value: "", label: tr("tasks.allStates") },
               ...Object.entries(stateNames).map(([value, label]) => ({
                 value,
                 label,
@@ -92,11 +89,11 @@ export function Tasks() {
               total: q.data?.total || 0,
               onChange: setPage,
               showSizeChanger: false,
-              showTotal: (n) => `共 ${n} 个任务`,
+              showTotal: (n) => tr("tasks.total", { count: n }),
             }}
             columns={[
               {
-                title: "图片",
+                title: tr("tasks.col.image"),
                 width: 96,
                 render: (_, t) =>
                   t.assetIDs[0] ? (
@@ -110,15 +107,15 @@ export function Tasks() {
                   ),
               },
               {
-                title: "提示词",
+                title: tr("tasks.col.prompt"),
                 dataIndex: "prompt",
                 ellipsis: { showTitle: false },
                 width: 290,
                 render: (_, t) => <span title={t.prompt}>{taskTitle(t)}</span>,
               },
-              { title: "模型", dataIndex: "model", width: 130 },
+              { title: tr("tasks.col.model"), dataIndex: "model", width: 130 },
               {
-                title: "状态",
+                title: tr("tasks.col.status"),
                 dataIndex: "status",
                 width: 190,
                 render: (v, task) => (
@@ -129,18 +126,18 @@ export function Tasks() {
                 ),
               },
               {
-                title: "创建时间",
+                title: tr("tasks.col.created"),
                 dataIndex: "createdAt",
                 width: 120,
                 render: time,
               },
               {
-                title: "操作",
+                title: tr("tasks.col.actions"),
                 width: 250,
                 render: (_, t) => (
                   <Space wrap>
                     <Button size="small" onClick={() => setDetail(t)}>
-                      详情
+                      {tr("tasks.details")}
                     </Button>
                     <CancelTaskButton task={t} size="small" />
                     {[
@@ -154,15 +151,15 @@ export function Tasks() {
                         onClick={() =>
                           actions.run(
                             () => call("StopBatch", t.batchID),
-                            "已停止待执行项",
+                            tr("tasks.stopped"),
                           )
                         }
                       >
-                        停止队列
+                        {tr("tasks.stopQueue")}
                       </Button>
                     ) : (
                       <Button size="small" onClick={() => retry(t)}>
-                        重新生成
+                        {tr("tasks.retry")}
                       </Button>
                     )}
                     {t.status === "download_failed" && (
@@ -171,11 +168,11 @@ export function Tasks() {
                         onClick={() =>
                           actions.run(
                             () => call("RetryDownload", t.id),
-                            "已加入补下载队列",
+                            tr("tasks.redownloadQueued"),
                           )
                         }
                       >
-                        补下载
+                        {tr("tasks.redownload")}
                       </Button>
                     )}
                     {t.status === "blocked" && (
@@ -184,25 +181,29 @@ export function Tasks() {
                         onClick={() =>
                           actions.run(
                             () => call("ResumeBlocked", t.id),
-                            "未提交任务已恢复",
+                            tr("tasks.resumed"),
                           )
                         }
                       >
-                        恢复
+                        {tr("tasks.resume")}
                       </Button>
                     )}
                   </Space>
                 ),
               },
             ]}
-            locale={{ emptyText: <Empty description="还没有生成任务" /> }}
+            locale={{ emptyText: <Empty description={tr("tasks.empty")} /> }}
           />
         </DataState>
       </section>
       <Modal
-        title="任务详情"
+        title={tr("tasks.detail.title")}
         open={!!detail}
-        footer={<Button onClick={() => setDetail(null)}>关闭</Button>}
+        footer={
+          <Button onClick={() => setDetail(null)}>
+            {tr("tasks.detail.close")}
+          </Button>
+        }
         onCancel={() => setDetail(null)}
         width={740}
       >
@@ -211,80 +212,88 @@ export function Tasks() {
             <Status state={detail.status} task={detail} />
             <TaskTiming task={detail} />
             <dl className="details">
-              <dt>连接</dt>
+              <dt>{tr("tasks.detail.connection")}</dt>
               <dd>
-                {detail.connection.name} · {detail.connection.baseURL}
+                {hostedLineName(detail.connection)} ·{" "}
+                {detail.connection.baseURL}
               </dd>
-              <dt>模型</dt>
+              <dt>{tr("tasks.col.model")}</dt>
               <dd>{detail.model}</dd>
-              <dt>参数</dt>
+              <dt>{tr("tasks.detail.params")}</dt>
               <dd>
-                尺寸 {detail.size || "auto"} · 质量 {detail.quality || "auto"}
+                {tr("tasks.detail.paramsValue", {
+                  size: detail.size || "auto",
+                  quality: detail.quality || "auto",
+                })}
               </dd>
-              <dt>提示词</dt>
+              <dt>{tr("tasks.col.prompt")}</dt>
               <dd className="prewrap">{detail.prompt}</dd>
-              <dt>任务标识</dt>
+              <dt>{tr("tasks.detail.id")}</dt>
               <dd className="mono">{detail.id}</dd>
-              <dt>提交时间</dt>
+              <dt>{tr("tasks.detail.submitted")}</dt>
               <dd>{time(detail.createdAt)}</dd>
               {!!detail.diagnostic?.startedAt && (
                 <>
-                  <dt>请求地址</dt>
+                  <dt>{tr("tasks.detail.url")}</dt>
                   <dd className="mono">{detail.diagnostic.requestURL}</dd>
-                  <dt>响应状态</dt>
+                  <dt>{tr("tasks.detail.httpStatus")}</dt>
                   <dd>
                     {detail.diagnostic.httpStatus
                       ? `HTTP ${detail.diagnostic.httpStatus}`
-                      : "尚未收到响应状态"}
+                      : tr("tasks.detail.noStatus")}
                   </dd>
                   {!!detail.diagnostic.contentType && (
                     <>
-                      <dt>响应类型</dt>
+                      <dt>{tr("tasks.detail.contentType")}</dt>
                       <dd>{detail.diagnostic.contentType}</dd>
                     </>
                   )}
                   {!!detail.diagnostic.httpProtocol && (
                     <>
-                      <dt>传输协议</dt>
+                      <dt>{tr("tasks.detail.protocol")}</dt>
                       <dd>
                         {detail.diagnostic.httpProtocol}
                         {detail.diagnostic.transferEncoding
                           ? ` · ${detail.diagnostic.transferEncoding}`
                           : ""}
                       </dd>
-                      <dt>声明长度</dt>
+                      <dt>{tr("tasks.detail.length")}</dt>
                       <dd>
                         {detail.diagnostic.contentLength! >= 0
-                          ? `${detail.diagnostic.contentLength?.toLocaleString()} 字节`
-                          : "平台未声明响应长度"}
+                          ? tr("tasks.detail.bytes", {
+                              count: detail.diagnostic.contentLength!,
+                            })
+                          : tr("tasks.detail.noLength")}
                       </dd>
                     </>
                   )}
                   {!!detail.diagnostic.networkRoute && (
                     <>
-                      <dt>网络连接</dt>
+                      <dt>{tr("tasks.detail.network")}</dt>
                       <dd>
                         {detail.diagnostic.networkRoute === "proxy"
-                          ? "通过代理连接"
-                          : "直接连接"}
+                          ? tr("tasks.detail.proxy")
+                          : tr("tasks.detail.direct")}
                       </dd>
                     </>
                   )}
                   {!!detail.diagnostic.upstreamRequestID && (
                     <>
-                      <dt>平台请求标识</dt>
+                      <dt>{tr("tasks.detail.upstreamID")}</dt>
                       <dd className="mono">
                         {detail.diagnostic.upstreamRequestID}
                       </dd>
                     </>
                   )}
-                  <dt>已接收</dt>
+                  <dt>{tr("tasks.detail.received")}</dt>
                   <dd>
-                    {detail.diagnostic.bytesReceived.toLocaleString()} 字节
+                    {tr("tasks.detail.bytes", {
+                      count: detail.diagnostic.bytesReceived,
+                    })}
                   </dd>
                   {!!detail.diagnostic.networkError && (
                     <>
-                      <dt>中断原因</dt>
+                      <dt>{tr("tasks.detail.networkError")}</dt>
                       <dd className="mono">{detail.diagnostic.networkError}</dd>
                     </>
                   )}
@@ -294,7 +303,7 @@ export function Tasks() {
             {detailQuery.isError && (
               <Alert
                 type="warning"
-                message="详情刷新失败，当前显示最近记录。"
+                message={tr("tasks.detail.refreshFailed")}
               />
             )}
             <TaskFailureAlert task={detail} />

@@ -84,7 +84,7 @@ const (
 	diagnosticFailureLimit = 50
 )
 
-const diagnosticReadme = "生图工作台诊断包\r\n\r\n请把这个 ZIP 发给软件提供方。\r\n- summary.json：软件版本、系统版本、授权模式、线路名称与健康状态、任务数量\r\n- logs.txt：最近的日志（已隐藏密钥和地址参数）\r\n- failures.json：最近失败的生图和创作的错误信息\r\n\r\n不包含 API Key、激活码、线路地址、提示词、图片、技能正文和授权文件。\r\n"
+// The README is written in the interface language (data.diagnostics.readme).
 
 // ExportDiagnostics writes the diagnostic package to destination. programDir is
 // the program's folder, for version.json.
@@ -107,7 +107,7 @@ func (s *Service) ExportDiagnostics(destination, programDir string) error {
 	for _, v := range []struct {
 		name string
 		data []byte
-	}{{"README.txt", []byte(diagnosticReadme)}, {"summary.json", summaryJSON}, {"logs.txt", []byte(logs)}, {"failures.json", failuresJSON}} {
+	}{{"README.txt", []byte(strings.ReplaceAll(s.msg("data.diagnostics.readme"), "\n", "\r\n"))}, {"summary.json", summaryJSON}, {"logs.txt", []byte(logs)}, {"failures.json", failuresJSON}} {
 		var f interface{ Write([]byte) (int, error) }
 		if f, e = w.Create(v.name); e == nil {
 			_, e = f.Write(v.data)
@@ -130,7 +130,7 @@ func (s *Service) ExportDiagnostics(destination, programDir string) error {
 		return e
 	}
 	s.mu.Lock()
-	_ = s.store.appendLog("info", "app", "", "已导出诊断包")
+	_ = s.store.appendLog("info", "app", "", s.msg("data.diagnostics.exported"))
 	s.mu.Unlock()
 	return nil
 }
@@ -165,9 +165,9 @@ func (s *Service) collectDiagnosticsLocked(programDir string) (diagnosticSummary
 	}
 	secrets := s.store.savedSecrets()
 	redact := func(text string) string {
-		text = redactLogText(text, secrets)
+		text = redactLogText(text, secrets, s.Language())
 		for _, h := range hosts {
-			text = strings.ReplaceAll(text, h, "[线路地址]")
+			text = strings.ReplaceAll(text, h, s.msg("data.diagnostics.lineAddress"))
 		}
 		return text
 	}

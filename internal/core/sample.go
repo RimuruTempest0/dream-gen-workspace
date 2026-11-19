@@ -56,9 +56,9 @@ func attachSample(t *Task, tasks []Task) bool {
 		t.References = append(append([]string{}, ids...), t.References...)
 		t.SampleAssetIDs, t.SampleAssetID = ids, ids[0]
 		if len(found) == 1 && areas[0] == "" {
-			t.Prompt = samplePromptLine(len(t.References)) + t.Prompt
+			t.Prompt = samplePromptLine(len(t.References), t.Language) + t.Prompt
 		} else {
-			t.Prompt = samplesPromptLine(areas, len(t.References)) + t.Prompt
+			t.Prompt = samplesPromptLine(areas, len(t.References), t.Language) + t.Prompt
 		}
 	}
 	t.SamplePending = false
@@ -69,7 +69,10 @@ func attachSample(t *Task, tasks []Task) bool {
 // samplePromptLine leads a prompt whose first reference is the set's one unnamed
 // sample; it keeps the "样板图：参考图第" prefix that refinements and rewordings
 // recognise.
-func samplePromptLine(n int) string {
+func samplePromptLine(n int, lang string) string {
+	if !zhPrompt(lang) {
+		return enSamplePromptLine(n)
+	}
 	if n <= 1 {
 		return "样板图：参考图第 1 张（唯一一张）是本套已经生成好的细节样板，是样板里这组设计（图案、配饰、名字的字形、颜色和左右排列）的唯一依据。画面里每一处出现这组设计，都逐个照样板画，完全相同；只照样板画这部分细节，不照它的构图、背景、姿势或商品颜色。\n"
 	}
@@ -78,7 +81,10 @@ func samplePromptLine(n int) string {
 
 // samplesPromptLine leads a prompt whose first references are the samples of the
 // named areas, in order.
-func samplesPromptLine(areas []string, n int) string {
+func samplesPromptLine(areas []string, n int, lang string) string {
+	if !zhPrompt(lang) {
+		return enSamplesPromptLine(areas, n)
+	}
 	parts := []string{}
 	for i, area := range areas {
 		if area == "" {

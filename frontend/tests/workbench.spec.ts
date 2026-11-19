@@ -61,9 +61,11 @@ test.beforeAll(async () => {
       req.on("data", (c) => (raw += c));
       req.on("end", () => {
         const text = String(JSON.parse(raw).messages?.[0]?.content ?? "");
-        if (text.startsWith("你要把一个“画面概念”融进"))
+        // The request after the prompt-language line (0.8.0) that heads it.
+        const ask = text.replace(/^语言：[^\n]*\n\n/, "");
+        if (ask.startsWith("你要把一个“画面概念”融进"))
           conceptRequests.push(text);
-        if (text.startsWith("你要为一张图写一条生图提示词"))
+        if (ask.startsWith("你要为一张图写一条生图提示词"))
           moodRequests.push(text);
         const form = text.match(/形体：(\S+?)（/)?.[1] ?? "";
         const stance = text.match(/立场：(\S+?)（/)?.[1] ?? "";
@@ -73,9 +75,9 @@ test.beforeAll(async () => {
             content: [
               {
                 type: "text",
-                text: text.startsWith("你要把")
+                text: ask.startsWith("你要把")
                   ? `概念改写 ${form} ${stance}：晨雾里的灰色巨墙下，一只白色陶瓷杯`
-                  : text.startsWith("你要为一张图")
+                  : ask.startsWith("你要为一张图")
                     ? `心境改写${form ? " " + form : ""}：细雨夜里远处的一只白色陶瓷杯`
                     : "OK",
               },

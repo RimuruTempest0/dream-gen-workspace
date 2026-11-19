@@ -72,6 +72,7 @@ export type CreativeRelease = {
   updateZip: string;
   manifest: string;
   notes: string;
+  notesEn?: string;
 };
 export type HostedSource = { version: string; at: string; blocked: string };
 export type LineSource = {

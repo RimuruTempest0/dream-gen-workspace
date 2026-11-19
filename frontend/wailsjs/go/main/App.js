@@ -218,6 +218,10 @@ export function InstallUpdate() {
   return window['go']['main']['App']['InstallUpdate']();
 }
 
+export function InterfaceLanguage() {
+  return window['go']['main']['App']['InterfaceLanguage']();
+}
+
 export function LLMMonitor(arg1) {
   return window['go']['main']['App']['LLMMonitor'](arg1);
 }
@@ -364,6 +368,10 @@ export function SetGuideMode(arg1) {
 
 export function SetImageConcurrency(arg1) {
   return window['go']['main']['App']['SetImageConcurrency'](arg1);
+}
+
+export function SetInterfaceLanguage(arg1) {
+  return window['go']['main']['App']['SetInterfaceLanguage'](arg1);
 }
 
 export function SetShopRuleEnabled(arg1, arg2) {

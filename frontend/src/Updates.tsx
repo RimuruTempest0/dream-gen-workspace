@@ -4,6 +4,7 @@ import { Alert, Button, Modal, Progress, Space, Switch, Tooltip } from "antd";
 import { CloudDownloadOutlined } from "@ant-design/icons";
 import { call } from "./api";
 import { time, useActions, useData } from "./ui";
+import { formatNumber, t } from "./i18n";
 
 export type UpdateStatus = {
   supported: boolean;
@@ -14,6 +15,8 @@ export type UpdateStatus = {
   available: boolean;
   version?: string;
   notes?: string;
+  /** Language of the notes: zh-CN, or en in the other interface languages. */
+  notesLang?: "zh-CN" | "en";
   size?: number;
   stage?: "" | "downloading" | "ready";
   downloaded?: number;
@@ -29,7 +32,8 @@ export function useUpdateStatus() {
   return q;
 }
 
-const mb = (n?: number) => `${((n || 0) / 1048576).toFixed(1)} MB`;
+const mb = (n?: number) =>
+  `${formatNumber((n || 0) / 1048576, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
 
 // What a waiting version offers: its notes and the one button. One click
 // downloads, checks and restarts; while images are being generated the restart
@@ -44,16 +48,23 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
   return (
     <div className="update-available">
       <strong>
-        新版本 {u.version}（{mb(u.size)}）
+        {t("updates.offer.version", {
+          version: u.version || "",
+          size: mb(u.size),
+        })}
       </strong>
-      {u.notes && <p className="update-notes">{u.notes}</p>}
+      {u.notes && (
+        <p className="update-notes" lang={u.notesLang}>
+          {u.notes}
+        </p>
+      )}
       {u.stage === "downloading" && (
         <Progress
           percent={Math.min(
             99,
             Math.round(((u.downloaded || 0) / (u.size || 1)) * 100),
           )}
-          aria-label="更新下载进度"
+          aria-label={t("updates.offer.progress")}
         />
       )}
       {u.installing && u.stage === "ready" ? (
@@ -63,8 +74,8 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
           role="status"
           message={
             u.waiting
-              ? "已下载并校验，等当前图片完成后自动重启"
-              : "已下载并校验，正在重启…"
+              ? t("updates.offer.waiting")
+              : t("updates.offer.restarting")
           }
           description={u.waiting || undefined}
           action={
@@ -78,7 +89,7 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
                   })
                 }
               >
-                暂不重启
+                {t("updates.offer.notNow")}
               </Button>
             ) : undefined
           }
@@ -96,12 +107,12 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
             })
           }
         >
-          {downloading ? "正在下载" : "立即更新"}
+          {downloading
+            ? t("updates.offer.downloading")
+            : t("updates.offer.install")}
         </Button>
       )}
-      <p className="hint">
-        点一次即可：下载、校验文件完整性，然后自动重启。图片、任务和设置都保留，更新失败会自动恢复原来的程序。
-      </p>
+      <p className="hint">{t("updates.offer.hint")}</p>
     </div>
   );
 }
@@ -114,27 +125,29 @@ export function UpdateBadge({ tooltip }: { tooltip?: boolean }) {
   return (
     <>
       <Tooltip
-        title={tooltip ? `有新版本 ${u.version}` : undefined}
+        title={tooltip ? t("updates.badge", { version: u.version }) : undefined}
         placement="right"
       >
         <button
           type="button"
           className="update-badge"
-          aria-label={`有新版本 ${u.version}`}
+          aria-label={t("updates.badge", { version: u.version })}
           onClick={() => setOpen(true)}
         >
           <CloudDownloadOutlined aria-hidden="true" />
-          <span className="rail-label">有新版本 {u.version}</span>
+          <span className="rail-label">
+            {t("updates.badge", { version: u.version })}
+          </span>
         </button>
       </Tooltip>
       <Modal
         open={open}
-        title="软件更新"
+        title={t("updates.title")}
         footer={null}
         onCancel={() => setOpen(false)}
         destroyOnHidden
       >
-        <p className="hint">当前版本 {u.current}</p>
+        <p className="hint">{t("updates.current", { version: u.current })}</p>
         {u.error && <Alert type="warning" showIcon message={u.error} />}
         <UpdateOffer u={u} />
       </Modal>
@@ -156,20 +169,19 @@ export function UpdatePanel() {
       aria-labelledby="update-title"
     >
       <div className="panel-heading">
-        <h2 id="update-title">软件更新</h2>
-        <span className="hint">当前版本 {u.current}</span>
+        <h2 id="update-title">{t("updates.title")}</h2>
+        <span className="hint">
+          {t("updates.current", { version: u.current })}
+        </span>
       </div>
       {!u.supported ? (
-        <p className="hint">
-          此版本没有设置在线更新。升级时请向软件提供方获取完整包，解压覆盖程序目录并保留
-          data 和 data-location.txt。
-        </p>
+        <p className="hint">{t("updates.unsupported")}</p>
       ) : (
         <>
           <Space wrap align="center">
             <Switch
               checked={u.autoCheck}
-              aria-label="自动检查更新"
+              aria-label={t("updates.autoCheck")}
               onChange={(on) =>
                 actions.run(async () => {
                   await call("SetUpdateAutoCheck", on);
@@ -177,7 +189,7 @@ export function UpdatePanel() {
                 })
               }
             />
-            <span>自动检查更新（启动后和每 24 小时，只读取更新信息）</span>
+            <span>{t("updates.autoCheck.hint")}</span>
             <Button
               loading={u.checking}
               disabled={actions.busy || u.installing}
@@ -188,15 +200,20 @@ export function UpdatePanel() {
                 })
               }
             >
-              检查更新
+              {t("updates.check")}
             </Button>
           </Space>
-          {u.checkedAt && <p className="hint">上次检查：{time(u.checkedAt)}</p>}
+          {u.checkedAt && (
+            <p className="hint">
+              {t("updates.checkedAt", { time: time(u.checkedAt) })}
+            </p>
+          )}
           {u.error && <Alert type="warning" showIcon message={u.error} />}
           {u.available && u.version ? (
             <UpdateOffer u={u} />
           ) : (
-            u.checkedAt && !u.error && <p className="hint">已是最新版本。</p>
+            u.checkedAt &&
+            !u.error && <p className="hint">{t("updates.upToDate")}</p>
           )}
         </>
       )}

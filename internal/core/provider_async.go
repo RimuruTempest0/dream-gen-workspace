@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 // Image protocols. Each image connection uses one adapter:
@@ -29,7 +31,7 @@ const (
 	protocolAsyncJobs    = "async-jobs"
 )
 
-var imageProtocols = map[string]string{protocolOpenAIImages: "OpenAI Images（同步）", protocolAsyncJobs: "异步任务（提交后轮询）"}
+var imageProtocols = map[string]string{protocolOpenAIImages: "OpenAI Images (sync)", protocolAsyncJobs: "Async jobs (submit, then poll)"}
 
 func imageProtocol(c Connection) string {
 	if c.Protocol == protocolAsyncJobs {
@@ -89,12 +91,12 @@ func (p *Provider) generateAsync(ctx context.Context, t Task, key string, refs [
 		}
 		if asyncState(job.Status) == "done" || (job.id() == "" && validOutputs(job.Data)) {
 			if !validOutputs(job.Data) {
-				return nil, true, errors.New("异步任务已完成，但没有兼容的图片结果；请核对平台记录")
+				return nil, true, failCtx(ctx, "generation.async.noImage")
 			}
 			return job.Data, false, nil
 		}
 		if jobID = job.id(); jobID == "" {
-			return nil, true, errors.New("图片服务没有返回任务 ID，结果未知，请核对平台记录")
+			return nil, true, failCtx(ctx, "generation.async.noJobID")
 		}
 		report(func(d *GenerationDiagnostic) { d.UpstreamJobID = jobID })
 	}
@@ -112,26 +114,26 @@ func (p *Provider) submitAsync(ctx context.Context, t Task, key string, refs []A
 	report(func(d *GenerationDiagnostic) { d.Stage = "connecting" })
 	resp, e := p.Client.Do(req)
 	if e != nil {
-		detail := redact(e.Error(), key)
+		detail := redactCtx(ctx, e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
-		return asyncJob{}, true, fmt.Errorf("%s（%s）。请先核对平台记录，避免重复扣费", networkProblem(e, "提交后未收到确定结果"), detail)
+		return asyncJob{}, true, failCtx(ctx, "generation.sentNoResult", "problem", networkProblem(ctx, e, "generation.noResultAfterSubmit"), "error", detail)
 	}
 	defer resp.Body.Close()
 	report(func(d *GenerationDiagnostic) {
 		d.HTTPStatus = resp.StatusCode
-		d.UpstreamRequestID = redact(resp.Header.Get("X-Request-Id"), key)
+		d.UpstreamRequestID = redactCtx(ctx, resp.Header.Get("X-Request-Id"), key)
 		d.HTTPProtocol = resp.Proto
 	})
 	b, e := io.ReadAll(io.LimitReader(resp.Body, 96<<20))
 	if e != nil {
-		return asyncJob{}, true, fmt.Errorf("%s，结果未知，请核对平台记录", networkProblem(e, "未收到完整的提交响应"))
+		return asyncJob{}, true, failCtx(ctx, "generation.async.submitCut", "problem", networkProblem(ctx, e, "generation.async.incompleteSubmit"))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return asyncJob{}, resp.StatusCode >= 500 || resp.StatusCode == 408, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(b, key))
+		return asyncJob{}, resp.StatusCode >= 500 || resp.StatusCode == 408, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(b, key, i18n.FromContext(ctx)))
 	}
 	var job asyncJob
 	if json.Unmarshal(b, &job) != nil {
-		return asyncJob{}, true, errors.New("提交响应不是兼容的 JSON，结果未知，请核对平台记录")
+		return asyncJob{}, true, failCtx(ctx, "generation.async.submitNotJSON")
 	}
 	return job, false, nil
 }
@@ -151,30 +153,29 @@ func (p *Provider) pollAsync(ctx context.Context, base, jobID, key string, repor
 			switch asyncState(job.Status) {
 			case "done":
 				if !validOutputs(job.Data) {
-					return nil, true, errors.New("异步任务已完成，但没有兼容的图片结果；请核对平台记录")
+					return nil, true, failCtx(ctx, "generation.async.noImage")
 				}
 				return job.Data, false, nil
 			case "failed":
 				msg := strings.TrimSpace(job.Error.Message)
 				if msg == "" {
-					msg = "图片服务报告任务失败（" + job.Status + "）"
+					msg = msgCtx(ctx, "generation.async.failed", "status", job.Status)
 				}
-				return nil, false, errors.New(redact(msg, key))
+				return nil, false, errors.New(redactCtx(ctx, msg, key))
 			}
 		} else {
 			lastProblem = problem
 			report(func(d *GenerationDiagnostic) { d.NetworkError = problem })
 		}
 		if time.Now().After(deadline) {
-			msg := fmt.Sprintf("等待异步任务 %s 超过 %d 分钟仍未完成", jobID, int(asyncPollTimeout/time.Minute))
 			if lastProblem != "" {
-				msg += "（最后一次查询：" + lastProblem + "）"
+				return nil, true, failCtx(ctx, "generation.async.timeoutWithProblem", "job", jobID, "minutes", int(asyncPollTimeout/time.Minute), "problem", lastProblem)
 			}
-			return nil, true, errors.New(msg + "，结果未知，请核对平台记录")
+			return nil, true, failCtx(ctx, "generation.async.timeout", "job", jobID, "minutes", int(asyncPollTimeout/time.Minute))
 		}
 		select {
 		case <-ctx.Done():
-			return nil, true, fmt.Errorf("%s，异步任务 %s 可能仍在生成", networkProblem(ctx.Err(), "请求被本地中止"), jobID)
+			return nil, true, failCtx(ctx, "generation.async.stopped", "problem", networkProblem(ctx, ctx.Err(), "generation.abortedLocally"), "job", jobID)
 		case <-time.After(asyncPollEvery):
 		}
 	}
@@ -189,24 +190,24 @@ func (p *Provider) pollOnce(ctx context.Context, address, key string) (asyncJob,
 	req.Header.Set("Authorization", "Bearer "+key)
 	resp, e := p.Client.Do(req)
 	if e != nil {
-		return asyncJob{}, redact(e.Error(), key), nil
+		return asyncJob{}, redactCtx(ctx, e.Error(), key), nil
 	}
 	defer resp.Body.Close()
 	b, e := io.ReadAll(io.LimitReader(resp.Body, 96<<20))
 	if e != nil {
-		return asyncJob{}, redact(e.Error(), key), nil
+		return asyncJob{}, redactCtx(ctx, e.Error(), key), nil
 	}
 	switch {
 	case resp.StatusCode >= 500 || resp.StatusCode == 408 || resp.StatusCode == 429:
 		return asyncJob{}, fmt.Sprintf("HTTP %d", resp.StatusCode), nil
 	case resp.StatusCode == 404:
-		return asyncJob{}, "", errors.New("图片服务找不到这个异步任务（HTTP 404），请核对平台记录")
+		return asyncJob{}, "", failCtx(ctx, "generation.async.notFound")
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return asyncJob{}, "", fmt.Errorf("查询异步任务失败：HTTP %d：%s", resp.StatusCode, apiMessage(b, key))
+		return asyncJob{}, "", failCtx(ctx, "generation.async.pollFailed", "status", resp.StatusCode, "error", apiMessage(b, key, i18n.FromContext(ctx)))
 	}
 	var job asyncJob
 	if json.Unmarshal(b, &job) != nil {
-		return asyncJob{}, "查询结果不是 JSON", nil
+		return asyncJob{}, msgCtx(ctx, "generation.async.pollNotJSON"), nil
 	}
 	return job, "", nil
 }

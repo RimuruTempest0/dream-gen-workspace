@@ -1,53 +1,64 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckOutlined, LoadingOutlined } from "@ant-design/icons";
 import type { AgentRun, RunProgress, RunStep } from "./agent-api";
+import { formatClock, t, type MessageKey } from "./i18n";
+import { durationText } from "./ui";
 
-export const runStepNames: Record<RunStep, string> = {
-  prepare: "准备素材",
-  product: "读取商品页",
-  images: "保存商品图",
-  references: "分析资料和参考图",
-  plan: "规划套图",
-  submit: "提交生成",
+const runStepKeys: Record<RunStep, MessageKey> = {
+  prepare: "run.step.prepare",
+  product: "run.step.product",
+  images: "run.step.images",
+  references: "run.step.references",
+  plan: "run.step.plan",
+  submit: "run.step.submit",
 };
+export function runStepName(step: RunStep): string {
+  return runStepKeys[step] ? t(runStepKeys[step]) : "";
+}
 
 // A reply with no new text for this long says so, to tell slow from stuck.
 const replyQuietMS = 30_000;
 
 export function runStepLabel(p: RunProgress) {
   return p.step === "product" && p.productVia === "browser"
-    ? "正在用浏览器读取商品页"
-    : runStepNames[p.step] || "处理中";
+    ? t("run.browserReading")
+    : runStepName(p.step) || t("run.processing");
 }
 
 function span(ms: number) {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  return seconds < 60
-    ? `${seconds} 秒`
-    : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+  return durationText(Math.max(0, Math.floor(ms / 1000)));
 }
 
 function stepDetail(step: RunStep, run: AgentRun): string {
   const p = run.progress!;
   switch (step) {
     case "product":
-      if (run.product.error && p.step !== "product") return "没有读取到商品页";
+      if (run.product.error && p.step !== "product")
+        return t("run.detail.productFailed");
       if (p.productVia === "browser")
         return p.productBrowserMS && p.step !== "product"
-          ? `网站拦截，改用浏览器读取（${span(p.productBrowserMS)}）`
-          : "网站拦截，改用浏览器读取";
-      return p.productVia === "direct" ? "直接读取" : "";
+          ? t("run.detail.browserTime", { time: span(p.productBrowserMS) })
+          : t("run.detail.browser");
+      return p.productVia === "direct" ? t("run.detail.direct") : "";
     case "images":
       return p.imagesFound
-        ? `已保存 ${p.imagesSaved || 0} / ${p.imagesFound} 张`
+        ? t("run.detail.images", {
+            saved: p.imagesSaved || 0,
+            found: p.imagesFound,
+          })
         : "";
     case "references":
-      return p.referencesSeen ? `已查看 ${p.referencesSeen} 张参考图` : "";
+      return p.referencesSeen
+        ? t("run.detail.references", { count: p.referencesSeen })
+        : "";
     case "plan":
       return p.planWritten
-        ? `已写好 ${p.planWritten} / ${run.authorizedCount || run.input.targetCount} 张`
+        ? t("run.detail.planWritten", {
+            written: p.planWritten,
+            total: run.authorizedCount || run.input.targetCount,
+          })
         : p.step === "plan"
-          ? "正在写方案"
+          ? t("run.detail.planning")
           : "";
   }
   return "";
@@ -57,9 +68,11 @@ function stepDetail(step: RunStep, run: AgentRun): string {
 function replyText(p: RunProgress, now: number) {
   if (!p.replyActive) return "";
   const quiet = now - Date.parse(p.replyLastAt || "");
-  if (!p.replyChars) return `等待模型回复（已等 ${span(quiet)}）`;
-  if (quiet >= replyQuietMS) return `模型暂时没有新内容（已等 ${span(quiet)}）`;
-  return `${p.replyThinking ? "模型正在思考" : "模型正在回复"}，已收到约 ${p.replyChars.toLocaleString("en-US")} 字`;
+  if (!p.replyChars) return t("run.reply.waiting", { time: span(quiet) });
+  if (quiet >= replyQuietMS) return t("run.reply.quiet", { time: span(quiet) });
+  return t(p.replyThinking ? "run.reply.thinking" : "run.reply.replying", {
+    chars: p.replyChars,
+  });
 }
 
 // The steps of an analysis. The Agent chooses its own order, so an earlier step can
@@ -81,7 +94,7 @@ export function RunSteps({ run }: { run: AgentRun }) {
   const reply = replyText(p, now);
   return (
     <>
-      <ol className="run-steps" aria-label="制作步骤">
+      <ol className="run-steps" aria-label={t("run.steps.label")}>
         {steps.map((step) => {
           const active = step === p.step;
           const done = !active && p.visited?.includes(step);
@@ -103,13 +116,15 @@ export function RunSteps({ run }: { run: AgentRun }) {
                   <span className="run-step-dot" />
                 )}
               </span>
-              <strong>{runStepNames[step]}</strong>
+              <strong>{runStepName(step)}</strong>
               {(detail || active) && (
                 <small>
                   {detail}
                   {detail && active ? " · " : ""}
                   {active &&
-                    `本步已用时 ${span(now - Date.parse(p.stepStartedAt))}`}
+                    t("run.step.elapsed", {
+                      time: span(now - Date.parse(p.stepStartedAt)),
+                    })}
                 </small>
               )}
             </li>
@@ -141,16 +156,16 @@ export function RunActivity({ run }: { run: AgentRun }) {
   const facts = [
     p?.agentVersion && `Claude Code ${p.agentVersion}`,
     run.llmConnection?.model,
-    p?.llmRequests && `${p.llmRequests} 次 AI 模型请求`,
-    p?.contextTokens && `上下文 ${p.contextTokens.toLocaleString("en-US")}`,
-    p?.outputTokens && `输出 ${p.outputTokens.toLocaleString("en-US")} tokens`,
+    p?.llmRequests && t("run.activity.requests", { count: p.llmRequests }),
+    p?.contextTokens && t("run.activity.context", { tokens: p.contextTokens }),
+    p?.outputTokens && t("run.activity.output", { tokens: p.outputTokens }),
   ].filter(Boolean);
   return (
     <details
       className="run-activity"
       onToggle={(e) => e.currentTarget.open && toEnd()}
     >
-      <summary>运行详情（{entries.length} 条）</summary>
+      <summary>{t("run.activity.summary", { count: entries.length })}</summary>
       <div className="run-activity-body">
         {facts.length > 0 && (
           <div className="run-activity-facts">
@@ -163,7 +178,7 @@ export function RunActivity({ run }: { run: AgentRun }) {
           ref={list}
           className="run-activity-log"
           role="log"
-          aria-label="运行详情"
+          aria-label={t("run.activity.label")}
           tabIndex={0}
           onScroll={(e) => {
             const el = e.currentTarget;
@@ -173,11 +188,7 @@ export function RunActivity({ run }: { run: AgentRun }) {
         >
           {entries.map((entry, index) => (
             <div key={index} className={`run-activity-line is-${entry.kind}`}>
-              <time>
-                {new Date(entry.at).toLocaleTimeString("zh-CN", {
-                  hour12: false,
-                })}
-              </time>
+              <time>{formatClock(entry.at, true)}</time>
               <span aria-hidden="true">{activityMarks[entry.kind]}</span>
               <span>{entry.text}</span>
             </div>

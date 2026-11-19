@@ -2,13 +2,13 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
 	"sort"
-	"strings"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 // Several image relays can be configured: one primary and ordered backups. The
@@ -87,10 +87,10 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 	image := func(id string) error {
 		var c Connection
 		if e := s.store.Get("connection", id, &c); e != nil {
-			return missing(e, "所选图片服务已删除，请刷新")
+			return missing(e, s.msg("connection.gateway.deleted"))
 		}
 		if normalizeConnection(c).Kind != "image" {
-			return errors.New("只能选择图片服务")
+			return s.fail("connection.gateway.imageOnly")
 		}
 		return nil
 	}
@@ -102,7 +102,7 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 	}
 	if len(g.BackupIDs) > maxBackupGateways {
 		s.mu.Unlock()
-		return fmt.Errorf("最多设置 %d 个备用图片服务", maxBackupGateways)
+		return s.fail("connection.gateway.backupLimit", "max", maxBackupGateways)
 	}
 	backups := []string{}
 	for _, id := range g.BackupIDs {
@@ -122,7 +122,7 @@ func (s *Service) SetGatewaySettings(g GatewaySettings) error {
 		return e
 	}
 	if g.AutoReroute != old.AutoReroute {
-		_ = s.store.appendLog("info", "image", "", fmt.Sprintf("自动转到备用图片服务：%v", g.AutoReroute))
+		_ = s.store.appendLog("info", "image", "", s.msg("connection.gateway.log.autoReroute", "on", g.AutoReroute))
 	}
 	s.mu.Unlock()
 	s.signal()
@@ -163,11 +163,11 @@ func (s *Service) probe(id string) {
 	s.mu.Unlock()
 	r := probeResult{at: time.Now()}
 	if keyErr != nil {
-		r.down, r.reason = true, "没有可用的 API Key"
+		r.down, r.reason = true, s.msg("connection.probe.noKey")
 	} else {
 		ctx, cancel := context.WithTimeout(s.ctx, probeTimeout)
 		start := time.Now()
-		ids, e := s.provider.Models(ctx, normalizeConnection(c), key)
+		ids, e := s.provider.Models(s.langCtx(ctx), normalizeConnection(c), key)
 		cancel()
 		r.ms = time.Since(start).Milliseconds()
 		status := httpStatusOf(e)
@@ -181,15 +181,15 @@ func (s *Service) probe(id string) {
 			r.ok, r.models = true, ids
 			s.saveModels(id, "", ids)
 		case status == 401 || status == 403:
-			r.down, r.reason = true, fmt.Sprintf("API Key 被拒绝（HTTP %d）", status)
+			r.down, r.reason = true, s.msg("connection.probe.keyRejected", "status", status)
 		case status >= 500:
-			r.down, r.reason = true, fmt.Sprintf("图片服务异常（HTTP %d）", status)
+			r.down, r.reason = true, s.msg("connection.probe.serverError", "status", status)
 		case status == 0:
-			r.down, r.reason = true, "无法连接图片服务："+redact(e.Error(), key)
+			r.down, r.reason = true, s.msg("connection.probe.unreachable", "error", s.redact(e.Error(), key))
 		default:
 			// Some relays do not list models; generation may still work, but the
 			// exact model cannot be verified, so it is not used as a backup.
-			r.reason = "无法读取模型列表，不能作为备用：" + redact(e.Error(), key)
+			r.reason = s.msg("connection.probe.noModelList", "error", s.redact(e.Error(), key))
 		}
 	}
 	s.mu.Lock()
@@ -197,9 +197,9 @@ func (s *Service) probe(id string) {
 	s.probes[id] = r
 	delete(s.probing, id)
 	if r.down && (!had || !prev.down) {
-		_ = s.store.appendLog("warn", "image", id, fmt.Sprintf("免费检查：图片服务「%s」暂时不可用（%s）", c.Name, r.reason))
+		_ = s.store.appendLog("warn", "image", id, s.msg("connection.probe.log.down", "name", c.Name, "reason", r.reason))
 	} else if !r.down && had && prev.down {
-		_ = s.store.appendLog("info", "image", id, fmt.Sprintf("免费检查：图片服务「%s」已恢复可连接", c.Name))
+		_ = s.store.appendLog("info", "image", id, s.msg("connection.probe.log.up", "name", c.Name))
 	}
 	s.mu.Unlock()
 	s.signal()
@@ -291,7 +291,7 @@ func taskOutcome(t Task) (outcome, bool) {
 	case "unknown":
 		o.timeout = relayTimedOut(t.Diagnostic)
 	case "failed":
-		if !strings.HasPrefix(t.Error, policyRefusedPrefix) {
+		if !i18n.HasPrefix(t.Error, "generation.policyRefused") {
 			o.rejected = rejectionKind(t.Diagnostic.HTTPStatus, t.Error)
 		}
 	}
@@ -374,11 +374,11 @@ func (s *Service) healthLocked(c Connection, tasks []Task, now time.Time) Gatewa
 	// A refused key or an empty account stays down for a while: the free model
 	// list cannot tell whether an account has balance again.
 	case !lastRejected.IsZero() && now.Sub(lastRejected) < recoverQuiet && !lastSuccess.After(lastRejected):
-		h.State, h.Reason = "down", rejectionLabels[rejectedFor]
+		h.State, h.Reason = "down", s.msg(rejectionLabels[rejectedFor])
 	case !lastTimeout.IsZero() && (now.Sub(lastTimeout) < recoverQuiet || !lastFast.After(lastTimeout)):
-		h.State, h.Reason = "slow", fmt.Sprintf("最近有图片在约 %d 秒后被图片服务断开", timeoutMS/1000)
+		h.State, h.Reason = "slow", s.msg("connection.health.cutAfter", "seconds", timeoutMS/1000)
 	case slowCount >= 2:
-		h.State, h.Reason = "slow", fmt.Sprintf("最近图片生成偏慢（中位约 %d 秒）", h.MedianMS/1000)
+		h.State, h.Reason = "slow", s.msg("connection.health.slow", "seconds", h.MedianMS/1000)
 	case (probed && p.ok) || !lastSuccess.IsZero():
 		h.State = "healthy"
 	}
@@ -449,7 +449,7 @@ func (s *Service) backupLocked(t Task, g GatewaySettings, hc *healthCache) (Conn
 	return Connection{}, false
 }
 
-var stateLabels = map[string]string{"slow": "变慢", "down": "不可用"}
+var stateLabels = map[string]string{"slow": "connection.health.state.slow", "down": "connection.health.state.down"}
 
 // routeLocked decides whether a queued, never-sent task may be sent now. It may
 // move it to a backup gateway (saved) or pause it unsent when its gateway is down.
@@ -473,13 +473,13 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 			if t.RoutedFrom == "" {
 				t.RoutedFrom, t.RoutedFromName = from.ID, from.Name
 			}
-			t.RouteReason = stateLabels[h.State] + "：" + h.Reason
+			t.RouteReason = s.msg("connection.route.reason", "state", s.msg(stateLabels[h.State]), "reason", h.Reason)
 			t.Connection = b
 			t.UpdatedAt = Now()
 			if s.store.Put("task", t.ID, *t) != nil {
 				return false
 			}
-			_ = s.store.appendLog("info", "image", t.BatchID, fmt.Sprintf("图片尚未提交，已从「%s」（%s）转到备用图片服务「%s」，不额外计费", from.Name, stateLabels[h.State], b.Name))
+			_ = s.store.appendLog("info", "image", t.BatchID, s.msg("generation.log.rerouted", "from", from.Name, "state", s.msg(stateLabels[h.State]), "to", b.Name))
 			return true
 		}
 	}
@@ -490,7 +490,7 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 	}
 	if h.State == "down" && !retry {
 		t.Status = "blocked"
-		t.Error = fmt.Sprintf("图片服务「%s」暂时不可用（%s），也没有可用的同模型备用图片服务。此图尚未提交、未计费，恢复后可点“恢复生成”。", t.Connection.Name, h.Reason)
+		t.Error = s.msg("generation.serviceDown", "name", t.Connection.Name, "reason", h.Reason)
 		t.UpdatedAt = Now()
 		_ = s.store.Put("task", t.ID, *t)
 		_ = s.store.appendLog("warn", "image", t.BatchID, t.Error)
@@ -519,9 +519,9 @@ func (s *Service) retryMayGoLocked(t *Task) bool {
 	now := time.Now()
 	if now.Sub(created) > retryWaitLimit {
 		t.Status, t.UpdatedAt = "failed", Now()
-		t.Error = fmt.Sprintf("图片服务「%s」在 %d 分钟内一直连不上，没有自动重新生成。这次没有发送、未计费；原来那张可能已计费，请核对图片服务记录。网络恢复后可点“重新生成”。", t.Connection.Name, int(retryWaitLimit.Minutes()))
+		t.Error = s.msg("generation.retry.gaveUpWaiting", "name", t.Connection.Name, "minutes", int(retryWaitLimit.Minutes()))
 		_ = s.store.Put("task", t.ID, *t)
-		_ = s.store.appendLog("warn", "image", t.BatchID, "等待图片服务恢复超时，自动重新生成没有发送："+t.ID)
+		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.retryGaveUp", "task", t.ID))
 		return false
 	}
 	if !s.probing[id] && (!fresh || now.Sub(p.at) >= retryProbeInterval) && s.ctx.Err() == nil {
@@ -541,44 +541,44 @@ func (s *Service) retryMayGoLocked(t *Task) bool {
 func (s *Service) autoRegenerateLocked(t *Task) string {
 	g := s.gatewaySettingsLocked()
 	if t.AutoRetryOf != "" {
-		return "这已是自动重新生成的图片，不会再次自动重发，请核对图片服务记录。"
+		return s.taskMsg(*t, "generation.retry.alreadyRetried")
 	}
 	if t.Diagnostic.UpstreamJobID != "" {
-		return "异步任务 " + t.Diagnostic.UpstreamJobID + " 可能仍在生成，没有自动重新生成，以免重复计费；请核对图片服务记录。"
+		return s.taskMsg(*t, "generation.retry.asyncPending", "job", t.Diagnostic.UpstreamJobID)
 	}
 	tasks, e := workingTasks(s.store, healthWindow)
 	if e != nil {
-		return "未能自动重新生成。"
+		return s.taskMsg(*t, "generation.retry.failed")
 	}
 	hc := &healthCache{s: s, tasks: tasks, now: time.Now(), seen: map[string]GatewayHealth{}}
 	target, onBackup := s.backupLocked(*t, g, hc)
 	if !onBackup {
 		var live Connection
 		if s.store.Get("connection", t.Connection.ID, &live) != nil {
-			return "原图片服务已删除，未自动重发。"
+			return s.taskMsg(*t, "generation.retry.serviceDeleted")
 		}
 		target = normalizeConnection(live)
 	}
 	next, e := s.queueAttemptLocked(*t, target, t.ID)
 	if e != nil {
-		return "自动重新生成未能排队：" + e.Error()
+		return s.taskMsg(*t, "generation.retry.notQueued", "error", e.Error())
 	}
 	t.AutoRetriedAs = next.ID
-	_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("结果未知，自动重新生成：%s → %s（「%s」，可能重复计费）", t.ID, next.ID, target.Name))
+	_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.autoRetry", "from", t.ID, "to", next.ID, "name", target.Name))
 	if onBackup {
-		return fmt.Sprintf("已自动转到「%s」重新生成一次（新的计费请求）。原请求可能已在「%s」生成并计费，这张图可能产生两次费用。", target.Name, t.Connection.Name)
+		return s.taskMsg(*t, "generation.retry.onBackup", "to", target.Name, "from", t.Connection.Name)
 	}
 	if !s.gatewaySetupLocked() {
-		return fmt.Sprintf("已在「%s」自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
+		return s.taskMsg(*t, "generation.retry.sameService", "name", target.Name)
 	}
-	return fmt.Sprintf("没有可用的同模型备用图片服务，将在「%s」能连上之后自动重新生成一次（新的计费请求）。原请求可能已计费，这张图可能产生两次费用。", target.Name)
+	return s.taskMsg(*t, "generation.retry.whenReachable", "name", target.Name)
 }
 
 // ---- relay rejections -------------------------------------------------------
 
 var balanceWords = regexp.MustCompile(`(?i)insufficient[ _-]?(balance|quota|credit|funds)|quota[ _-]?(exhausted|exceeded)|\bbalance\b|\bquota\b|credits?\b|payment required|billing|余额|额度|欠费|充值`)
 
-var rejectionLabels = map[string]string{"balance": "账户余额不足", "auth": "API Key 被拒绝"}
+var rejectionLabels = map[string]string{"balance": "connection.rejected.balance", "auth": "connection.rejected.auth"}
 
 // rejectionKind tells an empty account ("balance") from a refused key ("auth")
 // for a request the relay refused before generating. Relays answer both with

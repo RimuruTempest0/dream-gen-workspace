@@ -21,6 +21,7 @@ import {
   useData,
   withCurrent,
 } from "./ui";
+import { t } from "./i18n";
 
 // How a template joins the text already in the box.
 export type TemplateMode = "replace" | "append";
@@ -49,29 +50,29 @@ function TemplateEditor({
     }
     const saved = await actions.run(
       () => call("SaveTemplate", { ...value, ...values }),
-      "模板已保存",
+      t("templates.saved"),
     );
     if (saved !== undefined) onClose();
   }
   function close() {
     if (form.isFieldsTouched())
       actions.confirm(
-        "放弃未保存的修改？",
-        "关闭后这些修改不会保存。",
+        t("templates.discard.title"),
+        t("templates.discard.body"),
         async () => onClose(),
       );
     else onClose();
   }
-  const unset = { value: "", label: "不指定（保持当前设置）" };
+  const unset = { value: "", label: t("templates.unset") };
   return (
     <Modal
-      title={value.id ? "编辑模板" : "保存为模板"}
+      title={value.id ? t("templates.edit.title") : t("templates.saveAs.title")}
       open
       onCancel={close}
       onOk={save}
       confirmLoading={actions.busy}
-      okText="保存"
-      cancelText="取消"
+      okText={t("templates.save")}
+      cancelText={t("templates.cancel")}
     >
       {/* The name prefixes field ids: the pages behind this dialog use id="prompt". */}
       <Form
@@ -83,15 +84,18 @@ function TemplateEditor({
       >
         <Form.Item
           name="name"
-          label="名称"
-          rules={[{ required: true, message: "请填写名称" }]}
+          label={t("templates.name")}
+          rules={[{ required: true, message: t("templates.name.required") }]}
         >
-          <Input maxLength={100} placeholder="例如：Etsy 极速套图指令" />
+          <Input
+            maxLength={100}
+            placeholder={t("templates.name.placeholder")}
+          />
         </Form.Item>
         <Form.Item
           name="prompt"
-          label="提示词"
-          rules={[{ required: true, message: "请填写提示词" }]}
+          label={t("templates.prompt")}
+          rules={[{ required: true, message: t("templates.prompt.required") }]}
         >
           <Input.TextArea
             autoSize={{ minRows: 5, maxRows: 12 }}
@@ -99,16 +103,16 @@ function TemplateEditor({
           />
         </Form.Item>
         <div className="parameter-grid">
-          <Form.Item name="size" label="尺寸（可选）">
+          <Form.Item name="size" label={t("templates.size")}>
             <Select
               options={[unset, ...withCurrent(presetSizes, size)]}
-              aria-label="模板尺寸"
+              aria-label={t("templates.size.aria")}
             />
           </Form.Item>
-          <Form.Item name="quality" label="质量（可选）">
+          <Form.Item name="quality" label={t("templates.quality")}>
             <Select
               options={[unset, ...withCurrent(presetQualities, quality)]}
-              aria-label="模板质量"
+              aria-label={t("templates.quality.aria")}
             />
           </Form.Item>
         </div>
@@ -141,17 +145,19 @@ export function TemplateBar({
   const { message } = AntApp.useApp();
   const [choosing, setChoosing] = useState<Template | null>(null);
   const [saving, setSaving] = useState<Partial<Template> | null>(null);
-  function apply(t: Template, mode: TemplateMode) {
+  function apply(tpl: Template, mode: TemplateMode) {
     setChoosing(null);
-    onApply(t, mode);
+    onApply(tpl, mode);
     message.success(
-      mode === "append" ? `已追加模板“${t.name}”` : `已套用模板“${t.name}”`,
+      mode === "append"
+        ? t("templates.appended", { name: tpl.name })
+        : t("templates.applied", { name: tpl.name }),
     );
   }
-  function pick(t: Template) {
+  function pick(tpl: Template) {
     const current = text.trim();
-    if (!current) apply(t, "replace");
-    else if (current !== t.prompt.trim()) setChoosing(t);
+    if (!current) apply(tpl, "replace");
+    else if (current !== tpl.prompt.trim()) setChoosing(tpl);
   }
   const incoming = (loc.state as { templateID?: string } | null)?.templateID;
   const handled = useRef("");
@@ -160,14 +166,14 @@ export function TemplateBar({
       return;
     handled.current = incoming;
     nav(loc.pathname, { replace: true, state: null });
-    const t = templates.data.find((v) => v.id === incoming);
-    if (t) pick(t);
+    const tpl = templates.data.find((v) => v.id === incoming);
+    if (tpl) pick(tpl);
   }, [incoming, ready, templates.data]);
   return (
     <div className="template-bar">
       <Select
-        aria-label="套用模板"
-        placeholder="套用模板"
+        aria-label={t("templates.apply")}
+        placeholder={t("templates.apply")}
         className="template-select"
         value={null}
         disabled={disabled}
@@ -175,11 +181,11 @@ export function TemplateBar({
         optionFilterProp="label"
         popupMatchSelectWidth={320}
         placement="bottomRight"
-        notFoundContent="还没有模板"
-        options={(templates.data || []).map((t) => ({
-          value: t.id,
-          label: t.name,
-          prompt: t.prompt,
+        notFoundContent={t("templates.none")}
+        options={(templates.data || []).map((tpl) => ({
+          value: tpl.id,
+          label: tpl.name,
+          prompt: tpl.prompt,
         }))}
         optionRender={(option) => (
           <div className="template-option">
@@ -196,14 +202,14 @@ export function TemplateBar({
                 size="small"
                 onClick={() => nav("/templates")}
               >
-                管理模板
+                {t("templates.manage")}
               </Button>
             </div>
           </>
         )}
         onChange={(id) => {
-          const t = templates.data?.find((v) => v.id === id);
-          if (t) pick(t);
+          const tpl = templates.data?.find((v) => v.id === id);
+          if (tpl) pick(tpl);
         }}
       />
       <Button
@@ -216,29 +222,29 @@ export function TemplateBar({
           })
         }
       >
-        存为模板
+        {t("templates.saveAs")}
       </Button>
       <Modal
-        title={`套用模板“${choosing?.name || ""}”`}
+        title={t("templates.choose.title", { name: choosing?.name || "" })}
         open={!!choosing}
         onCancel={() => setChoosing(null)}
         footer={[
           <Button key="cancel" onClick={() => setChoosing(null)}>
-            取消
+            {t("templates.cancel")}
           </Button>,
           <Button key="append" onClick={() => apply(choosing!, "append")}>
-            追加到末尾
+            {t("templates.choose.append")}
           </Button>,
           <Button
             key="replace"
             type="primary"
             onClick={() => apply(choosing!, "replace")}
           >
-            替换当前内容
+            {t("templates.choose.replace")}
           </Button>,
         ]}
       >
-        <p>输入框里已经有内容，要怎么处理？</p>
+        <p>{t("templates.choose.body")}</p>
         <p className="line-clamp">{choosing?.prompt}</p>
       </Modal>
       {saving && (
@@ -261,15 +267,15 @@ export function TemplatesPage() {
   return (
     <>
       <Header
-        title="模板"
-        sub="保存常用的提示词和制作指令，在创作和专业模式里一键套用。"
+        title={t("templates.title")}
+        sub={t("templates.sub")}
         action={
           <Button
             type="primary"
             icon={<PlusOutlined aria-hidden="true" />}
             onClick={create}
           >
-            新建模板
+            {t("templates.new")}
           </Button>
         }
       />
@@ -277,46 +283,54 @@ export function TemplatesPage() {
         <DataState
           query={templates}
           empty={!templates.data?.length}
-          emptyText="保存常用提示词，减少重复输入"
+          emptyText={t("templates.empty")}
           action={
             <Button type="primary" onClick={create}>
-              新建模板
+              {t("templates.new")}
             </Button>
           }
         >
           <div className="object-list template-list">
-            {templates.data?.map((t) => (
-              <div className="object-row" key={t.id}>
+            {templates.data?.map((tpl) => (
+              <div className="object-row" key={tpl.id}>
                 <div>
-                  <strong>{t.name}</strong>
-                  <p className="line-clamp">{t.prompt}</p>
-                  {(t.size || t.quality) && (
+                  <strong>{tpl.name}</strong>
+                  <p className="line-clamp">{tpl.prompt}</p>
+                  {(tpl.size || tpl.quality) && (
                     <Space size={4} className="template-tags">
-                      {t.size && <Tag>{sizeName(t.size)}</Tag>}
-                      {t.quality && <Tag>质量：{qualityName(t.quality)}</Tag>}
+                      {tpl.size && <Tag>{sizeName(tpl.size)}</Tag>}
+                      {tpl.quality && (
+                        <Tag>
+                          {t("templates.qualityTag", {
+                            quality: qualityName(tpl.quality),
+                          })}
+                        </Tag>
+                      )}
                     </Space>
                   )}
                 </div>
                 <Space wrap className="template-actions">
                   <Button
                     size="small"
-                    onClick={() => nav("/pro", { state: { templateID: t.id } })}
+                    onClick={() =>
+                      nav("/pro", { state: { templateID: tpl.id } })
+                    }
                   >
-                    用于专业模式
+                    {t("templates.usePro")}
                   </Button>
                   <Button
                     size="small"
-                    onClick={() => nav("/", { state: { templateID: t.id } })}
+                    onClick={() => nav("/", { state: { templateID: tpl.id } })}
                   >
-                    用于创作
+                    {t("templates.useCreate")}
                   </Button>
                   <Button
                     size="small"
                     type="text"
                     className="template-edit"
-                    onClick={() => setEditing(t)}
+                    onClick={() => setEditing(tpl)}
                   >
-                    编辑
+                    {t("templates.edit")}
                   </Button>
                   <Button
                     size="small"
@@ -324,14 +338,14 @@ export function TemplatesPage() {
                     danger
                     onClick={() =>
                       actions.confirm(
-                        `删除模板“${t.name}”？`,
-                        "已有任务不受影响。",
-                        () => call("DeleteTemplate", t.id),
+                        t("templates.delete.title", { name: tpl.name }),
+                        t("templates.delete.body"),
+                        () => call("DeleteTemplate", tpl.id),
                         true,
                       )
                     }
                   >
-                    删除
+                    {t("templates.delete")}
                   </Button>
                 </Space>
               </div>

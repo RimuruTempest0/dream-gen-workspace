@@ -5,7 +5,13 @@ import { Alert, Button, Input, Modal, Tag } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import { call, type Task } from "./api";
 import { type AgentRun } from "./agent-api";
-import { AssetImage, rejectionOf, useActions } from "./ui";
+import { AssetImage, durationText, rejectionOf, useActions } from "./ui";
+import { formatNumber, t, type MessageKey } from "./i18n";
+
+const fixed = (digits: number) => ({
+  minimumFractionDigits: digits,
+  maximumFractionDigits: digits,
+});
 
 export function ReferenceStrip({
   ids,
@@ -24,7 +30,7 @@ export function ReferenceStrip({
             <Button
               size="small"
               type="text"
-              aria-label={`移除参考图 ${id.slice(0, 8)}`}
+              aria-label={t("smart.reference.remove", { id: id.slice(0, 8) })}
               icon={<DeleteOutlined aria-hidden="true" />}
               onClick={() => remove(id)}
             />
@@ -61,15 +67,42 @@ export function AgentTiming({ run, tasks }: { run: AgentRun; tasks: Task[] }) {
   const waiting = run.status === "needs_input";
   return (
     <span className="muted">
-      {busy ? "已用时" : "累计用时"} {Math.floor(elapsed / 60)} 分{" "}
-      {elapsed % 60} 秒{waiting && "（等待补充资料，计时已暂停）"}
+      {t(busy ? "smart.timing.elapsed" : "smart.timing.total", {
+        time: durationText(elapsed),
+      })}
+      {waiting && t("smart.timing.paused")}
     </span>
   );
 }
 
-// Stage texts written by the Go product browser (internal/core/product_browser.go).
-export const browserReadingStage = "正在用浏览器读取商品页";
-export const browserVerifyStage = "需要你在弹出的窗口里完成验证";
+// Stages the page reacts to come with a code (AgentRun.stageCode, 0.8.0), so
+// the stage text may be in any language; stageText shows them in the
+// interface language.
+const knownStages: Record<string, MessageKey> = {
+  "browser-reading": "run.browserReading",
+  "browser-verify": "smart.stage.verify",
+  preparing: "run.step.prepare",
+};
+// Runs saved before 0.8.0 carry only the Chinese stage text.
+const legacyStages: Record<string, string> = {
+  正在用浏览器读取商品页: "browser-reading",
+  需要你在弹出的窗口里完成验证: "browser-verify",
+  准备素材: "preparing",
+};
+type Staged = {
+  stage?: string;
+  text?: string;
+  stageCode?: string;
+  code?: string;
+};
+export const stageCodeOf = (s: Staged) =>
+  s.stageCode || s.code || legacyStages[s.stage ?? s.text ?? ""] || "";
+export const isKnownStage = (s: Staged) => !!knownStages[stageCodeOf(s)];
+export const isVerifyStage = (s: Staged) => stageCodeOf(s) === "browser-verify";
+export function stageText(s: Staged) {
+  const key = knownStages[stageCodeOf(s)];
+  return key ? t(key) : s.stage || "";
+}
 
 // Counts from the saved verification event, outside the live region so screen
 // readers hear the stage once instead of every second.
@@ -79,15 +112,12 @@ export function VerificationWait({ run }: { run: AgentRun }) {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
-  const event = [...run.events]
-    .reverse()
-    .find((e) => e.text === browserVerifyStage);
+  const event = [...run.events].reverse().find((e) => isVerifyStage(e));
   const since = Date.parse(event?.at || run.updatedAt);
   const seconds = Math.max(0, Math.floor((now - since) / 1000));
   return (
     <p className="muted">
-      请在弹出的“完成验证后将自动继续”窗口中完成网站验证，完成后自动继续；关闭窗口将改为上传图片或粘贴描述。等待验证中（已{" "}
-      {seconds} 秒）
+      {t("smart.verify.wait", { time: durationText(seconds) })}
     </p>
   );
 }
@@ -106,13 +136,14 @@ export const isBalanceRejected = (task: Task) =>
 
 // An image drawn from the suite's detail sample says which image it waits for or
 // copied, so a pause before it starts is not mistaken for a stuck queue.
-export const basisNames: Record<string, { label: string; color?: string }> = {
-  instruction: { label: "指令", color: "blue" },
-  source: { label: "原链接", color: "cyan" },
-  choice: { label: "自行选择", color: "purple" },
-  habit: { label: "按你的习惯", color: "geekblue" },
-  verify: { label: "需核对", color: "orange" },
-};
+export const basisNames: Record<string, { label: MessageKey; color?: string }> =
+  {
+    instruction: { label: "smart.basis.instruction", color: "blue" },
+    source: { label: "smart.basis.source", color: "cyan" },
+    choice: { label: "smart.basis.choice", color: "purple" },
+    habit: { label: "smart.basis.habit", color: "geekblue" },
+    verify: { label: "smart.basis.verify", color: "orange" },
+  };
 
 // An automatic run answers its own questions; this shows how it decided each one,
 // so the values it had to pick (需核对) can be checked against the images.
@@ -126,21 +157,23 @@ export function AgentJudgments({ run }: { run: AgentRun }) {
       aria-labelledby="agent-judgments-title"
     >
       <h3 id="agent-judgments-title">
-        制作助手的判断
+        {t("smart.judgments.title")}
         {verify > 0 && (
           <small className="agent-judgments-verify">
-            其中 {verify} 项需核对
+            {t("smart.judgments.verify", { count: verify })}
           </small>
         )}
       </h3>
       <ul>
         {answered.map((q) => {
-          const basis = basisNames[q.basis || ""] || { label: "自行判断" };
+          const basis = basisNames[q.basis || ""] || {
+            label: "smart.basis.own",
+          };
           return (
             <li key={q.id}>
               <span className="agent-judgment-question">{q.label}</span>
               <span className="agent-judgment-answer">
-                <Tag color={basis.color}>{basis.label}</Tag>
+                <Tag color={basis.color}>{t(basis.label)}</Tag>
                 {q.answer}
               </span>
               {q.reason && <small className="hint">{q.reason}</small>}
@@ -163,19 +196,18 @@ export function SampleNote({ task, tasks }: { task: Task; tasks: Task[] }) {
     .map((id) => {
       const n = tasks.findIndex((t) => t.planItemID === id) + 1;
       const area = n > 0 ? tasks[n - 1].sampleArea : "";
-      return `${n > 0 ? `第 ${n} 张` : ""}${area ? `「${area}」` : ""}样板图`;
+      if (n > 0 && area) return t("smart.sample.numberArea", { n, area });
+      if (n > 0) return t("smart.sample.number", { n });
+      if (area) return t("smart.sample.area", { area });
+      return t("smart.sample.plain");
     })
-    .join("、");
+    .join(t("smart.listSeparator"));
   if (task.samplePending)
-    return (
-      <p className="hint">
-        等{which}完成并核对后开始，照它画对应的设计；等待期间未提交、不计费。
-      </p>
-    );
+    return <p className="hint">{t("smart.sample.pending", { which })}</p>;
   if (task.sampleAssetIDs?.length || task.sampleAssetID)
-    return <p className="hint">已照{which}画对应的设计。</p>;
+    return <p className="hint">{t("smart.sample.copied", { which })}</p>;
   if (task.status !== "queued")
-    return <p className="hint">{which}没有成功，这张按文字说明生成。</p>;
+    return <p className="hint">{t("smart.sample.failed", { which })}</p>;
   return null;
 }
 
@@ -184,14 +216,13 @@ export function SampleCheckNote({ task }: { task: Task }) {
   const redraw = task.sampleRedraws || 0;
   switch (task.sampleCheck) {
     case "checking":
-      return (
-        <p className="hint">正在对照设计依据核对样板图，其他图片核对完再画。</p>
-      );
+      return <p className="hint">{t("smart.check.checking")}</p>;
     case "passed":
       return (
         <p className="hint">
-          {redraw > 0 ? `已按核对意见重画 ${redraw} 次，` : ""}
-          样板图已核对，与设计依据一致。
+          {redraw > 0
+            ? t("smart.check.passedRedrawn", { count: redraw })
+            : t("smart.check.passed")}
         </p>
       );
     case "failed":
@@ -199,7 +230,7 @@ export function SampleCheckNote({ task }: { task: Task }) {
         <Alert
           type="warning"
           showIcon
-          message={`样板图重画 ${redraw} 次后仍没通过核对，其他图片照它继续生成，请留意`}
+          message={t("smart.check.failed", { count: redraw })}
           description={task.sampleProblems}
         />
       );
@@ -209,7 +240,10 @@ export function SampleCheckNote({ task }: { task: Task }) {
   if (redraw > 0 && task.status !== "succeeded")
     return (
       <p className="hint" title={task.sampleProblems}>
-        上一版样板没通过核对，正在重画（第 {redraw} 次）：{task.sampleProblems}
+        {t("smart.check.redrawing", {
+          count: redraw,
+          problems: task.sampleProblems || "",
+        })}
       </p>
     );
   return null;
@@ -245,18 +279,18 @@ export function RefineDialog({
           assetID: target.assetID,
           instruction: text.trim(),
         }),
-      "已提交优化，完成后显示为这张图片的新版本",
+      t("smart.refine.submitted"),
     );
     if (batch !== undefined) onClose();
   }
   return (
     <Modal
-      title="优化这张图片"
+      title={t("smart.refine.title")}
       open={!!target}
       onCancel={onClose}
       onOk={submit}
-      okText="开始优化"
-      cancelText="取消"
+      okText={t("smart.refine.ok")}
+      cancelText={t("smart.refine.cancel")}
       okButtonProps={{ disabled: !text.trim() }}
       confirmLoading={actions.busy}
       destroyOnHidden
@@ -267,7 +301,7 @@ export function RefineDialog({
         </div>
       )}
       <label htmlFor="refine-instruction" className="field-label">
-        想怎么调整？
+        {t("smart.refine.label")}
       </label>
       <Input.TextArea
         id="refine-instruction"
@@ -276,25 +310,29 @@ export function RefineDialog({
         maxLength={1000}
         showCount
         autoSize={{ minRows: 3, maxRows: 8 }}
-        placeholder="例如：把袖口的狗掌和 Amelia 摆正成水平的一行，狗掌在左"
+        placeholder={t("smart.refine.placeholder")}
       />
       <p className="hint" style={{ marginTop: 28 }}>
-        写清要去掉什么、换成什么，并点名是谁或哪个位置。例如：右侧女性脱掉米白色针织衫，改穿和左侧同款的卫衣，颜色
-        Maroon，胸前图案和袖口刺绣与左侧完全相同。
+        {t("smart.refine.tip")}
       </p>
-      <p className="hint">
-        将以这张图片为底图发起一次新的生图请求，可能产生费用。原图保留在“之前的版本”中。
-      </p>
+      <p className="hint">{t("smart.refine.cost")}</p>
     </Modal>
   );
 }
 
 export type SmartMode = "manual" | "auto";
-export const modeOptions: { value: SmartMode; label: string; hint: string }[] =
-  [
-    { value: "manual", label: "手动", hint: "缺资料时停下来问你" },
-    { value: "auto", label: "自动", hint: "助手代答，标出需核对" },
-  ];
+export const modeOptions: {
+  value: SmartMode;
+  label: MessageKey;
+  hint: MessageKey;
+}[] = [
+  {
+    value: "manual",
+    label: "smart.mode.manual",
+    hint: "smart.mode.manualHint",
+  },
+  { value: "auto", label: "smart.mode.auto", hint: "smart.mode.autoHint" },
+];
 
 export function ModeSwitch({
   value,
@@ -307,7 +345,7 @@ export function ModeSwitch({
 }) {
   return (
     <fieldset className="mode-switch" disabled={disabled}>
-      <legend>制作模式</legend>
+      <legend>{t("smart.mode.legend")}</legend>
       <div className="mode-switch-options">
         {modeOptions.map((o) => (
           <label key={o.value} className="mode-option">
@@ -320,8 +358,8 @@ export function ModeSwitch({
             />
             <span className="mode-option-dot" aria-hidden="true" />
             <span className="mode-option-text">
-              <span className="mode-option-label">{o.label}</span>
-              <span className="mode-option-hint">{o.hint}</span>
+              <span className="mode-option-label">{t(o.label)}</span>
+              <span className="mode-option-hint">{t(o.hint)}</span>
             </span>
           </label>
         ))}
@@ -367,19 +405,32 @@ export function SuiteEstimateHint(p: {
   const parts: string[] = [];
   if (e.cost && e.costPerImage)
     parts.push(
-      `图片费用约 ${e.cost.toFixed(2)} ${e.costUnit}（每张约 ${e.costPerImage.toFixed(3)} ${e.costUnit}，按最近 ${e.costSamples} 张的额度变化）`,
+      t("smart.estimate.cost", {
+        cost: formatNumber(e.cost, fixed(2)),
+        each: formatNumber(e.costPerImage, fixed(3)),
+        unit: e.costUnit || "",
+        samples: e.costSamples || 0,
+      }),
     );
   if (e.medianMS)
     parts.push(
-      `每张生成约 ${Math.max(1, Math.round(e.medianMS / 1000))} 秒（最近 ${e.durationSamples} 张同模型同尺寸的中位数）`,
+      t("smart.estimate.time", {
+        seconds: Math.max(1, Math.round(e.medianMS / 1000)),
+        samples: e.durationSamples || 0,
+      }),
     );
   if (e.llmTokens)
     parts.push(
-      `智能分析约 ${e.llmTokens.toLocaleString()} tokens（最近 ${e.llmRuns} 次的平均）`,
+      t("smart.estimate.tokens", {
+        tokens: e.llmTokens,
+        runs: e.llmRuns || 0,
+      }),
     );
   return (
     <p className="hint" id="suite-estimate">
-      参考：{parts.join("；")}。实际以图片服务和 AI 模型的计费为准。
+      {t("smart.estimate.text", {
+        parts: parts.join(t("smart.partSeparator")),
+      })}
     </p>
   );
 }

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"os"
 	"path/filepath"
@@ -129,7 +130,7 @@ func (s *Service) ExportBatch(batchID, path string) (int, error) {
 			}
 			if a.TaskID != t.ID {
 				s.mu.Unlock()
-				return 0, errors.New("图片与任务归属不一致")
+				return 0, s.fail("data.export.mismatch")
 			}
 			seen[id] = true
 			assets = append(assets, a)
@@ -137,18 +138,18 @@ func (s *Service) ExportBatch(batchID, path string) (int, error) {
 	}
 	s.mu.Unlock()
 	if len(assets) == 0 {
-		return 0, errors.New("这套任务还没有可下载的图片")
+		return 0, s.fail("data.export.empty")
 	}
 	names := make([]string, len(assets))
 	for i, a := range assets {
 		names[i] = fmt.Sprintf("%03d%s", i+1, filepath.Ext(a.Path))
 	}
-	return len(assets), writeAssetZip(root, assets, names, path)
+	return len(assets), writeAssetZip(root, assets, names, path, s.Language())
 }
 
 // writeAssetZip stores local originals under the given entry names. A failure
 // leaves no partial ZIP at path.
-func writeAssetZip(root string, assets []Asset, names []string, path string) error {
+func writeAssetZip(root string, assets []Asset, names []string, path, lang string) error {
 	f, e := os.CreateTemp(filepath.Dir(path), ".image-set-*.partial")
 	if e != nil {
 		return e
@@ -165,13 +166,13 @@ func writeAssetZip(root string, assets []Asset, names []string, path string) err
 		source, err := os.Open(filePath)
 		if err != nil {
 			zw.Close()
-			return fmt.Errorf("第 %d 张原图不可读取：%w", i+1, err)
+			return errors.New(i18n.T(lang, "data.export.unreadable", "n", i+1, "error", err))
 		}
 		info, err := source.Stat()
 		if err != nil || !info.Mode().IsRegular() || info.Size() > MaxImageBytes {
 			source.Close()
 			zw.Close()
-			return errors.New("原图文件不可用或超过大小限制")
+			return errors.New(i18n.T(lang, "data.export.unusable"))
 		}
 		header := &zip.FileHeader{Name: names[i], Method: zip.Store}
 		header.SetModTime(info.ModTime())

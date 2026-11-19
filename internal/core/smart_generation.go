@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -12,7 +11,7 @@ import (
 
 func (st *Store) agentRequest(id, operation string) (string, error) {
 	if strings.TrimSpace(id) == "" || len(id) > 128 {
-		return "", errors.New("请求标识无效")
+		return "", errors.New(st.msg("agent.requestInvalid"))
 	}
 	var run, savedOperation string
 	e := st.db.QueryRow(`SELECT run_id,operation FROM agent_requests WHERE request_id=?`, id).Scan(&run, &savedOperation)
@@ -23,7 +22,7 @@ func (st *Store) agentRequest(id, operation string) (string, error) {
 		return "", e
 	}
 	if savedOperation != operation {
-		return "", errors.New("请求标识已用于其他操作")
+		return "", errors.New(st.msg("agent.requestUsed"))
 	}
 	return run, nil
 }
@@ -63,7 +62,7 @@ func (s *Service) freezeGeneration(r *AgentRun) error {
 	}
 	var c Connection
 	if e = s.store.Get("connection", r.Input.ImageConnectionID, &c); e != nil {
-		return missing(e, "这次制作使用的图片服务已删除，请新建需求并选择现有连接")
+		return missing(e, s.msg("agent.snapshot.imageGone"))
 	}
 	if _, e = s.key(c.Credential); e != nil {
 		return e
@@ -73,10 +72,10 @@ func (s *Service) freezeGeneration(r *AgentRun) error {
 		model = c.Model
 	}
 	if model == "" {
-		return errors.New("请设置生图模型")
+		return s.fail("agent.imageModel")
 	}
 	if len(r.Input.Size) > 64 || len(r.Input.Quality) > 64 {
-		return errors.New("生图参数过长")
+		return s.fail("agent.paramsTooLong")
 	}
 	r.Input.ImageModel = model
 	r.ImageConnection = normalizeConnection(c)
@@ -92,10 +91,10 @@ func (s *Service) freezeGeneration(r *AgentRun) error {
 func (s *Service) requireConfiguredSnapshot(c Connection) error {
 	var live Connection
 	if e := s.store.Get("connection", c.ID, &live); e != nil {
-		return errors.New("供应商连接已删除，请新建需求选择连接")
+		return s.fail("agent.snapshot.connectionGone")
 	}
 	if live.Credential == "" {
-		return errors.New("供应商密钥已清除，请先在设置中配置密钥")
+		return s.fail("agent.snapshot.keyGone")
 	}
 	return nil
 }
@@ -127,7 +126,7 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 	if in.ProductURL == "" {
 		links := productLinks(in.Instruction)
 		if len(links) > 1 {
-			return "", errors.New("指令包含多个商品链接，请先选择本次商品链接")
+			return "", s.fail("agent.smart.manyLinks")
 		}
 		if len(links) == 1 {
 			in.ProductURL = links[0]
@@ -154,10 +153,10 @@ func (s *Service) StartSmartGeneration(in AgentInput, requestID string) (string,
 	}
 	if s.agentRunner == nil {
 		if info, e := os.Stat(s.agentExecutable); e != nil || info.IsDir() {
-			return "", errors.New("内置 Claude Code 缺失，请完整解压便携包")
+			return "", s.fail("agent.runtime.missing")
 		}
 	}
-	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: "准备素材", Input: in, LLMConnection: llm, Skills: skills, ShopRules: shopRules, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
+	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: s.msg("agent.stage.preparingMaterial"), StageCode: stagePreparing, Input: in, LLMConnection: llm, Skills: skills, ShopRules: shopRules, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
 	if e = s.freezeGeneration(&r); e != nil {
 		return "", e
 	}
@@ -202,7 +201,7 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 		return "", e
 	}
 	if len(in.Instruction) > 32000 || len(in.ProductText) > 64000 || len(in.References) > 20 {
-		return "", errors.New("补充资料过长或图片过多")
+		return "", s.fail("agent.continue.tooMuch")
 	}
 	changed := strings.TrimSpace(in.Instruction) != "" || (in.ProductText != "" && in.ProductText != r.Input.ProductText) || (in.References != nil && !reflect.DeepEqual(in.References, r.Input.References))
 	if in.ProductText != "" {
@@ -215,18 +214,18 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 		r.Instructions = append(r.Instructions, in.Instruction)
 	}
 	if len(r.Instructions) > 30 {
-		return "", errors.New("修改次数过多，请新建需求")
+		return "", s.fail("agent.smart.tooManyEdits")
 	}
 	for i := range r.Questions {
 		if r.Questions[i].ID == "product-material" && (len(r.Input.References) > 0 || strings.TrimSpace(r.Input.ProductText) != "") {
 			if r.Questions[i].Answer == "" {
 				changed = true
 			}
-			r.Questions[i].Answer = "已补充商品素材或描述"
+			r.Questions[i].Answer = s.msg("agent.smart.materialAdded")
 		}
 		if answer, ok := in.Answers[r.Questions[i].ID]; ok {
 			if len(answer) > 16000 {
-				return "", errors.New("补充答案过长")
+				return "", s.fail("agent.continue.answerTooLong")
 			}
 			if answer != r.Questions[i].Answer {
 				changed = true
@@ -238,16 +237,16 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 	if r.AutoGeneration && (r.LLMConnection.Credential == "" || r.ImageConnection.Credential == "") {
 		var llm, image Connection
 		if e := s.store.Get("connection", r.Input.LLMConnectionID, &llm); e != nil {
-			return "", missing(e, "这次制作使用的 AI 模型已删除，请新建需求并选择现有连接")
+			return "", missing(e, s.msg("agent.snapshot.llmGone"))
 		}
 		if e := s.store.Get("connection", r.Input.ImageConnectionID, &image); e != nil {
-			return "", missing(e, "这次制作使用的图片服务已删除，请新建需求并选择现有连接")
+			return "", missing(e, s.msg("agent.snapshot.imageGone"))
 		}
 		llm = normalizeConnection(llm)
 		image = normalizeConnection(image)
 		oldLLM, oldImage := normalizeConnection(r.LLMConnection), normalizeConnection(r.ImageConnection)
 		if llm.BaseURL != oldLLM.BaseURL || llm.Model != oldLLM.Model || llm.Mode != oldLLM.Mode || llm.AuthMode != oldLLM.AuthMode || llm.MaxOutputTokens != oldLLM.MaxOutputTokens || image.BaseURL != oldImage.BaseURL || image.Protocol != oldImage.Protocol {
-			return "", errors.New("连接配置已改变，请新建需求确认新的供应商与模型")
+			return "", s.fail("agent.snapshot.changed")
 		}
 	}
 	if !r.AutoGeneration || r.LLMConnection.Credential == "" || r.ImageConnection.Credential == "" {
@@ -268,7 +267,7 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 		return "", e
 	}
 	if len(r.Input.References) > 0 && !r.LLMConnection.Capabilities.Vision {
-		return "", errors.New("此模型未通过图片能力验证")
+		return "", s.fail("agent.smart.noVision")
 	}
 	for _, id := range r.Input.References {
 		var a Asset
@@ -276,7 +275,7 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 			return "", e
 		}
 		if _, e := readOwned(s.store.Root, a.Path); e != nil {
-			return "", errors.New("参考图不可用，请重新上传")
+			return "", s.fail("agent.plan.refUnusable")
 		}
 	}
 	r.CancelRequested = false
@@ -293,11 +292,11 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 	if reuse {
 		r.AnalysisSucceeded = true
 		r.Status = "ready"
-		r.Stage = "制作准备已完成"
+		r.Stage = s.msg("agent.stage.ready")
 	} else {
 		r.AnalysisSucceeded = false
 		r.Status = "analyzing"
-		r.Stage = "处理中"
+		r.Stage = s.msg("agent.stage.processing")
 	}
 	if e := s.store.saveAgentRequest(r, requestID, op); e != nil {
 		return "", e
@@ -305,7 +304,7 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 	if reuse {
 		if e := s.autoSubmitLocked(&r); e != nil {
 			r.Status = "failed"
-			r.Stage = "制作未完成"
+			r.Stage = s.msg("agent.stage.unfinished")
 			r.Error = e.Error()
 			_ = s.store.Put("agent_run", r.ID, r)
 			return r.ID, e
@@ -322,7 +321,7 @@ func (s *Service) ContinueSmartGeneration(in AgentContinuation, requestID string
 
 func (s *Service) validateAutoPlan(r *AgentRun, p *SuitePlan) error {
 	if len(p.Items) != r.AuthorizedCount {
-		return fmt.Errorf("本次授权%d张，方案必须恰好包含%d张", r.AuthorizedCount, r.AuthorizedCount)
+		return s.fail("agent.auto.count", "n", r.AuthorizedCount)
 	}
 	for _, item := range p.Items {
 		size, quality := item.Size, item.Quality
@@ -333,7 +332,7 @@ func (s *Service) validateAutoPlan(r *AgentRun, p *SuitePlan) error {
 			quality = r.Input.Quality
 		}
 		if size != r.Input.Size || quality != r.Input.Quality {
-			return errors.New("方案修改了已授权的图片参数")
+			return s.fail("agent.auto.paramsChanged")
 		}
 	}
 	return s.validatePlan(r, p)
@@ -344,21 +343,21 @@ func (s *Service) autoSubmitLocked(r *AgentRun) error {
 		return nil
 	}
 	if !r.AutoGeneration || !r.AnalysisSucceeded || r.CancelRequested || hasMissing(r.Questions) {
-		return errors.New("请先补充必要资料并完成制作准备")
+		return s.fail("agent.auto.notReady")
 	}
 	if e := s.requireConfiguredSnapshot(r.ImageConnection); e != nil {
 		return e
 	}
 	// An automatic run plans from the instruction alone when nothing else is available.
 	if !r.Input.AutoMode && r.Input.ProductURL != "" && (r.Product.Error != "" || r.Product.SourceURL == "") && len(r.Input.References)+len(r.Product.ReferenceIDs) == 0 && strings.TrimSpace(r.Input.ProductText) == "" {
-		r.Questions = append(r.Questions, AgentQuestion{ID: "product-material", Label: "请上传商品参考图，或在商品描述中补充商品资料", Required: true})
+		r.Questions = append(r.Questions, AgentQuestion{ID: "product-material", Label: s.msg("agent.auto.needMaterial"), Required: true})
 		r.Status = "needs_input"
-		r.Stage = "等待补充"
+		r.Stage = s.msg("agent.stage.needsInput")
 		r.AnalysisSucceeded = false
 		return nil
 	}
 	if len(r.Plans) == 0 {
-		return errors.New("尚未准备好完整套图，请继续制作")
+		return s.fail("agent.auto.incomplete")
 	}
 	p := r.Plans[len(r.Plans)-1]
 	if e := s.validateAutoPlan(r, &p); e != nil {

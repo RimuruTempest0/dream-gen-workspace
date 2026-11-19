@@ -1,9 +1,9 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"bytes"
 	"encoding/base64"
-	"errors"
 	"golang.org/x/image/draw"
 	"image"
 	"image/color"
@@ -16,7 +16,7 @@ import (
 func visionImageBlock(data []byte) (map[string]any, error) {
 	config, _, e := image.DecodeConfig(bytes.NewReader(data))
 	if e != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 64_000_000 {
-		return nil, errors.New("Skill 或参考图片不可读取或像素过大")
+		return nil, i18n.Fail("agent.image.unreadable")
 	}
 	if len(data) > 4<<20 || config.Width > 2048 || config.Height > 2048 {
 		img, _, e := image.Decode(bytes.NewReader(data))

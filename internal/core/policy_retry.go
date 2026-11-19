@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -27,40 +26,38 @@ func policyRejected(status int, message string) bool {
 	return status >= 400 && status < 500 && status != 401 && status != 402 && status != 429 && policyWords.MatchString(message)
 }
 
-const policyRefusedPrefix = "生图模型的内容审核拒绝了这张图"
-
 // policyRetryLocked queues the next automatic attempt for a refused image and
 // returns the note for it.
 func (s *Service) policyRetryLocked(t *Task) string {
 	if t.PolicyStep >= 2 {
-		return "自动改写措辞后仍被拒绝，不再自动重发。请修改提示词，或换掉可能被误判的参考图后重新生成。"
+		return s.taskMsg(*t, "generation.policy.gaveUp")
 	}
 	reword := t.PolicyStep == 1
 	if reword {
 		if _, _, ok := s.rewordLLMLocked(*t); !ok {
-			return "原样重发后仍被拒绝；没有可用的 AI 模型来自动改写措辞，请修改提示词后重新生成。"
+			return s.taskMsg(*t, "generation.policy.noLLM")
 		}
 	}
 	var live Connection
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
-		return "原图片服务已删除，未自动重发。"
+		return s.taskMsg(*t, "generation.retry.serviceDeleted")
 	}
 	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
 	if e != nil {
-		return "自动重发未能排队：" + e.Error()
+		return s.taskMsg(*t, "generation.policy.notQueued", "error", e.Error())
 	}
 	next.PolicyRetryOf, next.PolicyStep, next.Rewording = t.ID, t.PolicyStep+1, reword
 	if e = s.store.Put("task", next.ID, next); e != nil {
-		return "自动重发未能排队：" + e.Error()
+		return s.taskMsg(*t, "generation.policy.notQueued", "error", e.Error())
 	}
 	t.PolicyRetriedAs = next.ID
 	if reword {
-		_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("内容审核再次拒绝，用 AI 模型改写措辞后自动重发：%s → %s", t.ID, next.ID))
+		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyReword", "from", t.ID, "to", next.ID))
 		s.startRewordLocked(next.ID)
-		return "原样重发后仍被拒绝，正在用 AI 模型改写这张图的措辞后再发一次（商品设计、画面文字和参考图不变）。"
+		return s.taskMsg(*t, "generation.policy.rewording")
 	}
-	_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("内容审核拒绝，自动原样重发一次：%s → %s", t.ID, next.ID))
-	return "已自动原样重发一次（内容审核有一定随机性，常常重发就能通过）。"
+	_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyResend", "from", t.ID, "to", next.ID))
+	return s.taskMsg(*t, "generation.policy.resent")
 }
 
 // rewordLLMLocked picks the LLM line that rewrites a refused prompt: the smart
@@ -129,7 +126,7 @@ func (s *Service) reword(id string) {
 		c, key, ok = s.moodLLMLocked(t)
 	}
 	s.mu.Unlock()
-	prompt, e := "", errors.New("没有可用的 AI 模型")
+	prompt, e := "", s.fail("generation.noLLM")
 	if ok {
 		ctx, cancel := context.WithTimeout(s.ctx, rewordTimeout)
 		if t.RewordFor == rewordMood {
@@ -137,7 +134,7 @@ func (s *Service) reword(id string) {
 		} else if t.RewordFor == rewordRefine {
 			prompt, e = s.refineRequirements(ctx, c, key, t)
 		} else {
-			prompt, e = s.rewordPrompt(ctx, c, key, t.Prompt)
+			prompt, e = s.rewordPrompt(ctx, c, key, t.Language, t.Prompt)
 		}
 		cancel()
 	}
@@ -153,13 +150,13 @@ func (s *Service) reword(id string) {
 	if t.RewordFor == rewordMood {
 		if e != nil {
 			t.Status = "failed"
-			t.Error = fmt.Sprintf("按心境改写提示词没有成功（%s）。这次没有发送、不计费，请重新生成。", redact(e.Error(), key))
+			t.Error = s.msg("generation.moodRewriteFailed", "error", s.redact(e.Error(), key))
 			// The reason may quote in-image text of the prompt, so it stays on the task.
-			_ = s.store.appendLog("warn", "image", t.BatchID, "按心境改写提示词失败，图片未发送："+t.ID)
+			_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.moodRewriteFailed", "task", t.ID))
 		} else {
 			t.Prompt = prompt
 			// The prompt itself is not logged.
-			_ = s.store.appendLog("info", "image", t.BatchID, "已按心境改写提示词")
+			_ = s.store.appendLog("info", "image", t.BatchID, s.msg("generation.log.moodRewritten"))
 		}
 		_ = s.store.Put("task", t.ID, t)
 		return
@@ -167,22 +164,22 @@ func (s *Service) reword(id string) {
 	if t.RewordFor == rewordRefine {
 		if e != nil {
 			t.Status = "failed"
-			t.Error = fmt.Sprintf("优化前按你的修改改写原制作要求没有成功（%s）。这次没有发送、不计费，请再点一次“优化”。", redact(e.Error(), key))
-			_ = s.store.appendLog("warn", "agent", t.AgentRunID, "优化前改写原制作要求失败："+redact(e.Error(), key))
+			t.Error = s.msg("generation.refineRewriteFailed", "error", s.redact(e.Error(), key))
+			_ = s.store.appendLog("warn", "agent", t.AgentRunID, s.msg("generation.log.refineRewriteFailed", "error", s.redact(e.Error(), key)))
 		} else {
 			t.Prompt = prompt
-			_ = s.store.appendLog("info", "agent", t.AgentRunID, "优化前已按修改改写原制作要求，开始生成："+t.ID)
+			_ = s.store.appendLog("info", "agent", t.AgentRunID, s.msg("generation.log.refineRewritten", "task", t.ID))
 		}
 		_ = s.store.Put("task", t.ID, t)
 		return
 	}
 	if e != nil {
 		t.Status = "failed"
-		t.Error = fmt.Sprintf("%s，原样重发后仍被拒绝；自动改写措辞没有成功（%s）。这次没有发送、不计费。请修改提示词后重新生成。", policyRefusedPrefix, redact(e.Error(), key))
-		_ = s.store.appendLog("warn", "image", t.BatchID, "内容审核拒绝后自动改写措辞失败："+redact(e.Error(), key))
+		t.Error = s.msg("generation.policyRefused") + s.msg("generation.policy.rewordFailed", "error", s.redact(e.Error(), key))
+		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.policyRewordFailed", "error", s.redact(e.Error(), key)))
 	} else {
 		t.Prompt = prompt
-		_ = s.store.appendLog("info", "image", t.BatchID, "已改写内容审核拒绝的提示词，自动重发："+t.ID)
+		_ = s.store.appendLog("info", "image", t.BatchID, s.msg("generation.log.policyReworded", "task", t.ID))
 	}
 	_ = s.store.Put("task", t.ID, t)
 }
@@ -200,17 +197,17 @@ var quotedText = regexp.MustCompile(`“([^”]+)”|"([^"]+)"`)
 
 // rewordPrompt asks the LLM for a reworded prompt. The sample line the backend
 // added is kept as it is, and every quoted in-image text must survive verbatim.
-func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, prompt string) (string, error) {
+func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, lang, prompt string) (string, error) {
 	head, body := "", prompt
-	if strings.HasPrefix(prompt, "样板图：参考图第") {
+	if hasSampleLead(prompt) {
 		if line, rest, ok := strings.Cut(prompt, "\n"); ok {
 			head, body = line+"\n", rest
 		}
 	}
-	text, e := s.llmRewrite(ctx, c, key, rewordInstruction+body, "内容审核拒绝后改写提示词", func(text string) error {
+	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body),s.msg("agent.llmStage.reword"), func(text string) error {
 		for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
 			if want := q[1] + q[2]; !strings.Contains(text, want) {
-				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)
+				return s.fail("agent.rewrite.lostText", "text", want)
 			}
 		}
 		return nil
@@ -242,6 +239,7 @@ func (s *Service) llmAsk(ctx context.Context, c Connection, key, kind, stage str
 // llmAskOnce is one attempt of llmAsk; dropped reports a connection that failed
 // before any HTTP answer arrived.
 func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage string, content any, check func(string) error) (text string, dropped bool, err error) {
+	ctx = s.langCtx(ctx)
 	req := map[string]any{
 		"model": c.Model,
 		// The line's own limit: a reasoning model spends output tokens on thinking
@@ -260,7 +258,7 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 	started := time.Now()
 	finish := func(e error) error {
 		if e != nil {
-			call.Status, call.Error = "error", redact(e.Error(), key)
+			call.Status, call.Error = "error", s.redact(e.Error(), key)
 		} else {
 			call.Status = "completed"
 		}
@@ -269,7 +267,7 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 	}
 	resp, e := messagesRequest(ctx, llmHTTPClient(), c, key, req)
 	if e != nil {
-		return "", true, finish(errors.New("连接 AI 模型失败：" + e.Error()))
+		return "", true, finish(s.fail("connection.llm.connectFailed", "error", e.Error()))
 	}
 	call.HTTPStatus = resp.StatusCode
 	call.RequestID = resp.Header.Get("request-id")
@@ -281,11 +279,11 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 		call.Stream = true
 		text, stopReason, e = readTextStream(ctx, resp, &call, started)
 		if e != nil {
-			return "", false, finish(errors.New("AI 模型的回答中途断开：" + e.Error()))
+			return "", false, finish(s.fail("connection.llm.replyCut", "error", e.Error()))
 		}
 	} else {
 		// A relay that ignores "stream" answers with one JSON message.
-		m, e := readMessage(resp, key)
+		m, e := readMessage(resp, key, s.Language())
 		if e != nil {
 			return "", false, finish(e)
 		}
@@ -303,9 +301,9 @@ func (s *Service) llmAskOnce(ctx context.Context, c Connection, key, kind, stage
 	}
 	if text == "" {
 		if stopReason == "max_tokens" {
-			return "", false, finish(fmt.Errorf("AI 模型把单次输出上限（%d tokens）都用在了思考上，没有写出结果。可在“系统 → 连接 → AI 模型 → 编辑”调高“单次输出上限”", LLMOutputLimit(c.MaxOutputTokens)))
+			return "", false, finish(s.fail("connection.llm.thinkingUsedLimit", "limit", LLMOutputLimit(c.MaxOutputTokens)))
 		}
-		return "", false, finish(errors.New("AI 模型没有返回改写结果"))
+		return "", false, finish(s.fail("connection.llm.emptyRewrite"))
 	}
 	if e := check(text); e != nil {
 		return "", false, finish(e)

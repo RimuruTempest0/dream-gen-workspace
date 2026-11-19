@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -198,7 +199,7 @@ func TestWrongSampleIsRedrawnBeforeTheSetCopiesIt(t *testing.T) {
 		t.Fatalf("expected one redraw: %d samples, %d checks", len(samples), checks.Load())
 	}
 	newest, first := samples[0], samples[1] // newest first
-	if first.SampleCheck != "redrawn" || newest.SampleCheck != "passed" || newest.SampleRedraws != 1 || !strings.Contains(newest.Prompt, sampleFixMarker+"头饰画成了圣诞帽") {
+	if first.SampleCheck != "redrawn" || newest.SampleCheck != "passed" || newest.SampleRedraws != 1 || !strings.Contains(newest.Prompt, sampleFixMarkerIn(i18n.ZhCN)+"头饰画成了圣诞帽") {
 		t.Fatalf("redraw not recorded: %+v / %+v", first, newest)
 	}
 	mu.Lock()
@@ -209,7 +210,7 @@ func TestWrongSampleIsRedrawnBeforeTheSetCopiesIt(t *testing.T) {
 	if uses.SampleAssetID != newest.AssetIDs[0] || uses.References[0] != newest.AssetIDs[0] || len(uses.References) != 2 {
 		t.Fatalf("passed sample is not the first reference: %+v", uses.References)
 	}
-	if p := calls["SLOT:uses"][0].prompt; !strings.HasPrefix(p, samplePromptLine(2)) || !strings.Contains(p, "唯一依据") {
+	if p := calls["SLOT:uses"][0].prompt; !strings.HasPrefix(p, samplePromptLine(2, i18n.ZhCN)) || !strings.Contains(p, "唯一依据") {
 		t.Fatalf("sample line missing: %q", p)
 	}
 	llmCalls, _ := List[LLMCall](s.store, "llm_call")

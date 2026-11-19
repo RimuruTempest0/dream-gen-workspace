@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -10,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"imageworkbench/internal/core"
+	"imageworkbench/internal/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +22,13 @@ const productBrowserExe = "product-browser.exe"
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// bootLang is the interface language of messages shown before the data
+// directory is open (the Windows UI language, as on a first start); it follows
+// the saved preference once a service exists.
+var bootLang = i18n.FromSystem(i18n.SystemLanguages()...)
+
+func bootMsg(key string, args ...any) string { return i18n.T(bootLang, key, args...) }
 
 func main() {
 	if bindingsMode {
@@ -32,7 +41,8 @@ func main() {
 	// exit, replaces the program files and starts it again.
 	if core.IsUpdateCommand(os.Args) {
 		if e := core.RunUpdateCommand(os.Args, core.WaitForExit); e != nil {
-			fatal("更新失败，已恢复原来的程序文件：" + e.Error())
+			bootLang = core.UpdateCommandLanguage(os.Args)
+			fatal(bootMsg("update.command.fatal", "error", e))
 		}
 		return
 	}
@@ -70,11 +80,11 @@ func launch(root, data string) {
 	if os.Getenv("IMAGEWORKBENCH_ALLOW_SYSTEM_RUNTIME") == "1" {
 		runtimePath = ""
 	} else if _, e := os.Stat(filepath.Join(runtimePath, "msedgewebview2.exe")); e != nil {
-		fatal("便携包缺少 runtime 目录，请完整解压应用文件。开发模式可设置 IMAGEWORKBENCH_ALLOW_SYSTEM_RUNTIME=1。")
+		fatal(bootMsg("app.boot.noRuntime"))
 		return
 	}
 	if e := prepareRuntime(runtimePath); e != nil {
-		fatal("运行时目录权限检查失败：" + e.Error())
+		fatal(bootMsg("app.boot.runtimeAccess", "error", e))
 		return
 	}
 	s, e := core.NewService(data)
@@ -83,7 +93,7 @@ func launch(root, data string) {
 	if needDirectory {
 		fallback, err := os.MkdirTemp("", "ImageWorkbench-bootstrap-")
 		if err != nil {
-			fatal("无法创建临时目录，请将应用移到可写目录。")
+			fatal(bootMsg("app.boot.noTemp"))
 			return
 		}
 		defer os.RemoveAll(fallback)
@@ -94,24 +104,26 @@ func launch(root, data string) {
 			return
 		}
 	}
+	bootLang = s.Language()
 	app := &App{service: s, configRoot: root}
 	s.SetAgentExecutable(filepath.Join(root, "agent", "claude-code", "claude.exe"))
 	s.SetProductBrowser(filepath.Join(root, productBrowserExe), runtimePath)
 	// A customer package carries customer.dat beside the program; none = developer mode.
 	s.LoadLicense(root)
-	e = wails.Run(&options.App{Title: "生图工作台", Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: &options.RGBA{R: 22, G: 19, B: 15, A: 1}, AssetServer: &assetserver.Options{Assets: assets},
+	e = wails.Run(&options.App{Title: i18n.AppName(s.Language()), Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: &options.RGBA{R: 22, G: 19, B: 15, A: 1}, AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup: func(ctx context.Context) {
 			if needDirectory {
-				path, err := runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: "应用目录不可写，请选择本地数据目录"})
+				path, err := runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: bootMsg("app.boot.chooseData")})
 				if err != nil || path == "" {
-					fatal("未选择可写的数据目录，应用将退出。")
+					fatal(bootMsg("app.boot.noData"))
 					os.Exit(1)
 				}
 				replacement, err := core.NewService(path)
 				if err != nil {
-					fatal("数据目录无法使用：" + err.Error())
+					fatal(bootMsg("app.boot.dataUnusable", "error", err))
 					os.Exit(1)
 				}
+				bootLang = replacement.Language()
 				app.service.Dispose()
 				app.service = replacement
 				replacement.SetAgentExecutable(filepath.Join(root, "agent", "claude-code", "claude.exe"))
@@ -132,7 +144,7 @@ func launch(root, data string) {
 		},
 		OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose, Bind: []interface{}{app}, DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true}, Windows: &windows.Options{WebviewBrowserPath: runtimePath, WebviewUserDataPath: cache, Theme: windows.Light}})
 	if e != nil {
-		fatal(fmt.Sprintf("应用启动失败：%v", e))
+		fatal(bootMsg("app.boot.failed", "error", e))
 	}
 }
 func savedDataPath(root string) string {
@@ -151,7 +163,7 @@ func savedDataPath(root string) string {
 }
 func saveDataPath(root, path string) error {
 	if root == "" {
-		return fmt.Errorf("应用设置目录不可用")
+		return errors.New(bootMsg("app.boot.noConfigDir"))
 	}
 	if rel, e := filepath.Rel(root, path); e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		path = rel

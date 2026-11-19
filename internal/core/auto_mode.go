@@ -1,8 +1,8 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -38,7 +38,7 @@ func (s *Service) SmartMode() string {
 
 func (s *Service) SetSmartMode(v string) error {
 	if v != smartModeManual && v != smartModeAuto {
-		return errors.New("制作模式无效")
+		return s.fail("agent.auto.modeInvalid")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -78,7 +78,7 @@ func answerQuestionsTool() map[string]any {
 // when some required questions are still open; the error then names those.
 func (b *agentBridge) answerQuestions(r AgentRun, args json.RawMessage) ([]any, error) {
 	if !r.Input.AutoMode {
-		return nil, errors.New("只有全自动模式可以自行回答问题")
+		return nil, b.service.fail("agent.auto.answerManual")
 	}
 	var v struct {
 		Answers []struct {
@@ -92,7 +92,7 @@ func (b *agentBridge) answerQuestions(r AgentRun, args json.RawMessage) ([]any, 
 		return nil, e
 	}
 	var open []string
-	e := b.service.updateAgent(b.runID, "自行回答问题", func(run *AgentRun) error {
+	e := b.service.updateAgent(b.runID, b.service.msg("agent.stage.selfAnswer"), func(run *AgentRun) error {
 		byID := map[string]int{}
 		for i, q := range run.Questions {
 			byID[q.ID] = i
@@ -100,13 +100,13 @@ func (b *agentBridge) answerQuestions(r AgentRun, args json.RawMessage) ([]any, 
 		for _, a := range v.Answers {
 			i, ok := byID[a.ID]
 			if !ok {
-				return fmt.Errorf("没有这个问题：%s（只能回答 request_information 记下的问题）", a.ID)
+				return b.service.fail("agent.auto.noSuchQuestion", "id", a.ID)
 			}
 			if strings.TrimSpace(a.Answer) == "" || len(a.Answer) > 2000 || utf8.RuneCountInString(a.Reason) > 300 {
-				return fmt.Errorf("问题 %s 的答案为空或过长", a.ID)
+				return b.service.fail("agent.auto.badAnswer", "id", a.ID)
 			}
 			if !answerBases[a.Basis] {
-				return fmt.Errorf("问题 %s 的 basis 无效", a.ID)
+				return b.service.fail("agent.auto.badBasis", "id", a.ID)
 			}
 			q := &run.Questions[i]
 			q.Answer, q.AnsweredBy, q.Basis, q.Reason = strings.TrimSpace(a.Answer), "agent", a.Basis, strings.TrimSpace(a.Reason)
@@ -118,7 +118,7 @@ func (b *agentBridge) answerQuestions(r AgentRun, args json.RawMessage) ([]any, 
 		return nil, e
 	}
 	if len(open) > 0 {
-		return nil, fmt.Errorf("已记录这些答案，还有问题没回答：%s。请继续用 answer_questions 回答", strings.Join(open, "；"))
+		return nil, b.service.fail("agent.auto.stillOpen", "ids", strings.Join(open, b.service.msg("log.sep")))
 	}
 	return mcpText(map[string]any{"answered": len(v.Answers), "next": "继续规划，把这些取值写进 locked，并用 save_suite_plan 保存完整方案"}), nil
 }
@@ -181,19 +181,19 @@ func askingStyle(r AgentRun) string {
 // autoContinueLocked prepares another attempt of an automatic run that ended
 // without submitting a complete set (questions it did not answer, no plan or a
 // failed attempt) and returns its instruction; "" leaves the run as it is.
-func autoContinueLocked(r *AgentRun) string {
+func autoContinueLocked(lang string, r *AgentRun) string {
 	if !r.Input.AutoMode || r.BatchID != "" || (r.Status != "failed" && r.Status != "needs_input") || r.AutoContinues >= maxAutoContinues {
 		return ""
 	}
 	r.AutoContinues++
 	reason, instruction := r.Error, ""
 	if open := openQuestions(r.Questions); r.Status == "needs_input" && len(open) > 0 {
-		reason = fmt.Sprintf("还有 %d 个问题没有自行回答", len(open))
+		reason = i18n.T(lang, "agent.auto.openQuestions", "n", len(open))
 		instruction = fmt.Sprintf("（全自动模式第 %d 次自动继续）上一轮记下了问题，但没有自己回答：%s。用户不会回答。请先按判断顺序逐题回答，用 answer_questions 记录，再继续规划并用 save_suite_plan 保存完整方案。", r.AutoContinues, strings.Join(open, "；"))
 	} else {
 		instruction = fmt.Sprintf("（全自动模式第 %d 次自动继续）上一轮没有保存完整套图方案：%s。用户不会回答问题，也不会审阅；还缺的资料按判断顺序自己回答，再用 save_suite_plan 保存完整方案。", r.AutoContinues, reason)
 	}
-	r.Activity = append(r.Activity, ActivityEntry{At: Now(), Kind: "warn", Text: cutActivityText(fmt.Sprintf("全自动模式：上一轮没有完成整套方案（%s），自动继续制作（第 %d 次）", reason, r.AutoContinues))})
-	r.Status, r.Stage, r.Error = "analyzing", "自动继续制作", ""
+	r.Activity = append(r.Activity, ActivityEntry{At: Now(), Kind: "warn", Text: cutActivityText(i18n.T(lang, "agent.auto.continuing", "reason", reason, "n", r.AutoContinues))})
+	r.Status, r.Stage, r.Error = "analyzing", i18n.T(lang, "agent.stage.autoContinue"), ""
 	return instruction
 }

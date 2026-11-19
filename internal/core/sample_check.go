@@ -3,8 +3,6 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -32,7 +30,7 @@ const sampleCheckInstruction = `你是刺绣商品图的质检员。第 1 张图
 - 画面文字的拼写、大小写、字形风格和颜色；
 - 各元素的左右顺序、相对位置和相对大小。
 只检查以上设计内容，不评价光线、背景、构图或拍摄角度；看不清的地方不算错。
-只输出一个 JSON：{"pass": true 或 false, "problems": ["每条一句中文，写清哪里不对、应该是什么样"]}。通过时 problems 为空数组。
+只输出一个 JSON：{"pass": true 或 false, "problems": ["每条一句话，写清哪里不对、应该是什么样"]}。通过时 problems 为空数组。problems 会给用户看，也会写进重画样板的提示词；其中的画面文字照原文写，不翻译。
 
 制作要求：
 `
@@ -88,7 +86,7 @@ func (s *Service) checkSample(id string) {
 		}
 	}
 	s.mu.Unlock()
-	pass, problems, e := false, []string{}, errors.New("没有可用的 AI 模型")
+	pass, problems, e := false, []string{}, s.fail("agent.sample.noLLM")
 	if ok && len(files) > 0 {
 		ctx, cancel := context.WithTimeout(s.ctx, sampleCheckTimeout)
 		pass, problems, e = s.askSampleCheck(ctx, c, key, t, files)
@@ -105,28 +103,28 @@ func (s *Service) checkSample(id string) {
 	t.UpdatedAt = Now()
 	switch {
 	case e != nil:
-		t.SampleCheck, t.SampleProblems = "skipped", "核对没有完成："+cutProductText(redact(e.Error(), key), 300)
-		s.addActivityLocked(t.AgentRunID, "warn", "样板图没能核对（"+t.SampleProblems+"），其他图片照它继续生成")
+		t.SampleCheck, t.SampleProblems = "skipped", s.msg("agent.sample.unfinished", "error", cutProductText(s.redact(e.Error(), key), 300))
+		s.addActivityLocked(t.AgentRunID, "warn", s.msg("agent.sample.skipped", "problems", t.SampleProblems))
 	case pass:
 		t.SampleCheck, t.SampleProblems = "passed", ""
-		s.addActivityLocked(t.AgentRunID, "tool", "样板图已核对，与设计依据一致")
+		s.addActivityLocked(t.AgentRunID, "tool", s.msg("agent.sample.passed"))
 	default:
-		t.SampleProblems = cutProductText(strings.Join(problems, "；"), 1500)
+		t.SampleProblems = cutProductText(strings.Join(problems, s.msg("log.sep")), 1500)
 		if t.SampleRedraws < maxSampleRedraws {
 			if note := s.redrawSampleLocked(&t); note != "" {
 				t.SampleCheck = "failed"
-				s.addActivityLocked(t.AgentRunID, "warn", "样板图核对没通过（"+t.SampleProblems+"），"+note)
+				s.addActivityLocked(t.AgentRunID, "warn", s.msg("agent.sample.failedNote", "problems", t.SampleProblems, "note", note))
 				break
 			}
 			t.SampleCheck = "redrawn"
-			s.addActivityLocked(t.AgentRunID, "warn", fmt.Sprintf("样板图核对没通过（%s），自动重画（第 %d 次）", t.SampleProblems, t.SampleRedraws+1))
+			s.addActivityLocked(t.AgentRunID, "warn", s.msg("agent.sample.redrawing", "problems", t.SampleProblems, "n", t.SampleRedraws+1))
 		} else {
 			t.SampleCheck = "failed"
-			s.addActivityLocked(t.AgentRunID, "warn", fmt.Sprintf("样板图重画 %d 次后仍没通过核对（%s），其他图片照这张继续生成，请留意", t.SampleRedraws, t.SampleProblems))
+			s.addActivityLocked(t.AgentRunID, "warn", s.msg("agent.sample.gaveUp", "n", t.SampleRedraws, "problems", t.SampleProblems))
 		}
 	}
 	_ = s.store.Put("task", t.ID, t)
-	_ = s.store.appendLog("info", "agent", t.AgentRunID, fmt.Sprintf("样板图核对：%s %s", t.SampleCheck, t.SampleProblems))
+	_ = s.store.appendLog("info", "agent", t.AgentRunID, s.msg("agent.log.sampleCheck", "result", t.SampleCheck, "problems", t.SampleProblems))
 }
 
 // redrawSampleLocked queues a new attempt of the sample with the problems to
@@ -134,23 +132,23 @@ func (s *Service) checkSample(id string) {
 func (s *Service) redrawSampleLocked(t *Task) string {
 	var live Connection
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
-		return "原图片服务已删除，没有重画"
+		return s.msg("agent.sample.connectionGone")
 	}
 	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
 	if e != nil {
-		return "重画没能排队：" + e.Error()
+		return s.msg("agent.sample.notQueued", "error", e)
 	}
-	base, _, _ := strings.Cut(t.Prompt, sampleFixMarker)
-	next.Prompt = base + sampleFixMarker + t.SampleProblems
+	base := cutSampleFix(t.Prompt)
+	next.Prompt = base + sampleFixMarkerIn(t.Language) + t.SampleProblems
 	next.SampleRedraws, next.SampleProblems = t.SampleRedraws+1, t.SampleProblems
 	if e = s.store.Put("task", next.ID, next); e != nil {
-		return "重画没能排队：" + e.Error()
+		return s.msg("agent.sample.notQueued", "error", e)
 	}
 	return ""
 }
 
 func (s *Service) askSampleCheck(ctx context.Context, c Connection, key string, t Task, files [][]byte) (bool, []string, error) {
-	content := []any{map[string]any{"type": "text", "text": sampleCheckInstruction + t.Prompt}}
+	content := []any{map[string]any{"type": "text", "text": replyLanguageRule(t.Language) + "\n\n" + sampleCheckInstruction + t.Prompt}}
 	for _, data := range files {
 		block, e := messagesImageBlock(data)
 		if e != nil {
@@ -162,16 +160,16 @@ func (s *Service) askSampleCheck(ctx context.Context, c Connection, key string, 
 		Pass     bool     `json:"pass"`
 		Problems []string `json:"problems"`
 	}
-	_, e := s.llmAsk(ctx, c, key, "check", "核对样板图", content, func(text string) error {
+	_, e := s.llmAsk(ctx, c, key, "check", s.msg("agent.llmStage.sampleCheck"), content, func(text string) error {
 		start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
 		if start < 0 || end < start {
-			return errors.New("核对结果不是 JSON")
+			return s.fail("agent.sample.notJSON")
 		}
 		if e := json.Unmarshal([]byte(text[start:end+1]), &result); e != nil {
-			return errors.New("核对结果不是 JSON")
+			return s.fail("agent.sample.notJSON")
 		}
 		if !result.Pass && len(result.Problems) == 0 {
-			return errors.New("核对没通过但没有写出问题")
+			return s.fail("agent.sample.noProblems")
 		}
 		return nil
 	})

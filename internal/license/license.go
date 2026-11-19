@@ -18,8 +18,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
-	"fmt"
+	"imageworkbench/internal/i18n"
 	"strings"
 	"time"
 )
@@ -55,7 +54,7 @@ type Connection struct {
 	UsageURL string `json:"usageURL,omitempty"`
 	// Verified marks an LLM line the admin checked for text, image input, tools
 	// and streaming, so the customer never has to run that check.
-	Verified bool   `json:"verified,omitempty"`
+	Verified bool `json:"verified,omitempty"`
 	// Protocol (format 3) of an image line: "" or "openai-images", or "async-jobs".
 	Protocol string `json:"protocol,omitempty"`
 	Key      string `json:"key,omitempty"`    // never in a signed file
@@ -108,8 +107,8 @@ type file struct {
 }
 
 var (
-	ErrSignature = errors.New("软件授权文件无效或已被修改")
-	ErrCode      = errors.New("激活码与本软件不匹配，请核对后重新输入")
+	ErrSignature = i18n.Fail("license.file.invalid")
+	ErrCode      = i18n.Fail("license.code.mismatch")
 )
 
 func randomChars(n int) (string, error) {
@@ -165,7 +164,7 @@ func NormalizeCode(code string) (string, error) {
 		b.WriteRune(r)
 	}
 	if b.Len() != codeGroups*codeGroupSize {
-		return "", errors.New("激活码应为 25 位字母和数字（可带短横线）")
+		return "", i18n.Fail("license.code.format")
 	}
 	return b.String(), nil
 }
@@ -255,14 +254,14 @@ func Sign(p Profile, priv ed25519.PrivateKey) ([]byte, error) {
 	if p.ExpiresAt != "" {
 		at, e := time.Parse(time.RFC3339, p.ExpiresAt)
 		if e != nil {
-			return nil, errors.New("有效期格式无效")
+			return nil, i18n.Fail("license.sign.expiry")
 		}
 		p.ExpiresAt = at.UTC().Format(time.RFC3339)
 	}
 	p.Format = formatFor(p)
 	for _, c := range p.Connections {
 		if c.Key != "" {
-			return nil, errors.New("customer.dat 不能包含 Key 明文")
+			return nil, i18n.Fail("license.sign.plainKey")
 		}
 	}
 	payload, e := json.Marshal(p)
@@ -316,19 +315,19 @@ func CheckLines(conns []Connection, backups []string) error {
 	seen := map[string]Connection{}
 	for _, c := range conns {
 		if c.Slot == "" || c.BaseURL == "" || c.Model == "" || (c.Key == "" && c.KeyObf == "") || (c.Kind != "image" && c.Kind != "llm") {
-			return fmt.Errorf("线路 %q 缺少地址、模型或 Key", c.Slot)
+			return i18n.Fail("license.lines.incomplete", "slot", c.Slot)
 		}
 		if _, dup := seen[c.Slot]; dup {
-			return fmt.Errorf("线路 %q 重复", c.Slot)
+			return i18n.Fail("license.lines.duplicate", "slot", c.Slot)
 		}
 		seen[c.Slot] = c
 	}
 	if seen["image-1"].Kind != "image" || seen["llm-1"].Kind != "llm" {
-		return errors.New("必须包含图片线路 image-1 和 LLM 线路 llm-1")
+		return i18n.Fail("license.lines.required")
 	}
 	for _, s := range backups {
 		if seen[s].Kind != "image" || s == "image-1" {
-			return fmt.Errorf("备用图片线路 %q 无效", s)
+			return i18n.Fail("license.lines.backup", "slot", s)
 		}
 	}
 	return nil

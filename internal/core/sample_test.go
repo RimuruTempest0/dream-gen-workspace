@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -85,7 +86,7 @@ func TestImagesWaitForTheDetailSampleAndGetItAsReference(t *testing.T) {
 	if !calls["SLOT:other"].start.Before(calls["SLOT:sample"].done) {
 		t.Fatal("an unrelated image waited for the sample")
 	}
-	if calls["SLOT:uses"].images != 1 || !strings.HasPrefix(calls["SLOT:uses"].prompt, samplePromptLine(1)) {
+	if calls["SLOT:uses"].images != 1 || !strings.HasPrefix(calls["SLOT:uses"].prompt, samplePromptLine(1, i18n.ZhCN)) {
 		t.Fatalf("sample not attached: %+v", calls["SLOT:uses"])
 	}
 	if uses.SamplePending || uses.SampleAssetID != sample.AssetIDs[0] || len(uses.References) != 1 || uses.References[0] != sample.AssetIDs[0] {
@@ -203,7 +204,7 @@ func TestRefineSendsTheSampleAlong(t *testing.T) {
 	if call.images != 2 || len(refined.References) != 2 || refined.References[0] != uses.AssetIDs[0] || refined.References[1] != sample.AssetIDs[0] || refined.SampleAssetID != sample.AssetIDs[0] {
 		t.Fatalf("sample not sent with the refine: %d %+v", call.images, refined)
 	}
-	if strings.Contains(call.prompt, samplePromptLine(1)) || !strings.Contains(call.prompt, refineSampleLine) || !strings.Contains(call.prompt, "手臂和袖子改成在画面里竖直下垂") {
+	if strings.Contains(call.prompt, samplePromptLine(1, i18n.ZhCN)) || !strings.Contains(call.prompt, refineSampleLine) || !strings.Contains(call.prompt, "手臂和袖子改成在画面里竖直下垂") {
 		t.Fatal("refine prompt still names the old sample position", call.prompt)
 	}
 	if _, e := s.RefineAgentImage(RefineInput{RequestID: "r-other", TaskID: other.ID, AssetID: other.AssetIDs[0], Instruction: "背景更亮"}); e != nil {

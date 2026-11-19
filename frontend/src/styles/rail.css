@@ -228,8 +228,6 @@ h1 {
 .rail-version {
   padding: 8px 10px 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 12px;
 }
 /* Tabs shared by the four system pages. */
@@ -303,4 +301,27 @@ h1 {
   /* The dark algorithm darkens the error colour to 4.39:1 on a surface; the
      token itself is 5.7:1. */
   color: var(--danger);
+}
+/* Same for a text delete button (the template cards). */
+.ant-btn-dangerous.ant-btn-variant-text:not(:hover):not(:disabled) {
+  color: var(--danger);
+}
+/* The brand name Image Workbench (every language but Chinese) is wider than
+   生图工作台: it sets on two lines beside the mark instead of being cut. */
+html:not([lang="zh-CN"]) .rail-wordmark {
+  white-space: normal;
+  font-size: 15px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+/* Interface language switch (0.8.0): a rail row like the badges above it. */
+.rail .rail-language {
+  width: 100%;
+  font-size: 13px;
+  cursor: pointer;
+}
+.language-panel .ant-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }

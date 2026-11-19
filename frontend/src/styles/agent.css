@@ -1,5 +1,5 @@
 :root {
-  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  font-family: var(--font, "Microsoft YaHei UI", "Segoe UI", sans-serif);
   color: var(--text);
   background: var(--background);
   font-synthesis: none;

@@ -1,12 +1,15 @@
 package core
 
 import (
+	"slices"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 // LLMCall is one request the app sent to an LLM provider: a smart-generation
@@ -82,10 +85,15 @@ func (c *LLMCall) readBodyUsage(raw []byte) {
 
 // waitingStages are set by the bridge itself; the stage worth showing is the
 // last step the Agent reported before the request.
-// The second row is the wording saved by versions before 0.7.24.
-var waitingStages = map[string]bool{
-	"等待 AI 模型响应": true, "AI 模型连接中断，自动重试": true, "AI 模型流中断": true,
+// The current wording is recognised in every language (agent.stage.*); the
+// map holds wording saved by earlier versions.
+var legacyWaitingStages = map[string]bool{
+	"AI 模型流中断": true,
 	"等待 LLM 响应": true, "LLM 连接中断，自动重试": true, "LLM 流中断": true,
+}
+
+func waitingStage(text string) bool {
+	return legacyWaitingStages[text] || slices.Contains(i18n.Variants("agent.stage.waitingLLM"), text) || slices.Contains(i18n.Variants("agent.stage.reconnecting"), text)
 }
 
 // newLLMCallLocked starts a record for a request about to be sent.
@@ -105,7 +113,7 @@ func (s *Service) newLLMCallLocked(kind, runID string, c Connection, body []byte
 		var r AgentRun
 		if s.store.Get("agent_run", runID, &r) == nil {
 			for i := len(r.Events) - 1; i >= 0; i-- {
-				if !waitingStages[r.Events[i].Text] {
+				if !waitingStage(r.Events[i].Text) {
 					call.Stage = r.Events[i].Text
 					break
 				}
@@ -215,19 +223,20 @@ type LLMMonitorResult struct {
 var localPeer = regexp.MustCompile(`->(127\.0\.0\.1|\[::1\]|localhost):\d+`)
 
 // dropReason explains a cut connection in plain words.
-func dropReason(e string) string {
+func dropReason(lang, e string) string {
 	low := strings.ToLower(e)
+	key := "monitor.drop.other"
 	switch {
 	case localPeer.MatchString(e):
-		return "本机代理断开连接"
+		key = "monitor.drop.localProxy"
 	case strings.Contains(low, "timeout") || strings.Contains(low, "deadline"):
-		return "等待超时"
+		key = "monitor.drop.timeout"
 	case strings.Contains(low, "forcibly closed") || strings.Contains(low, "reset"):
-		return "连接被重置"
+		key = "monitor.drop.reset"
 	case strings.Contains(low, "eof"):
-		return "回复途中连接被关闭"
+		key = "monitor.drop.eof"
 	}
-	return "连接中断"
+	return i18n.T(lang, key)
 }
 
 func runName(r AgentRun) string {
@@ -237,24 +246,24 @@ func runName(r AgentRun) string {
 	return shortText(r.Input.Instruction, 24)
 }
 
-func runResult(r AgentRun) (string, string) {
+func runResult(lang string, r AgentRun) (string, string) {
 	switch r.Status {
 	case "submitted":
 		n := r.AuthorizedCount
 		if n == 0 && len(r.Plans) > 0 {
 			n = len(r.Plans[len(r.Plans)-1].Items)
 		}
-		return fmt.Sprintf("已提交 %d 张", n), "success"
+		return i18n.T(lang, "agent.result.submitted", "n", n), "success"
 	case "ready", "review":
-		return "方案已保存", "success"
+		return i18n.T(lang, "agent.result.planSaved"), "success"
 	case "needs_input":
-		return "等待补充资料", "warning"
+		return i18n.T(lang, "agent.stage.needsInput"), "warning"
 	case "analyzing":
-		return "分析中", "warning"
+		return i18n.T(lang, "agent.result.analyzing"), "warning"
 	case "interrupted":
-		return "已中断", "danger"
+		return i18n.T(lang, "agent.result.interrupted"), "danger"
 	case "failed":
-		return "制作未完成", "danger"
+		return i18n.T(lang, "agent.stage.unfinished"), "danger"
 	}
 	return r.Status, ""
 }
@@ -344,7 +353,7 @@ func (s *Service) LLMMonitor(q MonitorQuery) (LLMMonitorResult, error) {
 		default:
 			v.Errors++
 			r.Errors++
-			note := "请求失败"
+			note := s.msg("monitor.llm.requestFailed")
 			if c.HTTPStatus != 0 {
 				note = fmt.Sprintf("HTTP %d", c.HTTPStatus)
 			}
@@ -368,7 +377,7 @@ func (s *Service) LLMMonitor(q MonitorQuery) (LLMMonitorResult, error) {
 		run, ok := runs[c.RunID]
 		if !ok {
 			ar := getRun(c.RunID)
-			res, tone := runResult(ar)
+			res, tone := runResult(s.Language(), ar)
 			run = &LLMRunStat{RunID: c.RunID, Name: runName(ar), ConnectionName: c.ConnectionName, Result: res, ResultTone: tone}
 			runs[c.RunID] = run
 			runOrder = append(runOrder, c.RunID)
@@ -425,9 +434,9 @@ func (s *Service) LLMMonitor(q MonitorQuery) (LLMMonitorResult, error) {
 		if c.Status != "dropped" {
 			continue
 		}
-		d := LLMDrop{At: c.At, RunID: c.RunID, Stage: c.Stage, WaitedMS: c.TotalMS, Reason: dropReason(c.Error), Detail: c.Error}
+		d := LLMDrop{At: c.At, RunID: c.RunID, Stage: c.Stage, WaitedMS: c.TotalMS, Reason: dropReason(s.Language(), c.Error), Detail: c.Error}
 		if c.Kind == "test" {
-			d.RunName, d.Outcome = "能力验证", "测试结果为失败"
+			d.RunName, d.Outcome = s.msg("monitor.llm.kind.test"), s.msg("monitor.llm.testFailed")
 		} else {
 			d.RunName = r.RunNames[c.RunID]
 			for _, later := range calls[:i] {
@@ -439,13 +448,13 @@ func (s *Service) LLMMonitor(q MonitorQuery) (LLMMonitorResult, error) {
 			ar := getRun(c.RunID)
 			switch {
 			case ar.Status == "failed" || ar.Status == "interrupted":
-				d.Outcome = "重试后仍失败 · 可继续制作"
+				d.Outcome = s.msg("monitor.llm.outcome.stillFailed")
 			case ar.Status == "analyzing":
-				d.Outcome = "正在重试"
+				d.Outcome = s.msg("monitor.llm.outcome.retrying")
 			case d.Recovered:
-				d.Outcome = "已自动重试 · 制作完成"
+				d.Outcome = s.msg("monitor.llm.outcome.recoveredDone")
 			default:
-				d.Outcome = "已自动重试"
+				d.Outcome = s.msg("monitor.llm.outcome.recovered")
 				d.Recovered = true
 			}
 		}
@@ -488,25 +497,25 @@ func (s *Service) ExportLLMCalls(q MonitorQuery, path string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	rows := [][]string{{"时间", "类型", "需求", "阶段", "AI 模型", "模型", "结果", "HTTP 状态", "首次响应秒数", "总秒数", "输入 tokens", "输出 tokens", "供应商请求 ID", "错误"}}
+	rows := [][]string{csvHeader(s, "monitor.csv.time", "monitor.csv.kind", "monitor.csv.request", "monitor.csv.stage", "monitor.csv.llm", "monitor.csv.model", "monitor.csv.result", "monitor.csv.httpStatus", "monitor.csv.firstByteSeconds", "monitor.csv.totalSeconds", "monitor.csv.inputTokens", "monitor.csv.outputTokens", "monitor.csv.providerRequestID", "monitor.csv.error")}
 	for _, c := range calls {
 		if q.Result != "" && c.Status != q.Result {
 			continue
 		}
-		kind := "创作分析"
+		kind := s.msg("monitor.llm.kind.creation")
 		switch c.Kind {
 		case "test":
-			kind = "能力验证"
+			kind = s.msg("monitor.llm.kind.test")
 		case "rewrite":
-			kind = "改写提示词"
+			kind = s.msg("monitor.llm.kind.rewrite")
 		case "check":
-			kind = "核对样板"
+			kind = s.msg("monitor.llm.kind.check")
 		}
 		status := ""
 		if c.HTTPStatus != 0 {
 			status = fmt.Sprint(c.HTTPStatus)
 		}
-		rows = append(rows, []string{localTime(c.At), kind, names[c.RunID], c.Stage, c.ConnectionName, c.Model, resultLabels[c.Status], status, msText(c.FirstByteMS), msText(c.TotalMS), fmt.Sprint(c.InputTokens), fmt.Sprint(c.OutputTokens), c.RequestID, c.Error})
+		rows = append(rows, []string{localTime(c.At), kind, names[c.RunID], c.Stage, c.ConnectionName, c.Model, s.resultLabel(c.Status), status, msText(c.FirstByteMS), msText(c.TotalMS), fmt.Sprint(c.InputTokens), fmt.Sprint(c.OutputTokens), c.RequestID, c.Error})
 	}
 	return writeCSV(path, rows)
 }

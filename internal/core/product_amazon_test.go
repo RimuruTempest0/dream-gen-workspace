@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/json"
 	"net/url"
 	"strings"
@@ -35,7 +36,7 @@ P.when('A').register("ImageBlockATF", function(A){
 </body></html>`
 
 func TestAmazonListingUsesGalleryAndDetailSections(t *testing.T) {
-	info, images, e := parseProductPage([]byte(amazonFixture), "https://www.amazon.com/gp/aw/d/B000TEST?th=1")
+	info, images, e := parseProductPage([]byte(amazonFixture), "https://www.amazon.com/gp/aw/d/B000TEST?th=1", i18n.ZhCN)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -67,7 +68,7 @@ func TestAmazonListingUsesGalleryAndDetailSections(t *testing.T) {
 
 func TestAmazonWithoutGalleryFallsBackToMainImage(t *testing.T) {
 	page := strings.Replace(amazonFixture, "'colorImages'", "'otherImages'", 1)
-	_, images, e := parseProductPage([]byte(page), "https://www.amazon.de/dp/B000TEST")
+	_, images, e := parseProductPage([]byte(page), "https://www.amazon.de/dp/B000TEST", i18n.ZhCN)
 	if e != nil {
 		t.Fatal(e)
 	}

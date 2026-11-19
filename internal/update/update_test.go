@@ -4,12 +4,15 @@ import (
 	"archive/zip"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 func manifest() Manifest {
@@ -55,7 +58,7 @@ func TestVersionRules(t *testing.T) {
 	if ok, _ := m.Applies("0.7.13"); ok {
 		t.Fatal("same version offered")
 	}
-	if ok, why := m.Applies("0.7.9"); ok || !strings.Contains(why, "0.7.10") {
+	if ok, why := m.Applies("0.7.9"); ok || why == nil || !strings.Contains(why.Error(), "0.7.10") {
 		t.Fatal("below min version offered", why)
 	}
 	if ok, _ := m.Applies("0.7.12"); !ok {
@@ -64,7 +67,7 @@ func TestVersionRules(t *testing.T) {
 }
 
 func TestAllowedEntries(t *testing.T) {
-	for _, ok := range []string{"ImageWorkbench.exe", "product-browser.exe", "使用说明.txt", "version.json", "runtime/msedgewebview2.exe", "agent/claude-code/claude.exe"} {
+	for _, ok := range []string{"ImageWorkbench.exe", "product-browser.exe", "使用说明.txt", "User Guide.txt", "Hướng dẫn sử dụng.txt", "使い方ガイド.txt", "사용 설명서.txt", "version.json", "runtime/msedgewebview2.exe", "agent/claude-code/claude.exe"} {
 		if !AllowedEntry(ok) {
 			t.Fatal("refused", ok)
 		}
@@ -242,5 +245,128 @@ func TestProductLinesDoNotAcceptEachOther(t *testing.T) {
 	m.Line = "Creative Line"
 	if _, e := Sign(m, priv); e == nil {
 		t.Fatal("malformed line name signed")
+	}
+}
+
+// Every 《使用说明》 the package ships exists in docs/, matches the Chinese one
+// line for line, and the non-Chinese ones name the software Image Workbench.
+func TestManualsExistInEveryLanguage(t *testing.T) {
+	lines := func(name string) []string {
+		b, e := os.ReadFile(filepath.Join("..", "..", "docs", name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		return strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+	}
+	zh := lines(Manuals[0])
+	for _, name := range Manuals[1:] {
+		got := lines(name)
+		if len(got) != len(zh) {
+			t.Errorf("%s has %d lines, the Chinese manual %d", name, len(got), len(zh))
+		}
+		for i := range min(len(got), len(zh)) {
+			if (got[i] == "") != (zh[i] == "") {
+				t.Errorf("%s line %d: paragraph breaks differ from the Chinese manual", name, i+1)
+			}
+		}
+		text := strings.Join(got, "\n")
+		if !strings.HasPrefix(text, "Image Workbench") || strings.Contains(text, "生图工作台") {
+			t.Errorf("%s must name the software Image Workbench", name)
+		}
+	}
+}
+
+// Each manual line that uses a fixed term in Chinese uses the glossary's
+// translation on the same line of the other manuals, so the guides call
+// things what the interface calls them.
+func TestManualsUseTheGlossary(t *testing.T) {
+	read := func(name string) []string {
+		b, e := os.ReadFile(filepath.Join("..", "..", "docs", name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		return strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+	}
+	zh := read(Manuals[0])
+	for i, lang := range []string{"en", "vi", "ja", "ko"} {
+		name := Manuals[i+1]
+		lines := read(name)
+		for n, line := range zh {
+			if n >= len(lines) {
+				break
+			}
+			for _, term := range i18n.Glossary() {
+				if strings.Contains(line, term["zh-CN"]) && !strings.Contains(strings.ToLower(lines[n]), strings.ToLower(term[lang])) {
+					t.Errorf("%s line %d: %s must be %q", name, n+1, term["zh-CN"], term[lang])
+				}
+			}
+		}
+	}
+}
+
+// Chinese interface: the Chinese notes. English, Vietnamese, Japanese and
+// Korean: the English notes, or the Chinese ones when there are none.
+func TestNotesFollowTheInterfaceLanguage(t *testing.T) {
+	m := manifest()
+	m.NotesEn = "Fixes"
+	if n, l := m.NotesFor("zh-CN"); n != "修复" || l != "zh-CN" {
+		t.Fatal("zh-CN", n, l)
+	}
+	for _, lang := range []string{"en", "vi", "ja", "ko"} {
+		if n, l := m.NotesFor(lang); n != "Fixes" || l != "en" {
+			t.Fatal(lang, n, l)
+		}
+	}
+	m.NotesEn = "  "
+	for _, lang := range []string{"zh-CN", "en", "vi", "ja", "ko"} {
+		if n, l := m.NotesFor(lang); n != "修复" || l != "zh-CN" {
+			t.Fatal("fallback", lang, n, l)
+		}
+	}
+}
+
+// A manifest signed before 0.8.0 (no English notes) is still read, and an app
+// before 0.8.0 reading a new manifest finds its Chinese notes where it always did.
+func TestManifestNotesStayCompatible(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	keys := []string{base64.StdEncoding.EncodeToString(pub)}
+
+	// Old format: a payload exactly as 0.7.x manifests carry it.
+	payload := []byte(`{"format":1,"version":"0.7.13","minVersion":"0.7.10","publishedAt":"2026-01-01T00:00:00Z","notes":"修复","url":"https://example.test/u.zip","sha256":"` + strings.Repeat("a", 64) + `","size":10}`)
+	old, _ := json.Marshal(signedFile{Format: 1, Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))})
+	m, e := Verify(old, keys, "")
+	if e != nil || m.NotesEn != "" {
+		t.Fatal(m, e)
+	}
+	if n, _ := m.NotesFor("en"); n != "修复" {
+		t.Fatal("old manifest in English", n)
+	}
+
+	// New format, read as an app before 0.8.0 does: its manifest type has no
+	// English field, and the signature covers the payload bytes as they are.
+	nm := manifest()
+	nm.NotesEn = "Fixes"
+	data, e := Sign(nm, priv)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var f signedFile
+	json.Unmarshal(data, &f)
+	raw, _ := base64.StdEncoding.DecodeString(f.Payload)
+	sig, _ := base64.StdEncoding.DecodeString(f.Signature)
+	if !ed25519.Verify(pub, raw, sig) {
+		t.Fatal("signature")
+	}
+	var before struct {
+		Format  int    `json:"format"`
+		Version string `json:"version"`
+		Notes   string `json:"notes"`
+		URL     string `json:"url"`
+	}
+	if e := json.Unmarshal(raw, &before); e != nil || before.Notes != "修复" || before.Version != "0.7.13" || before.Format != 1 {
+		t.Fatal("old app reads", before, e)
+	}
+	if !strings.Contains(string(raw), `"notesEn":"Fixes"`) {
+		t.Fatal("English notes not in the payload", string(raw))
 	}
 }

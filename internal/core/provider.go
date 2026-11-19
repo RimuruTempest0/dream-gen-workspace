@@ -18,6 +18,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 type Provider struct{ Client *http.Client }
@@ -26,19 +28,20 @@ func NewProvider() *Provider {
 	transport := newNetworkTransport()
 	return &Provider{&http.Client{Transport: transport, Timeout: 10 * time.Minute, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}}
 }
-func NormalizeURL(raw string) (string, error) {
+func NormalizeURL(raw, lang string) (string, error) {
 	u, e := url.Parse(strings.TrimSpace(raw))
 	if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return "", errors.New("请输入完整的 HTTP/HTTPS API 地址，例如 https://example.com/v1")
+		return "", errors.New(i18n.T(lang, "connection.url.invalid"))
 	}
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return "", errors.New("地址不能包含用户名、密码、查询参数或片段")
+		return "", errors.New(i18n.T(lang, "connection.url.extras"))
 	}
 	return strings.TrimRight(u.String(), "/"), nil
 }
-func redact(text, key string) string {
+// redactIn hides key in text with the hidden marker in lang and caps the length.
+func redactIn(lang, text, key string) string {
 	if key != "" {
-		text = strings.ReplaceAll(text, key, "[已隐藏]")
+		text = strings.ReplaceAll(text, key, i18n.T(lang, "log.hidden"))
 	}
 	if len(text) > 600 {
 		text = text[:600]
@@ -54,28 +57,28 @@ func (p *Provider) Models(ctx context.Context, c Connection, key string) ([]stri
 	resp, e := p.Client.Do(req)
 	if e != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, errors.New("模型查询超时（30 秒），请检查网络、代理和 API 前缀")
+			return nil, failCtx(ctx, "connection.models.timeout")
 		}
 		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, errors.New("连接测试已取消")
+			return nil, failCtx(ctx, "connection.test.canceled")
 		}
-		return nil, fmt.Errorf("连接失败：%s。请检查地址、网络或证书", redact(e.Error(), key))
+		return nil, failCtx(ctx, "connection.models.failed", "error", redactCtx(ctx, e.Error(), key))
 	}
 	defer resp.Body.Close()
 	reader := &responseReader{Reader: io.LimitReader(resp.Body, (4<<20)+1)}
 	var b json.RawMessage
 	e = json.NewDecoder(reader).Decode(&b)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(b, key))
+		return nil, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(b, key, i18n.FromContext(ctx)))
 	}
 	if e != nil || reader.received > 4<<20 {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, errors.New("模型查询超时（30 秒），尚未收到完整响应")
+			return nil, failCtx(ctx, "connection.models.timeoutPartial")
 		}
 		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, errors.New("连接测试已取消")
+			return nil, failCtx(ctx, "connection.test.canceled")
 		}
-		return nil, errors.New("模型列表不是完整的兼容 JSON 响应，可检查 API 前缀或手动填写模型 ID")
+		return nil, failCtx(ctx, "connection.models.incomplete")
 	}
 	var result struct {
 		Data []struct {
@@ -83,7 +86,7 @@ func (p *Provider) Models(ctx context.Context, c Connection, key string) ([]stri
 		} `json:"data"`
 	}
 	if e = json.Unmarshal(b, &result); e != nil {
-		return nil, errors.New("模型列表不是兼容的 JSON 响应，可手动填写模型 ID")
+		return nil, failCtx(ctx, "connection.models.notJSON")
 	}
 	ids := []string{}
 	for _, m := range result.Data {
@@ -101,7 +104,7 @@ func referenceImageType(data []byte) string {
 	}
 	return "application/octet-stream"
 }
-func apiMessage(b []byte, key string) string {
+func apiMessage(b []byte, key, lang string) string {
 	var r struct {
 		Error struct {
 			Message string `json:"message"`
@@ -110,13 +113,13 @@ func apiMessage(b []byte, key string) string {
 	}
 	if json.Unmarshal(b, &r) == nil {
 		if r.Error.Message != "" {
-			return redact(r.Error.Message, key)
+			return redactIn(lang, r.Error.Message, key)
 		}
 		if r.Message != "" {
-			return redact(r.Message, key)
+			return redactIn(lang, r.Message, key)
 		}
 	}
-	return "服务拒绝请求，请检查连接和模型配置"
+	return i18n.T(lang, "connection.refused")
 }
 func (p *Provider) Generate(ctx context.Context, t Task, key string, refs []Asset, root string) ([]Output, bool, error) {
 	return p.GenerateWithProgress(ctx, t, key, refs, root, nil)
@@ -188,18 +191,18 @@ func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asse
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }}))
 	resp, e := p.Client.Do(req)
 	if e != nil {
-		detail := redact(e.Error(), key)
+		detail := redactCtx(ctx, e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
 		if !connected.Load() {
-			return nil, false, fmt.Errorf("没有连上图片服务，请求没有发出、未计费（%s）。多半是本机网络或代理暂时中断，稍后重新生成即可", detail)
+			return nil, false, failCtx(ctx, "generation.notConnected", "error", detail)
 		}
-		return nil, true, fmt.Errorf("%s（%s）。请先核对平台记录，避免重复扣费", networkProblem(e, "提交后未收到确定结果"), detail)
+		return nil, true, failCtx(ctx, "generation.sentNoResult", "problem", networkProblem(ctx, e, "generation.noResultAfterSubmit"), "error", detail)
 	}
 	defer resp.Body.Close()
 	report(func(d *GenerationDiagnostic) {
 		d.HTTPStatus = resp.StatusCode
-		d.ContentType = redact(resp.Header.Get("Content-Type"), key)
-		d.UpstreamRequestID = redact(resp.Header.Get("X-Request-Id"), key)
+		d.ContentType = redactCtx(ctx, resp.Header.Get("Content-Type"), key)
+		d.UpstreamRequestID = redactCtx(ctx, resp.Header.Get("X-Request-Id"), key)
 		d.ContentLength = resp.ContentLength
 		d.TransferEncoding = strings.Join(resp.TransferEncoding, ", ")
 		d.HTTPProtocol = resp.Proto
@@ -211,25 +214,25 @@ func (p *Provider) generate(ctx context.Context, t Task, key string, refs []Asse
 	e = json.NewDecoder(reader).Decode(&b)
 	report(func(d *GenerationDiagnostic) { d.BytesReceived = reader.received })
 	if reader.received > 96<<20 {
-		return nil, true, errors.New("图片响应超过 96 MiB 限制，请核对平台记录")
+		return nil, true, failCtx(ctx, "generation.responseTooLarge")
 	}
 	if e != nil {
-		detail := redact(e.Error(), key)
+		detail := redactCtx(ctx, e.Error(), key)
 		report(func(d *GenerationDiagnostic) { d.NetworkError = detail })
-		return nil, true, fmt.Errorf("%s（HTTP %d，已接收 %d 字节，%s），结果未知，请核对平台记录", networkProblem(e, "未收到完整 JSON 图片响应"), resp.StatusCode, reader.received, detail)
+		return nil, true, failCtx(ctx, "generation.partialResponse", "problem", networkProblem(ctx, e, "generation.incompleteJSON"), "status", resp.StatusCode, "bytes", reader.received, "error", detail)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, resp.StatusCode >= 500 || resp.StatusCode == 408, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(b, key))
+		return nil, resp.StatusCode >= 500 || resp.StatusCode == 408, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(b, key, i18n.FromContext(ctx)))
 	}
 	var r struct {
 		Data []Output `json:"data"`
 	}
 	if json.Unmarshal(b, &r) != nil || len(r.Data) == 0 {
-		return nil, true, errors.New("服务已响应，但没有兼容的图片结果；请核对平台记录")
+		return nil, true, failCtx(ctx, "generation.noImageInReply")
 	}
 	for _, o := range r.Data {
 		if o.URL == "" && o.Base64 == "" {
-			return nil, true, errors.New("图片结果格式不受支持，请核对平台记录")
+			return nil, true, failCtx(ctx, "generation.unsupportedResult")
 		}
 	}
 	return r.Data, false, nil
@@ -251,15 +254,17 @@ func (r *responseReader) Read(b []byte) (int, error) {
 	}
 	return n, e
 }
-func networkProblem(e error, fallback string) string {
+// networkProblem names what went wrong with a request, in the language of ctx;
+// fallback is the message key used when it was neither a timeout nor an abort.
+func networkProblem(ctx context.Context, e error, fallback string) string {
 	var n net.Error
 	if errors.Is(e, context.DeadlineExceeded) || (errors.As(e, &n) && n.Timeout()) {
-		return "等待图片服务响应超时"
+		return msgCtx(ctx, "generation.waitTimeout")
 	}
 	if errors.Is(e, context.Canceled) {
-		return "请求被本地中止"
+		return msgCtx(ctx, "generation.abortedLocally")
 	}
-	return fallback
+	return msgCtx(ctx, fallback)
 }
 func validOutputs(outputs []Output) bool {
 	if len(outputs) == 0 {
@@ -352,3 +357,11 @@ func buildImageRequest(ctx context.Context, t Task, key string, refs []Asset, ro
 	req.Header.Set("X-Client-Request-Id", t.ID)
 	return req, nil
 }
+
+// redactCtx is redactIn in the language carried by ctx.
+func redactCtx(ctx context.Context, text, key string) string {
+	return redactIn(i18n.FromContext(ctx), text, key)
+}
+
+// redact is redactIn in the current interface language.
+func (s *Service) redact(text, key string) string { return redactIn(s.Language(), text, key) }

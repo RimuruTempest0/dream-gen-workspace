@@ -3,8 +3,8 @@
 package main
 
 import (
-	"fmt"
 	"golang.org/x/sys/windows"
+	"imageworkbench/internal/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +16,7 @@ import (
 func fatal(message string) {
 	user := syscall.NewLazyDLL("user32.dll")
 	body, _ := syscall.UTF16PtrFromString(message)
-	title, _ := syscall.UTF16PtrFromString("生图工作台")
+	title, _ := syscall.UTF16PtrFromString(i18n.AppName(bootLang))
 	user.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), 0x10)
 	runtime.KeepAlive(body)
 }
@@ -32,7 +32,7 @@ func prepareRuntime(path string) error {
 		cmd := exec.Command("icacls.exe", path, "/grant", sid)
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		if e := cmd.Run(); e != nil {
-			return fmt.Errorf("无法设置 runtime 目录读取权限：%w", e)
+			return i18n.Fail("app.boot.icacls", "error", e)
 		}
 	}
 	return nil
@@ -42,9 +42,17 @@ func claimInstance() (func(), bool, error) {
 	handle, e := windows.CreateMutex(nil, false, name)
 	if e == windows.ERROR_ALREADY_EXISTS {
 		windows.CloseHandle(handle)
-		title, _ := windows.UTF16PtrFromString("生图工作台")
 		u := syscall.NewLazyDLL("user32.dll")
-		hwnd, _, _ := u.NewProc("FindWindowW").Call(0, uintptr(unsafe.Pointer(title)))
+		// The window is titled in the interface language: 生图工作台 or Image Workbench.
+		var hwnd uintptr
+		for _, name := range []string{i18n.AppName(i18n.ZhCN), i18n.AppName(i18n.En)} {
+			title, _ := windows.UTF16PtrFromString(name)
+			hwnd, _, _ = u.NewProc("FindWindowW").Call(0, uintptr(unsafe.Pointer(title)))
+			runtime.KeepAlive(title)
+			if hwnd != 0 {
+				break
+			}
+		}
 		if hwnd != 0 {
 			u.NewProc("ShowWindow").Call(hwnd, 9)
 			u.NewProc("SetForegroundWindow").Call(hwnd)
@@ -66,7 +74,7 @@ func openDirectory(path string) error {
 		return e
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("数据位置不是目录")
+		return i18n.Fail("app.openData.notDirectory")
 	}
 	verb, _ := windows.UTF16PtrFromString("open")
 	target, e := windows.UTF16PtrFromString(path)
@@ -74,7 +82,7 @@ func openDirectory(path string) error {
 		return e
 	}
 	if e = windows.ShellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL); e != nil {
-		return fmt.Errorf("无法打开数据目录：%w", e)
+		return i18n.Fail("app.openData.failed", "error", e)
 	}
 	return nil
 }

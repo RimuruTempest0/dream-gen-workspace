@@ -15,7 +15,7 @@ import (
 func (a *Admin) SaveUpstream(u Upstream) (Upstream, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	base, e := core.NormalizeURL(u.BaseURL)
+	base, e := core.NormalizeURL(u.BaseURL, "zh-CN")
 	if e != nil {
 		return u, e
 	}

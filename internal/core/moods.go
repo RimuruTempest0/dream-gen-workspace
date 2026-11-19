@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"imageworkbench/internal/i18n"
 )
 
 // MoodOption is one choice of a guide step. Phrase builds the confirmation
@@ -41,6 +43,9 @@ type MoodLibrary struct {
 	Expectation []MoodOption `json:"expectation"`
 	Renderings  []MoodOption `json:"renderings"`
 	Nudges      []MoodOption `json:"nudges"`
+	// Sentence is the confirmation screen's template with {time} {weather}
+	// {distance} {expectation}, filled with the options' phrases.
+	Sentence string `json:"sentence"`
 }
 
 // MoodChoice is the mood the user picked (option IDs).
@@ -180,16 +185,10 @@ var moodNudges = []MoodOption{
 	{ID: "farther", Name: "更远", Short: "更远", Rules: "镜头往后退一步：主体在画面里更小，露出更多周围的环境和天空。"},
 }
 
-// ListMoods returns the built-in mood library (compiled in, not stored).
+// ListMoods returns the built-in mood library (compiled in, not stored) in the
+// current interface language.
 func (s *Service) ListMoods() MoodLibrary {
-	return MoodLibrary{
-		Weather:     append([]MoodOption{}, moodWeather...),
-		Time:        append([]MoodOption{}, moodTime...),
-		Distance:    append([]MoodOption{}, moodDistance...),
-		Expectation: append([]MoodOption{}, moodExpectation...),
-		Renderings:  append([]MoodOption{}, moodRenderings...),
-		Nudges:      append([]MoodOption{}, moodNudges...),
-	}
+	return moodLibraryIn(s.Language())
 }
 
 func findMood(list []MoodOption, id string) (MoodOption, bool) {
@@ -213,7 +212,7 @@ func resolveMood(m MoodChoice) (moodParts, error) {
 	p.expectation, ok[3] = findMood(moodExpectation, m.Expectation)
 	for _, v := range ok {
 		if !v {
-			return p, errors.New("心境选项无效，请重新选择心境")
+			return p, i18n.Fail("mood.invalid")
 		}
 	}
 	return p, nil
@@ -231,26 +230,19 @@ func resolveConceptChoice(c *ConceptChoice) (*conceptParts, error) {
 	form, ok1 := findConcept(conceptForms, c.Form)
 	stance, ok2 := findConcept(conceptStances, c.Stance)
 	if !ok1 || !ok2 {
-		return nil, errors.New("所选概念不存在，请重新选择")
+		return nil, i18n.Fail("concept.missing")
 	}
 	if c.Strength < 0 || c.Strength >= len(conceptStrengths) {
-		return nil, errors.New("概念强度无效")
+		return nil, i18n.Fail("concept.strength")
 	}
 	return &conceptParts{form, stance, c.Strength}, nil
 }
 
 // moodLabel is the short label shown on results: "细雨 · 深夜 · 很远 · 缓一缓".
-func moodLabel(m MoodChoice) string {
-	p, e := resolveMood(m)
-	if e != nil {
-		return ""
-	}
-	return strings.Join([]string{p.weather.Short, p.time.Short, p.distance.Short, p.expectation.Short}, " · ")
-}
+func moodLabel(m MoodChoice) string { return moodLabelIn(m, "zh-CN") }
 
 const (
 	rewordMood = "mood"
-	moodStage  = "按心境改写提示词"
 )
 
 const moodInstruction = `你要为一张图写一条生图提示词。用户挑了天气、时刻、远近和期待，它们决定画面的气氛；画什么由用户的提示词决定。下面的规则写的都是看得见的画面决定。
@@ -311,7 +303,12 @@ func moodRequest(base string, m moodParts, concept *conceptParts, rendering stri
 }
 
 // moodFallback appends the mood points when no AI 模型 can rewrite the prompt.
-func moodFallback(base string, m moodParts, concept *conceptParts, rendering string) string {
+// They are part of the 生图提示词, so they follow the prompt language of the
+// task: the hints in Chinese, otherwise the options' English phrases.
+func moodFallback(base string, m moodParts, concept *conceptParts, rendering, lang string) string {
+	if !zhPrompt(lang) {
+		return enMoodFallback(base, m, concept, rendering)
+	}
 	points := []string{m.weather.Hint, m.time.Hint, m.distance.Hint, m.expectation.Hint}
 	if r, ok := findMood(moodRenderings, rendering); ok {
 		points = append(points, r.Hint)
@@ -322,7 +319,7 @@ func moodFallback(base string, m moodParts, concept *conceptParts, rendering str
 		text = "一处与下面气氛相符的风景，不要商品，不要文字。\n" + text
 	}
 	if concept != nil {
-		text = conceptFallback(text, concept.form, concept.stance, true)
+		text = conceptFallback(text, concept.form, concept.stance, true, lang)
 	}
 	if base == "" {
 		return text
@@ -332,7 +329,7 @@ func moodFallback(base string, m moodParts, concept *conceptParts, rendering str
 
 // moodCheck guards a mood rewrite like a concept rewrite: every quoted in-image
 // text of the user's prompt survives, and the result is not overly long.
-func moodCheck(base string) func(string) error {
+func (s *Service) moodCheck(base string) func(string) error {
 	quoted := []string{}
 	for _, q := range quotedText.FindAllStringSubmatch(base, -1) {
 		quoted = append(quoted, q[1]+q[2])
@@ -340,11 +337,11 @@ func moodCheck(base string) func(string) error {
 	return func(text string) error {
 		for _, want := range quoted {
 			if !strings.Contains(text, want) {
-				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)
+				return s.fail("agent.rewrite.lostText", "text", want)
 			}
 		}
 		if len(text) > conceptPromptLimit || utf8.RuneCountInString(text) > 6000 {
-			return errors.New("改写结果过长")
+			return s.fail("concept.rewrite.tooLong")
 		}
 		return nil
 	}
@@ -353,17 +350,17 @@ func moodCheck(base string) func(string) error {
 // moodRewrite writes a held mood task's prompt with the AI 模型.
 func (s *Service) moodRewrite(ctx context.Context, c Connection, key string, t Task) (string, error) {
 	if t.MoodChoice == nil {
-		return "", errors.New("任务没有心境")
+		return "", s.fail("mood.noMood")
 	}
 	m, e := resolveMood(*t.MoodChoice)
 	if e != nil {
-		return "", e
+		return "", s.localErr(e)
 	}
 	concept, e := resolveConceptChoice(t.ConceptChoice)
 	if e != nil {
-		return "", e
+		return "", s.localErr(e)
 	}
-	return s.llmRewrite(ctx, c, key, moodRequest(t.BasePrompt, m, concept, t.Rendering, len(t.References) > 0), moodStage, moodCheck(t.BasePrompt))
+	return s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, moodRequest(t.BasePrompt, m, concept, t.Rendering, len(t.References) > 0)), s.msg("mood.llmStage"), s.moodCheck(t.BasePrompt))
 }
 
 // moodLLMLocked picks the AI 模型 line for a mood rewrite with the concept
@@ -381,15 +378,21 @@ func (s *Service) moodLLMLocked(t Task) (Connection, string, bool) {
 // appended.
 func (s *Service) prepareMoodTask(t *Task, m moodParts, concept *conceptParts, llm bool) {
 	t.BasePrompt = t.Prompt
-	t.Mood = moodLabel(*t.MoodChoice)
+	// Stored labels keep the language they were written in (ADR 0004): the
+	// language the task was started in.
+	lang := operationLanguage(t.Language)
+	if t.Language == "" {
+		lang = s.Language()
+	}
+	t.Mood = moodLabelIn(*t.MoodChoice, lang)
 	if concept != nil {
-		t.Concept = concept.form.Name + " × " + concept.stance.Name
+		t.Concept = conceptLabelIn(concept.form, concept.stance, lang)
 	}
 	if llm {
 		t.Rewording, t.RewordFor = true, rewordMood
 		return
 	}
-	t.Prompt = moodFallback(t.Prompt, m, concept, t.Rendering)
+	t.Prompt = moodFallback(t.Prompt, m, concept, t.Rendering, lang)
 }
 
 // ---- guide mode ----------------------------------------------------------------
@@ -427,12 +430,45 @@ const nudgePromptMarker = "\n\n原图提示词（只用于保持没有要求修�
 // nudgePrompt changes one thing of the image and keeps the rest. It is a fixed
 // template, so no AI 模型 is involved.
 func nudgePrompt(base, rule string) string {
-	if _, rest, ok := strings.Cut(base, nudgePromptMarker); ok {
-		base = rest
+	for _, marker := range []string{nudgePromptMarker, nudgePromptMarkerEn} {
+		if _, rest, ok := strings.Cut(base, marker); ok {
+			base = rest
+		}
 	}
 	return "以提供的第 1 张图片为底图修改，只改这一点：" + rule +
 		"\n除这一点直接带来的变化外，其余保持一致：主体、构图、天气、时刻、颜色倾向、画法和画面里的文字都与底图相同。" +
 		nudgePromptMarker + base
+}
+
+// ---- 再靠近一点 in an English 生图提示词 (0.8.0) ----------------------------------
+
+const nudgePromptMarkerEn = "\n\nOriginal image prompt (only for keeping what is not asked to change; do not recompose):\n"
+
+// nudgeRulesEn are the nudge rules for a non-Chinese interface, whose 生图提示词
+// are English.
+var nudgeRulesEn = map[string]string{
+	"quieter":  "Make the image quieter: less motion (weaker wind, rain and waves), fewer objects and details, slightly lower contrast and saturation.",
+	"stronger": "Make the image more powerful: stronger contrast between light and dark and more motion, more concentrated light, more tension in the composition.",
+	"brighter": "Brighten the whole image by one step: higher exposure, brighter shadows; keep the weather and the time of day.",
+	"darker":   "Darken the whole image by one step: lower exposure, deeper shadows, more concentrated highlights; keep the weather and the time of day.",
+	"closer":   "Move the camera one step closer: the subject is larger in the frame, less of the surroundings, a softer background.",
+	"farther":  "Move the camera one step back: the subject is smaller in the frame, showing more of the surroundings and the sky.",
+}
+
+// nudgePromptIn is nudgePrompt in the 生图提示词 language of lang.
+func nudgePromptIn(lang, base string, nudge MoodOption) string {
+	rule, ok := nudgeRulesEn[nudge.ID]
+	if promptLanguage(lang) == i18n.ZhCN || !ok {
+		return nudgePrompt(base, nudge.Rules)
+	}
+	for _, marker := range []string{nudgePromptMarker, nudgePromptMarkerEn} {
+		if _, rest, ok := strings.Cut(base, marker); ok {
+			base = rest
+		}
+	}
+	return "Edit the first image provided, changing only this: " + rule +
+		"\nApart from what this change directly causes, keep everything the same as the base image: subject, composition, weather, time of day, colour tendency, rendering and any text in the image." +
+		nudgePromptMarkerEn + base
 }
 
 // NudgeMoodImage queues one image that moves a finished mood image one step in a
@@ -442,11 +478,11 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if in.RequestID == "" || len(in.RequestID) > 128 {
-		return "", errors.New("请求标识无效")
+		return "", s.fail("agent.requestInvalid")
 	}
 	nudge, ok := findMood(moodNudges, in.Direction)
 	if !ok {
-		return "", errors.New("请选择一个方向")
+		return "", s.fail("mood.nudge.direction")
 	}
 	var submitted string
 	if s.store.db.QueryRow(`SELECT batch FROM submissions WHERE id=?`, in.RequestID).Scan(&submitted) == nil {
@@ -454,39 +490,40 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	}
 	var source Task
 	if e := s.store.Get("task", in.TaskID, &source); e != nil {
-		return "", errors.New("找不到这张图片的任务")
+		return "", s.fail("agent.image.noTask")
 	}
 	if source.MoodChoice == nil || source.AgentRunID != "" {
-		return "", errors.New("只有按心境生成的图可以再靠近一点")
+		return "", s.fail("mood.nudge.notMood")
 	}
 	if source.Status != "succeeded" {
-		return "", errors.New("只能对已完成的图片再靠近一点")
+		return "", s.fail("mood.nudge.notDone")
 	}
 	owned := false
 	for _, id := range source.AssetIDs {
 		owned = owned || id == in.AssetID
 	}
 	if !owned {
-		return "", errors.New("图片不属于这个任务")
+		return "", s.fail("agent.image.otherTask")
 	}
 	var asset Asset
 	if e := s.store.Get("asset", in.AssetID, &asset); e != nil || asset.TaskID != source.ID {
-		return "", errors.New("原图不可用，请刷新后重试")
+		return "", s.fail("agent.image.unavailable")
 	}
 	var c Connection
 	if e := s.store.Get("connection", source.Connection.ID, &c); e != nil {
-		return "", errors.New("原图片服务已删除，请重新配置后再试")
+		return "", s.fail("mood.nudge.connectionGone")
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务")
+		return "", s.fail("agent.chooseImage")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
 	}
 	t := freshAttempt(source, c)
 	t.References = []string{in.AssetID}
-	t.Prompt = nudgePrompt(source.Prompt, nudge.Rules)
-	t.NudgeOf, t.Nudge = source.ID, nudge.Name
+	t.Language = s.Language() // a new request: the language chosen now
+	t.Prompt = nudgePromptIn(t.Language, source.Prompt, nudge)
+	t.NudgeOf, t.Nudge = source.ID, moodIn(nudge, t.Language).Name
 	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
 		return "", e
 	}
@@ -495,7 +532,7 @@ func (s *Service) NudgeMoodImage(in NudgeInput) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	_ = s.store.appendLog("info", "image", source.BatchID, "已提交“再靠近一点”："+nudge.Name+"（基于已完成图片，原图保留）")
+	_ = s.store.appendLog("info", "image", source.BatchID, s.msg("mood.log.nudged", "name", moodIn(nudge, s.Language()).Name))
 	s.signal()
 	return batch, nil
 }
@@ -525,26 +562,27 @@ func freshAttempt(t Task, c Connection) Task {
 func (s *Service) retryMoodLocked(source Task) (string, error) {
 	var c Connection
 	if e := s.store.Get("connection", source.Connection.ID, &c); e != nil {
-		return "", missing(e, "这张图片使用的图片服务已删除")
+		return "", missing(e, s.msg("mood.retry.connectionGone"))
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务")
+		return "", s.fail("agent.chooseImage")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
 	}
 	t := freshAttempt(source, c)
 	t.BatchID = NewID()
+	t.Language = s.Language() // a new request: the language chosen now
 	if source.NudgeOf != "" {
 		t.NudgeOf, t.Nudge = source.NudgeOf, source.Nudge
 	} else {
 		m, e := resolveMood(*source.MoodChoice)
 		if e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		concept, e := resolveConceptChoice(source.ConceptChoice)
 		if e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		if msg := s.licenseBlockMessageLocked(); msg != "" {
 			return "", errors.New(msg)

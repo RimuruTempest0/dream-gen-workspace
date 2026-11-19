@@ -244,7 +244,7 @@ test.beforeAll(async () => {
       }
       if (
         typeof first === "string" &&
-        first.startsWith("图片模型的内容安全审核拒绝了")
+        first.includes("图片模型的内容安全审核拒绝了")
       ) {
         rewriteRequests++;
         res.setHeader("content-type", "application/json");
@@ -263,7 +263,7 @@ test.beforeAll(async () => {
       }
       if (
         typeof first === "string" &&
-        first.startsWith("下面是一张电商图片原来的制作要求")
+        first.includes("下面是一张电商图片原来的制作要求")
       ) {
         refineRewrites++;
         res.setHeader("content-type", "application/json");
@@ -278,7 +278,7 @@ test.beforeAll(async () => {
       if (
         Array.isArray(first) &&
         first[0]?.type === "text" &&
-        first[0].text.startsWith("你是刺绣商品图的质检员")
+        first[0].text.includes("你是刺绣商品图的质检员")
       ) {
         sampleChecks++;
         res.setHeader("content-type", "application/json");
@@ -1546,4 +1546,186 @@ test("LLM monitor shows requests, tokens, the retried drop and capability tests"
   });
   await cdp.send("Emulation.clearDeviceMetricsOverride");
   await cdp.detach();
+});
+
+// Text on the 创作 page that is not interface text: what the user typed, what the
+// AI wrote (ADR 0004: stored text keeps its language). Everything else,
+// backend-written text included, must be in the display language.
+const foreignText = [
+  ".agent-history-row strong", // the user's instruction
+  ".agent-judgment-question", // AI-written questions, answers and reasons
+  ".agent-judgment-answer",
+  ".agent-judgments li > small",
+].join(", ");
+// Sample areas the mock AI named (胸前, 袖口) appear inside interface sentences,
+// and the image connection the user named "Agent QA 生图" in the picker.
+const aiWords = ["胸前", "袖口", "Agent QA 生图"];
+async function chineseLeft() {
+  return page.evaluate(
+    ({ skip, words }) => {
+      const han = /\p{Script=Han}/u;
+      const strip = (s: string) =>
+        words.reduce((v, w) => v.split(w).join(""), s);
+      const found: string[] = [];
+      const main = document.querySelector("main")!;
+      const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const el = n.parentElement!;
+        if (el.closest(skip) || !el.checkVisibility()) continue;
+        if (han.test(strip(n.textContent || ""))) found.push(n.textContent!);
+      }
+      for (const el of main.querySelectorAll("*")) {
+        if (el.closest(skip)) continue;
+        for (const a of ["aria-label", "title", "placeholder", "alt"]) {
+          const v = el.getAttribute(a);
+          if (v && han.test(strip(v))) found.push(`${a}=${v}`);
+        }
+      }
+      return found;
+    },
+    { skip: foreignText, words: aiWords },
+  );
+}
+// No side scrolling and no clipped button text at 900 and 700 px.
+async function fitsNarrow(label: string) {
+  const cdp = await browser.contexts()[0].newCDPSession(page);
+  for (const width of [900, 700]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height: 740,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.waitForTimeout(200);
+    const out = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth > window.innerWidth,
+      clipped: [...document.querySelectorAll("main button")]
+        .filter(
+          (b) =>
+            (b as HTMLElement).offsetParent &&
+            b.scrollWidth > b.clientWidth + 1,
+        )
+        .map((b) => b.textContent),
+    }));
+    expect(out, `${label} at ${width}px`).toEqual({
+      scroll: false,
+      clipped: [],
+    });
+  }
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await cdp.detach();
+}
+async function useLanguage(code: string) {
+  await go("SetInterfaceLanguage", code);
+  await page.goto("http://wails.localhost/#/");
+  await page.reload();
+  await page.waitForFunction(() => !!window.go?.main?.App);
+}
+
+test("in English the automatic mode makes a whole set; every language fits", async () => {
+  test.setTimeout(150000);
+  const before = imageRequests;
+  await useLanguage("en");
+  try {
+    await page.getByRole("link", { name: "Create", exact: true }).click();
+    await page
+      .getByRole("button", { name: "New request", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "What would you like to make?" }),
+    ).toBeVisible();
+    const more = page.getByRole("button", {
+      name: "More options",
+      exact: true,
+    });
+    if ((await more.getAttribute("aria-expanded")) === "false")
+      await more.click();
+    await page.getByLabel("Product link", { exact: true }).fill("");
+    await page
+      .getByLabel("Full instructions", { exact: true })
+      .fill("Auto Etsy set: golden retriever sweatshirt, 12 images, 1:1.");
+    const mode = page
+      .locator(".page-header")
+      .getByRole("group", { name: "Production mode" });
+    await mode.getByRole("radio", { name: /^Auto/ }).click();
+    await expect.poll(() => go<string>("SmartMode")).toBe("auto");
+    await expect(
+      page.getByText(/^Auto mode: give the instructions/),
+    ).toBeVisible();
+    await page.getByText("More settings", { exact: true }).click();
+    await expect(
+      page.getByLabel("Images at a time", { exact: true }),
+    ).toBeVisible();
+    expect(await chineseLeft()).toEqual([]);
+    await fitsNarrow("en entry");
+    await page.getByRole("button", { name: /Create image set$/ }).click();
+    await expect(page.getByText("Auto mode", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("12 / 12 tasks done, 12 images ready to download", {
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 60000 });
+    expect(imageRequests).toBe(before + 12);
+    const judgments = page.getByRole("region", {
+      name: /The assistant's decisions/,
+    });
+    await expect(judgments).toContainText("1 to check");
+    for (const label of [
+      "Instruction",
+      "Check this",
+      "Own choice",
+      "Source link",
+    ])
+      await expect(judgments.getByText(label, { exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByText(
+          "Copied the design from sample image 12 (胸前), sample image 11 (袖口).",
+        )
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Download the whole set" }),
+    ).toBeVisible();
+    await expect(page.getByText("Done", { exact: true }).first()).toBeVisible();
+    // The result viewer and the refine dialog.
+    await page.getByRole("button", { name: "View image 1 large" }).click();
+    const viewer = page.getByRole("dialog", { name: /^Image 1 \(1 \/ 12\)/ });
+    await expect(viewer.getByRole("button", { name: "Next" })).toBeVisible();
+    await viewer.getByRole("button", { name: "Refine" }).click();
+    const refine = page.getByRole("dialog", { name: "Refine this image" });
+    await expect(refine.getByLabel("What should change?")).toBeVisible();
+    await refine.getByRole("button", { name: "Cancel" }).click();
+    await expect(refine).toHaveCount(0);
+    expect(await chineseLeft()).toEqual([]);
+    await fitsNarrow("en results");
+    await page.screenshot({
+      path: path.resolve("../docs/smart-auto-mode-en-0.8.0.png"),
+    });
+    // The same finished run in the other languages.
+    for (const [code, done] of [
+      ["vi", "Hoàn tất"],
+      ["ja", "完了"],
+      ["ko", "완료"],
+      ["zh-CN", "已完成"],
+    ]) {
+      await useLanguage(code);
+      await page
+        .locator(".agent-history-row")
+        .first()
+        .getByRole("button")
+        .click();
+      await expect(
+        page.locator(".agent-content .panel-heading .ant-tag").first(),
+      ).toHaveText(done);
+      await expect(page.locator(".agent-result")).toHaveCount(12);
+      // Japanese is written with kanji, so only the others are scanned for Chinese.
+      if (code !== "ja" && code !== "zh-CN")
+        expect(await chineseLeft(), code).toEqual([]);
+      await fitsNarrow(code);
+    }
+  } finally {
+    await go("SetSmartMode", "manual");
+    await useLanguage("zh-CN");
+  }
 });

@@ -132,7 +132,7 @@ func TestRealHelperReadsMockPages(t *testing.T) {
 		}
 		saved, _ := s.GetAgentRun(r.ID)
 		for _, ev := range saved.Events {
-			if ev.Text == productBrowserVerifyStage {
+			if ev.Code == stageBrowserVerify {
 				t.Fatal(path, "verification window shown for a page that passes on its own")
 			}
 		}
@@ -156,7 +156,7 @@ func TestRealHelperShowsVerificationWindow(t *testing.T) {
 	saved, _ := s.GetAgentRun(r.ID)
 	seen := false
 	for _, ev := range saved.Events {
-		seen = seen || ev.Text == productBrowserVerifyStage
+		seen = seen || ev.Code == stageBrowserVerify
 	}
 	if !seen {
 		t.Fatal("verification stage missing")
@@ -221,7 +221,7 @@ func TestRealHelperBlocksWindowsDownloadsAndOtherSchemes(t *testing.T) {
 		t.Skip("set IMAGEWORKBENCH_TEST_BROWSER and IMAGEWORKBENCH_TEST_WEBVIEW2 (scripts/test-product-browser.ps1)")
 	}
 	server := mockShop(t)
-	b, e := startProductBrowser(productBrowserConfig{Executable: exe, Runtime: runtimeDir}, t.TempDir(), server.URL+"/guarded")
+	b, e := startProductBrowser(productBrowserConfig{Executable: exe, Runtime: runtimeDir}, t.TempDir(), server.URL+"/guarded", "QA")
 	if e != nil {
 		t.Fatal(e)
 	}

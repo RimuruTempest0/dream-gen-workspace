@@ -3,8 +3,6 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,9 +22,9 @@ func (s *Service) AgentRuntime() AgentRuntimeInfo {
 	defer s.mu.Unlock()
 	info, e := os.Stat(s.agentExecutable)
 	if e != nil || info.IsDir() {
-		return AgentRuntimeInfo{Version: ClaudeVersion, Message: "内置 Claude Code 缺失，请完整解压 " + AppVersion + " 便携包。普通生图仍可使用。"}
+		return AgentRuntimeInfo{Version: ClaudeVersion, Message: s.msg("agent.runtime.missingVersion", "version", AppVersion)}
 	}
-	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: "内置运行时已就绪"}
+	return AgentRuntimeInfo{Available: true, Version: ClaudeVersion, Message: s.msg("agent.runtime.ready")}
 }
 func (s *Service) waitAgent() {
 	for {
@@ -48,7 +46,7 @@ func (s *Service) waitAgent() {
 }
 func (s *Service) agentBusy() error {
 	if s.agentRunID != "" {
-		return errors.New("创作需求正在分析，请先完成或取消")
+		return s.fail("agent.busy")
 	}
 	return nil
 }
@@ -132,17 +130,17 @@ func (s *Service) SetAgentDraft(v AgentInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(v.Instruction) > 32000 || len(v.ProductText) > 64000 || len(v.References) > 20 {
-		return errors.New("创作草稿过长")
+		return s.fail("agent.draft.tooLong")
 	}
 	return s.store.Put("draft", "agent", v)
 }
 
 func (s *Service) validateAgentInput(in AgentInput) (Connection, []SkillRecord, error) {
 	if strings.TrimSpace(in.Instruction) == "" || len(in.Instruction) > 32000 {
-		return Connection{}, nil, errors.New("请填写制作需求，最多 32000 字节")
+		return Connection{}, nil, s.fail("agent.input.instruction")
 	}
 	if len(in.ProductText) > 64000 || in.TargetCount < 1 || in.TargetCount > 200 || len(in.References) > 20 {
-		return Connection{}, nil, errors.New("目标张数应为 1–200，分析参考图最多 20 张，资料最多 64000 字节")
+		return Connection{}, nil, s.fail("agent.input.limits")
 	}
 	if in.ProductURL != "" {
 		if e := validateProductURL(in.ProductURL); e != nil {
@@ -151,37 +149,37 @@ func (s *Service) validateAgentInput(in AgentInput) (Connection, []SkillRecord, 
 	}
 	var llm, imageConn Connection
 	if e := s.store.Get("connection", in.LLMConnectionID, &llm); e != nil {
-		return llm, nil, missing(e, "所选 AI 模型已删除或未选择，请在“更多设置”中重新选择")
+		return llm, nil, missing(e, s.msg("agent.input.llmMissing"))
 	}
 	llm = normalizeConnection(llm)
 	if llm.Kind != "llm" || llm.Model == "" {
-		return llm, nil, errors.New("请选择已设置模型的 AI 模型")
+		return llm, nil, s.fail("agent.input.llmModel")
 	}
 	if !llm.Capabilities.Text || !llm.Capabilities.Tools || !llm.Capabilities.Streaming || llm.Capabilities.Model != llm.Model {
-		return llm, nil, errors.New("请先在设置中验证 AI 模型的文本、工具调用和流式能力")
+		return llm, nil, s.fail("agent.input.llmUnverified")
 	}
 	if (len(in.References) > 0 || in.ProductURL != "") && !llm.Capabilities.Vision {
-		return llm, nil, errors.New("此需求需要图片分析，请先选择通过图片能力验证的 AI 模型")
+		return llm, nil, s.fail("agent.input.llmVision")
 	}
 	if _, e := s.key(llm.Credential); e != nil {
 		return llm, nil, e
 	}
 	if e := s.store.Get("connection", in.ImageConnectionID, &imageConn); e != nil {
-		return llm, nil, missing(e, "所选图片服务已删除或未选择，请在“更多设置”中重新选择")
+		return llm, nil, missing(e, s.msg("agent.input.imageMissing"))
 	}
 	if normalizeConnection(imageConn).Kind != "image" {
-		return llm, nil, errors.New("请选择图片服务")
+		return llm, nil, s.fail("agent.chooseImage")
 	}
 	if in.ProjectID != "" {
 		var p Project
 		if e := s.store.Get("project", in.ProjectID, &p); e != nil {
-			return llm, nil, missing(e, "所选项目已删除，请在“更多设置”中重新选择")
+			return llm, nil, missing(e, s.msg("agent.input.projectMissing"))
 		}
 	}
 	for _, id := range in.References {
 		var a Asset
 		if e := s.store.Get("asset", id, &a); e != nil {
-			return llm, nil, missing(e, "有参考素材已删除，请移除后重新添加")
+			return llm, nil, missing(e, s.msg("agent.input.referenceMissing"))
 		}
 		if _, e := readOwned(s.store.Root, a.Path); e != nil {
 			return llm, nil, e
@@ -195,21 +193,21 @@ func (s *Service) validateAgentInput(in AgentInput) (Connection, []SkillRecord, 
 			return llm, nil, e
 		}
 		if !v.Enabled {
-			return llm, nil, errors.New("选中的 Skill 已停用")
+			return llm, nil, s.fail("agent.input.skillDisabled")
 		}
 		slug, _, e := validateSkill(v.Content)
 		if e != nil {
-			return llm, nil, e
+			return llm, nil, s.localErr(e)
 		}
 		if slugs[slug] {
-			return llm, nil, errors.New("选中 Skills 的 name 重复")
+			return llm, nil, s.fail("agent.input.skillDuplicate")
 		}
 		slugs[slug] = true
 		for _, a := range v.Attachments {
 			switch strings.ToLower(filepath.Ext(a.Name)) {
 			case ".png", ".jpg", ".jpeg", ".webp":
 				if !llm.Capabilities.Vision {
-					return llm, nil, errors.New("选定的 Skill 包含图片，请先验证 AI 模型图片能力")
+					return llm, nil, s.fail("agent.input.skillImages")
 				}
 			}
 		}
@@ -233,14 +231,14 @@ func (s *Service) StartAgentAnalysis(in AgentInput) (string, error) {
 	}
 	if s.agentRunner == nil {
 		if _, e = os.Stat(s.agentExecutable); e != nil {
-			return "", errors.New("内置 Claude Code 缺失，请完整解压便携包")
+			return "", s.fail("agent.runtime.missing")
 		}
 	}
 	shopRules, e := s.enabledShopRulesLocked()
 	if e != nil {
 		return "", e
 	}
-	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: "准备分析", Input: in, LLMConnection: llm, Skills: skills, ShopRules: shopRules, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
+	r := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "analyzing", Stage: s.msg("agent.stage.preparing"), Input: in, LLMConnection: llm, Skills: skills, ShopRules: shopRules, Questions: []AgentQuestion{}, Plans: []SuitePlan{}, Events: []AgentEvent{}, Product: ProductInfo{ReferenceIDs: []string{}}}
 	if e = s.store.Put("agent_run", r.ID, r); e != nil {
 		return "", e
 	}
@@ -259,18 +257,18 @@ func (s *Service) ContinueAgentAnalysis(in AgentContinuation) error {
 		return e
 	}
 	if r.AutoGeneration {
-		return errors.New("请使用继续制作接口，保留本次授权参数")
+		return s.fail("agent.continue.useContinue")
 	}
 	if r.BatchID != "" {
-		return errors.New("此方案已提交生图，请创建新的创作需求")
+		return s.fail("agent.continue.submitted")
 	}
 	if len(in.Instruction) > 32000 || len(in.ProductText) > 64000 || len(in.References) > 20 {
-		return errors.New("补充资料过长或图片过多")
+		return s.fail("agent.continue.tooMuch")
 	}
 	if in.Instruction != "" {
 		r.Instructions = append(r.Instructions, in.Instruction)
 		if len(r.Instructions) > 30 {
-			return errors.New("本次需求修改过多，请创建新需求")
+			return s.fail("agent.continue.tooManyEdits")
 		}
 	}
 	if in.ProductText != "" {
@@ -282,7 +280,7 @@ func (s *Service) ContinueAgentAnalysis(in AgentContinuation) error {
 	for i := range r.Questions {
 		if v, ok := in.Answers[r.Questions[i].ID]; ok {
 			if len(v) > 16000 {
-				return errors.New("补充答案过长")
+				return s.fail("agent.continue.answerTooLong")
 			}
 			r.Questions[i].Answer = v
 		}
@@ -294,7 +292,7 @@ func (s *Service) ContinueAgentAnalysis(in AgentContinuation) error {
 	r.LLMConnection = llm
 	resumeTimer(&r)
 	r.Status = "analyzing"
-	r.Stage = "重新分析与规划"
+	r.Stage = s.msg("agent.stage.replanning")
 	r.Error = ""
 	r.UpdatedAt = Now()
 	if e = s.store.Put("agent_run", r.ID, r); e != nil {
@@ -317,7 +315,14 @@ func resumeTimer(r *AgentRun) {
 	}
 }
 
+// launchAgent starts a round the customer asked for, in the interface language
+// chosen now; continueAgent goes on with the round in the language it began in.
 func (s *Service) launchAgent(r AgentRun, instruction string) {
+	r.Language = s.Language()
+	s.continueAgent(r, instruction)
+}
+
+func (s *Service) continueAgent(r AgentRun, instruction string) {
 	r.AnalysisStartedAt = Now()
 	r.AttemptStartRevision = len(r.Plans)
 	r.AnalysisSucceeded = false
@@ -338,36 +343,37 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 		s.mu.Lock()
 		var current AgentRun
 		if s.store.Get("agent_run", r.ID, &current) == nil {
+			current.StageCode = ""
 			if current.CancelRequested || wasCanceled || s.ctx.Err() != nil {
-				e = errors.New("制作已取消或超时")
+				e = s.fail("agent.canceled")
 				wasCanceled = true
 			}
 			if e != nil {
 				current.Status = "failed"
-				current.Error = redact(e.Error(), "")
+				current.Error = s.redact(s.errText(e), "")
 				if current.LLMReconnectError != "" {
-					current.Error += fmt.Sprintf("（AI 模型连接中断 %d 次，最近一次：%s）", current.LLMReconnects, current.LLMReconnectError)
+					current.Error += s.msg("agent.reconnects", "n", current.LLMReconnects, "error", current.LLMReconnectError)
 				}
 				if wasCanceled {
 					current.Status = "interrupted"
-					current.Stage = "分析已中断"
-					current.Error = interruptedMessage(current)
+					current.Stage = s.msg("agent.stage.interrupted")
+					current.Error = interruptedMessage(s.Language(), current)
 				}
 			} else if current.Error = ""; hasMissing(current.Questions) {
 				// The analysis finished: an earlier problem no longer applies.
 				current.Status = "needs_input"
-				current.Stage = "等待补充资料"
+				current.Stage = s.msg("agent.stage.needsInput")
 			} else if len(current.Plans) > current.AttemptStartRevision {
 				current.AnalysisSucceeded = true
 				current.Status = "review"
-				current.Stage = "等待确认方案"
+				current.Stage = s.msg("agent.stage.review")
 				if current.AutoGeneration {
 					current.Status = "ready"
-					current.Stage = "制作准备已完成"
+					current.Stage = s.msg("agent.stage.ready")
 				}
 			} else {
 				current.Status = "failed"
-				current.Error = "Agent 未保存套图方案，请补充资料或明确继续"
+				current.Error = s.msg("agent.noPlan")
 			}
 			current.UpdatedAt = Now()
 			if current.AutoGeneration && e == nil && current.AnalysisSucceeded && !hasMissing(current.Questions) {
@@ -375,12 +381,12 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 				if err := s.autoSubmitLocked(&current); err != nil {
 					current.Status = "failed"
 					current.Error = err.Error()
-					current.Stage = "制作未完成"
+					current.Stage = s.msg("agent.stage.unfinished")
 				}
 			}
 			relaunch := ""
 			if !wasCanceled && s.ctx.Err() == nil {
-				relaunch = autoContinueLocked(&current)
+				relaunch = autoContinueLocked(s.Language(), &current)
 			}
 			// Do not overwrite a run saved atomically with its submitted batch.
 			if current.BatchID == "" {
@@ -389,7 +395,7 @@ func (s *Service) launchAgent(r AgentRun, instruction string) {
 			if relaunch != "" {
 				s.agentRunID = ""
 				s.agentCancel = nil
-				s.launchAgent(current, relaunch)
+				s.continueAgent(current, relaunch)
 				close(done)
 				s.mu.Unlock()
 				s.signal()
@@ -415,7 +421,7 @@ func (s *Service) CancelAgentAnalysis(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.agentRunID != id || s.agentCancel == nil {
-		return errors.New("此分析任务当前未运行")
+		return s.fail("agent.notRunning")
 	}
 	var r AgentRun
 	if e := s.store.Get("agent_run", id, &r); e != nil {
@@ -434,8 +440,8 @@ func (s *Service) updateAgent(id, stage string, fn func(*AgentRun) error) error 
 	e := s.store.Get("agent_run", id, &r)
 	if e == nil {
 		if stage != "" {
-			r.Stage = stage
-			r.Events = append(r.Events, AgentEvent{Now(), stage})
+			r.Stage, r.StageCode = stage, ""
+			r.Events = append(r.Events, AgentEvent{At: Now(), Text: stage})
 			if len(r.Events) > 100 {
 				r.Events = r.Events[len(r.Events)-100:]
 			}
@@ -456,14 +462,14 @@ func (s *Service) SaveSuitePlan(id string, plan SuitePlan) (SuitePlan, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.agentRunID == id {
-		return plan, errors.New("请等待分析结束后编辑方案")
+		return plan, s.fail("agent.plan.waitAnalysis")
 	}
 	var r AgentRun
 	if e := s.store.Get("agent_run", id, &r); e != nil {
 		return plan, e
 	}
 	if r.BatchID != "" {
-		return plan, errors.New("此方案已经提交，不能修改已提交任务")
+		return plan, s.fail("agent.plan.submitted")
 	}
 	if e := s.validatePlan(&r, &plan); e != nil {
 		return plan, e
@@ -474,7 +480,7 @@ func (s *Service) SaveSuitePlan(id string, plan SuitePlan) (SuitePlan, error) {
 }
 func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 	if len(p.Items) < 1 || len(p.Items) > 200 {
-		return errors.New("套图方案应包含 1–200 张图")
+		return s.fail("agent.plan.count")
 	}
 	allowed := map[string]bool{}
 	for _, id := range runReferenceIDs(*r) {
@@ -487,16 +493,16 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 			samples++
 			area := strings.TrimSpace(item.SampleArea)
 			if areas[area] {
-				return fmt.Errorf("每个设计区只能有一张样板图（sampleArea「%s」重复）", area)
+				return s.fail("agent.plan.sampleAreaDuplicate", "area", area)
 			}
 			areas[area] = true
 		}
 	}
 	if samples > maxSamples {
-		return fmt.Errorf("整套最多 %d 张样板图（每个设计区一张）", maxSamples)
+		return s.fail("agent.plan.sampleMax", "n", maxSamples)
 	}
 	if samples > 1 && areas[""] {
-		return errors.New("有多张样板图时，每张都要写 sampleArea（例如 胸前、袖口）")
+		return s.fail("agent.plan.sampleAreaRequired")
 	}
 	ids := map[string]bool{}
 	for i := range p.Items {
@@ -506,42 +512,42 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 		}
 		uses := item.UseSample || len(item.UseSamples) > 0
 		if item.Sample && uses {
-			return errors.New("样板图本身不能再照样板图画（sample 与 useSample/useSamples 不能同时使用）")
+			return s.fail("agent.plan.sampleUsesSample")
 		}
 		if item.NoProduct && (item.Sample || uses) {
-			return errors.New("没有商品的图片（noProduct）不能做样板图，也不需要照样板图画")
+			return s.fail("agent.plan.noProductSample")
 		}
 		if uses && samples == 0 {
-			return errors.New("方案有图片标了 useSample/useSamples，但没有标 sample 的样板图")
+			return s.fail("agent.plan.noSample")
 		}
 		for _, area := range item.UseSamples {
 			if !areas[strings.TrimSpace(area)] {
-				return fmt.Errorf("useSamples 里的「%s」没有对应的样板图（sampleArea）", area)
+				return s.fail("agent.plan.unknownSampleArea", "area", area)
 			}
 		}
 		if n := len(samplesUsed(*p, *item)); n > 0 && len(item.References)+n > 4 {
-			return fmt.Errorf("照样板图画的图片：自选参考图加上 %d 张样板图最多 4 张", n)
+			return s.fail("agent.plan.sampleRefs", "n", n)
 		}
 		if ids[item.ID] {
-			return errors.New("方案图 ID 重复")
+			return s.fail("agent.plan.duplicateID")
 		}
 		ids[item.ID] = true
 		if strings.TrimSpace(item.Prompt) == "" || len(item.Prompt) > 32000 {
-			return errors.New("每张图需填写提示词，最多 32000 字节")
+			return s.fail("agent.plan.prompt")
 		}
 		if len(item.References) > 4 {
-			return errors.New("每张生图最多 4 张参考图")
+			return s.fail("agent.plan.refs")
 		}
 		for _, id := range item.References {
 			if !allowed[id] {
-				return errors.New("方案使用了不属于本次需求的参考图")
+				return s.fail("agent.plan.foreignRef")
 			}
 			var a Asset
 			if e := s.store.Get("asset", id, &a); e != nil {
 				return e
 			}
 			if _, e := readOwned(s.store.Root, a.Path); e != nil {
-				return errors.New("参考图文件不可用，请重新上传")
+				return s.fail("agent.plan.refUnusable")
 			}
 		}
 		if item.Size == "" {
@@ -551,7 +557,7 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 			item.Quality = r.Input.Quality
 		}
 		if len(item.Size) > 64 || len(item.Quality) > 64 {
-			return errors.New("生图参数过长")
+			return s.fail("agent.paramsTooLong")
 		}
 	}
 	p.Revision = len(r.Plans) + 1
@@ -572,16 +578,16 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 		if r.SubmittedRevision == revision {
 			return r.BatchID, nil
 		}
-		return "", errors.New("此需求已提交，不能重复提交另一版方案")
+		return "", s.fail("agent.submit.already")
 	}
 	if s.agentRunID == id || hasMissing(r.Questions) {
-		return "", errors.New("请先完成分析并补充必要资料")
+		return "", s.fail("agent.submit.notReady")
 	}
 	if requestID == "" || len(requestID) > 128 {
-		return "", errors.New("请求标识无效")
+		return "", s.fail("agent.requestInvalid")
 	}
 	if len(r.Plans) == 0 || r.Plans[len(r.Plans)-1].Revision != revision {
-		return "", errors.New("方案已更新，请刷新后确认当前版本")
+		return "", s.fail("agent.submit.stale")
 	}
 	p := r.Plans[len(r.Plans)-1]
 	if e := s.validatePlan(&r, &p); e != nil {
@@ -590,7 +596,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	var c Connection
 	if r.AutoGeneration {
 		if !r.AnalysisSucceeded || r.CancelRequested {
-			return "", errors.New("本轮制作尚未正常完成")
+			return "", s.fail("agent.submit.unfinished")
 		}
 		if e := s.validateAutoPlan(&r, &p); e != nil {
 			return "", e
@@ -600,7 +606,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 		return "", e
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务")
+		return "", s.fail("agent.chooseImage")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
@@ -610,7 +616,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 		model = c.Model
 	}
 	if model == "" {
-		return "", errors.New("请设置生图模型")
+		return "", s.fail("agent.imageModel")
 	}
 	batch := NewID()
 	tasks := []Task{}
@@ -618,6 +624,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	for _, item := range p.Items {
 		prompt := itemPrompt(r, p, item)
 		t := Task{ID: NewID(), BatchID: batch, AgentRunID: id, PlanItemID: item.ID, CreatedAt: Now(), UpdatedAt: Now(), Status: "queued", Prompt: prompt, Model: model, Size: item.Size, Quality: item.Quality, References: append([]string{}, item.References...), ProjectID: r.Input.ProjectID, Connection: c, AssetIDs: []string{}, Sample: item.Sample}
+		t.Language = s.Language() // the images and their sample checks finish in the language they were submitted in
 		if item.Sample {
 			// The rest of the set copies the sample's details: it gets the best quality.
 			t.Quality = sampleQuality
@@ -631,7 +638,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	r.BatchID = batch
 	r.SubmittedRevision = revision
 	r.Status = "submitted"
-	r.Stage = "已提交生图队列"
+	r.Stage = s.msg("agent.stage.submitted")
 	r.UpdatedAt = Now()
 	if e := s.ensureCanGenerateLocked(len(tasks), c.ID); e != nil {
 		return "", e
@@ -643,7 +650,7 @@ func (s *Service) submitSuiteLocked(id string, revision int, requestID string) (
 	if e != nil {
 		return "", e
 	}
-	_ = s.store.appendLog("info", "agent", id, "套图已提交生图队列")
+	_ = s.store.appendLog("info", "agent", id, s.msg("agent.log.submitted"))
 	s.signal()
 	return batch, nil
 }
@@ -707,3 +714,14 @@ func (s *Service) GetAgentTasks(id string) ([]Task, error) {
 }
 
 func agentWorkspace(root, id string) string { return filepath.Join(root, "agent-cache", id) }
+
+// setAgentStage sets a stage the interface recognises by its code.
+func (s *Service) setAgentStage(id, code, stage string) error {
+	return s.updateAgent(id, stage, func(r *AgentRun) error {
+		r.StageCode = code
+		if n := len(r.Events); n > 0 {
+			r.Events[n-1].Code = code
+		}
+		return nil
+	})
+}

@@ -20,6 +20,7 @@ import (
 	"imageworkbench/internal/core"
 	"imageworkbench/internal/license"
 	"imageworkbench/internal/packcheck"
+	"imageworkbench/internal/update"
 )
 
 // Builder makes the program files of a package (scripts/build.ps1 in practice).
@@ -375,7 +376,15 @@ func writeZipOf(dir, path string, entries []string) error {
 }
 
 // writeZipWith also adds files that are not in the folder (name → content).
+// The 《使用说明》 in other languages are added when the build has them (the
+// e-commerce line ships only the Chinese one).
 func writeZipWith(dir, path string, entries []string, extra map[string][]byte) error {
+	entries = slices.Clone(entries)
+	for _, m := range update.Manuals {
+		if _, e := os.Stat(filepath.Join(dir, m)); e == nil && !slices.Contains(entries, m) {
+			entries = append(entries, m)
+		}
+	}
 	tmp := path + ".partial"
 	f, e := os.Create(tmp)
 	if e != nil {

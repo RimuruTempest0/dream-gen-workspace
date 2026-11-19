@@ -13,7 +13,8 @@ import { inflateSync } from "node:zlib";
 
 // The admin tool in an isolated QA instance: a stand-in source folder and a fake
 // builder, so packages are real ZIPs of small test files. The mock LLM answers
-// the app's capability check (text, image, tool call, streaming).
+// the app's capability check (text, image, tool call, streaming) and the
+// translation of the update notes.
 let browser: Browser, page: Page, server: http.Server, base: string;
 const repo = fs
   .readFileSync(
@@ -63,6 +64,13 @@ test.beforeAll(async () => {
       const body = JSON.parse(raw || "{}");
       const first = body.messages?.[0]?.content;
       if (body.stream) {
+        const reply =
+          typeof first === "string" &&
+          first.startsWith("Translate these update notes")
+            ? first.includes("QA creative notes")
+              ? "QA English notes, translated."
+              : "UNEXPECTED NOTES"
+            : "OK";
         res.setHeader("content-type", "text/event-stream");
         const frame = (v: unknown) =>
           res.write(
@@ -87,7 +95,7 @@ test.beforeAll(async () => {
         frame({
           type: "content_block_delta",
           index: 0,
-          delta: { type: "text_delta", text: "OK" },
+          delta: { type: "text_delta", text: reply },
         });
         frame({ type: "content_block_stop", index: 0 });
         frame({
@@ -551,6 +559,24 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
 
 test("发布大众版：显示将要构建的提交，未提交的改动不进包，源码目录不被改动", async () => {
   const { execFileSync } = await import("node:child_process");
+  // The English notes are translated with a verified LLM key no customer holds
+  // (mock LLM). It is added here and deleted again at the end, so the pool the
+  // next test starts from is unchanged.
+  type Key = { id: string; upstreamID: string; verified: boolean };
+  type St = { upstreams: { id: string; name: string }[]; keys: Key[] };
+  const app = <T>(name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window as any).go.main.App[n as string](...(a as [])),
+      [name, args] as const,
+    ) as Promise<T>;
+  const before = new Set((await app<St>("State")).keys.map((k) => k.id));
+  const llm = (await app<St>("State")).upstreams.find(
+    (u) => u.name === "QA LLM",
+  )!.id;
+  await app("ImportKeys", llm, "backup", "sk-qa-notes-llm-0123456789", "");
+  const added = (await app<St>("State")).keys.filter((k) => !before.has(k.id));
+  expect(added).toHaveLength(1);
+  await app("VerifyLLM", added[0].id);
   const git = (...args: string[]) =>
     execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" })
       .toString()
@@ -566,8 +592,26 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
     await expect(
       page.getByText("creative-concepts", { exact: true }),
     ).toBeVisible();
-    await expect(build).toBeEnabled();
     await expect(build).toHaveText(/0\.7\.34/);
+
+    // The notes come from the changelog of that commit, without its verification part.
+    const notes = page.getByRole("textbox", { name: /中文更新说明/ });
+    await expect(notes).toHaveValue(/QA creative notes, first paragraph\./);
+    await expect(notes).not.toHaveValue(/not for people using the app/);
+    // The English notes are translated on request (a billable call, so it
+    // asks first), shown for review and editable; without them nothing is built.
+    const notesEn = page.getByRole("textbox", { name: /英文更新说明/ });
+    await expect(notesEn).toHaveValue("");
+    await expect(build).toBeDisabled();
+    await page.getByRole("button", { name: "翻译成英文" }).click();
+    await page
+      .getByRole("dialog", { name: "把更新说明翻译成英文？" })
+      .getByRole("button", { name: "翻译（产生少量费用）" })
+      .click();
+    await expect(notesEn).toHaveValue("QA English notes, translated.");
+    await expect(page.getByRole("button", { name: "重新翻译" })).toBeVisible();
+    await notesEn.fill("QA English notes, translated and checked.");
+    await expect(build).toBeEnabled();
 
     // Uncommitted work in the source folder is pointed out and does not block.
     fs.writeFileSync(path.join(repo, "wails.json"), edited);
@@ -575,11 +619,10 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
       page.getByText("源码目录有 1 个未提交的改动，不会进入这次构建。"),
     ).toBeVisible({ timeout: 15000 });
     await expect(build).toBeEnabled();
-
-    // The notes come from the changelog of that commit, without its verification part.
-    const notes = page.getByRole("textbox", { name: /更新说明/ });
-    await expect(notes).toHaveValue(/QA creative notes, first paragraph\./);
-    await expect(notes).not.toHaveValue(/not for people using the app/);
+    await expect(notesEn).toHaveValue(
+      "QA English notes, translated and checked.",
+    );
+    await settle();
     await build.click();
     await expect(page.getByText("大众版已构建并签名。")).toBeVisible({
       timeout: 60000,
@@ -617,6 +660,8 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
       format: 2,
       line: "creative",
       version: "0.7.34",
+      notes: expect.stringContaining("QA creative notes, first paragraph."),
+      notesEn: "QA English notes, translated and checked.",
       url: "https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/ImageWorkbench-update-0.7.34.zip",
     });
     await expect(
@@ -634,6 +679,7 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
     });
   } finally {
     git("checkout", "-q", "--", "wails.json");
+    await app("DeleteKeys", [added[0].id]);
   }
 });
 

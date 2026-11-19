@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 type Store struct {
 	db   *sql.DB
 	Root string
+	// lang is the interface language for log lines the Store writes itself.
+	lang func() string
 }
 
 func NewID() string {
@@ -44,7 +47,7 @@ func Open(root string) (*Store, error) {
 	}
 	if version > schemaVersion {
 		db.Close()
-		return nil, fmt.Errorf("数据库版本 %d 高于此应用支持的版本，请使用更新的软件", version)
+		return nil, i18n.Fail("data.database.newer", "version", version)
 	}
 	_, e = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS objects(kind TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS submissions(id TEXT PRIMARY KEY,batch TEXT NOT NULL); CREATE TABLE IF NOT EXISTS app_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,time TEXT NOT NULL,level TEXT NOT NULL,source TEXT NOT NULL,related_id TEXT NOT NULL,message TEXT NOT NULL); CREATE TABLE IF NOT EXISTS agent_requests(request_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,operation TEXT NOT NULL);`)
 	if e == nil && version < schemaVersion {
@@ -54,7 +57,7 @@ func Open(root string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	return &Store{db, root}, nil
+	return &Store{db: db, Root: root}, nil
 }
 
 // schemaVersion is PRAGMA user_version; an older app refuses a newer database.
@@ -131,7 +134,7 @@ func (s *Store) Get(kind, id string, v any) error {
 	var b string
 	e := s.db.QueryRow(`SELECT body FROM objects WHERE kind=? AND id=?`, kind, id).Scan(&b)
 	if e != nil {
-		return fmt.Errorf("记录不存在: %w", e)
+		return localizedError{s.msg("data.recordMissing", "error", e), e}
 	}
 	return json.Unmarshal([]byte(b), v)
 }

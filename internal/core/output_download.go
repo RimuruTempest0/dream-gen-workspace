@@ -17,10 +17,10 @@ const imageDownloadAttempts = 3
 func imageDownloadClient() *http.Client {
 	return &http.Client{Transport: newNetworkTransport(), CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) > 5 {
-			return errors.New("图片重定向次数过多")
+			return failCtx(r.Context(), "data.download.redirects")
 		}
 		if r.URL.Scheme != "http" && r.URL.Scheme != "https" || r.URL.User != nil {
-			return errors.New("不支持图片地址协议或认证信息")
+			return failCtx(r.Context(), "data.download.scheme")
 		}
 		// Result hosts and redirects must never receive provider credentials.
 		r.Header.Del("Authorization")
@@ -41,7 +41,7 @@ func downloadImage(ctx context.Context, rawURL string) ([]byte, error) {
 func downloadImageWithClient(ctx context.Context, rawURL string, client *http.Client, retryDelay time.Duration) ([]byte, error) {
 	u, e := url.Parse(rawURL)
 	if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
-		return nil, errors.New("结果图片地址无效")
+		return nil, failCtx(ctx, "generation.download.badURL")
 	}
 	for attempt := 1; attempt <= imageDownloadAttempts; attempt++ {
 		data, retryable, err := downloadImageAttempt(ctx, rawURL, client)
@@ -49,58 +49,58 @@ func downloadImageWithClient(ctx context.Context, rawURL string, client *http.Cl
 			return data, nil
 		}
 		if ctx.Err() != nil {
-			return nil, imageDownloadContextError(ctx.Err())
+			return nil, imageDownloadContextError(ctx, ctx.Err())
 		}
 		if !retryable || attempt == imageDownloadAttempts {
-			return nil, fmt.Errorf("%w（已尝试 %d 次下载）。图片链接已保留，可点“补下载”，不会重新生图", err, attempt)
+			return nil, fmt.Errorf("%w%s", err, msgCtx(ctx, "generation.download.attempts", "n", attempt))
 		}
 		timer := time.NewTimer(retryDelay * time.Duration(attempt))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, imageDownloadContextError(ctx.Err())
+			return nil, imageDownloadContextError(ctx, ctx.Err())
 		case <-timer.C:
 		}
 	}
 	panic("unreachable")
 }
 
-func imageDownloadContextError(err error) error {
+func imageDownloadContextError(ctx context.Context, err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
-		return errors.New("图片下载等待已达 10 分钟，尚未保存完成。图片链接已保留，可点“补下载”，不会重新生图")
+		return failCtx(ctx, "generation.download.timeout")
 	}
-	return errors.New("图片下载已中止。图片链接已保留，可点“补下载”，不会重新生图")
+	return failCtx(ctx, "generation.download.aborted")
 }
 
 func downloadImageAttempt(ctx context.Context, rawURL string, client *http.Client) ([]byte, bool, error) {
 	req, e := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if e != nil {
-		return nil, false, errors.New("结果图片地址无效")
+		return nil, false, failCtx(ctx, "generation.download.badURL")
 	}
 	resp, e := client.Do(req)
 	if e != nil {
 		var networkError net.Error
 		retryable := errors.As(e, &networkError) || errors.Is(e, io.EOF) || errors.Is(e, io.ErrUnexpectedEOF)
 		// Never include the signed result URL in errors shown in the interface.
-		return nil, retryable, errors.New("图片下载连接失败，请检查网络或代理")
+		return nil, retryable, failCtx(ctx, "generation.download.connectFailed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		retryable := resp.StatusCode == 408 || resp.StatusCode == 429 || resp.StatusCode >= 500 && resp.StatusCode <= 599
 		if resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 404 || resp.StatusCode == 410 {
-			return nil, false, fmt.Errorf("图片链接不可访问或已过期（HTTP %d），请核对图片服务记录", resp.StatusCode)
+			return nil, false, failCtx(ctx, "generation.download.expired", "status", resp.StatusCode)
 		}
-		return nil, retryable, fmt.Errorf("图片下载服务返回 HTTP %d", resp.StatusCode)
+		return nil, retryable, failCtx(ctx, "generation.download.httpStatus", "status", resp.StatusCode)
 	}
 	if resp.ContentLength > MaxImageBytes {
-		return nil, false, errors.New("结果图片超过 32 MB")
+		return nil, false, failCtx(ctx, "generation.download.tooLarge")
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, MaxImageBytes+1))
 	if len(b) > MaxImageBytes {
-		return nil, false, errors.New("结果图片超过 32 MB")
+		return nil, false, failCtx(ctx, "generation.download.tooLarge")
 	}
 	if e != nil {
-		return nil, true, fmt.Errorf("图片文件下载中断（已接收 %d 字节）", len(b))
+		return nil, true, failCtx(ctx, "generation.download.cut", "bytes", len(b))
 	}
 	return b, false, nil
 }

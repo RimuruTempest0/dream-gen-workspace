@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"bufio"
 	"context"
 	"encoding/base64"
@@ -184,10 +185,10 @@ func TestBrowserVerificationProgress(t *testing.T) {
 	saved, _ := s.GetAgentRun(r.ID)
 	var stages []string
 	for _, ev := range saved.Events {
-		stages = append(stages, ev.Text)
+		stages = append(stages, ev.Code)
 	}
 	joined := strings.Join(stages, "|")
-	for _, want := range []string{productBrowserReadingStage, productBrowserVerifyStage} {
+	for _, want := range []string{stageBrowserReading, stageBrowserVerify} {
 		if !strings.Contains(joined, want) {
 			t.Fatal("missing stage", want, joined)
 		}
@@ -254,7 +255,7 @@ func TestBrowserOutputLimitsAndPrivateRedirect(t *testing.T) {
 
 func TestBrowserNotUsedForInvalidOrMissingTargets(t *testing.T) {
 	ctx := context.Background()
-	if browserFallbackReason(ctx, nil, ProductInfo{}, productTargetError{"private"}) != "" {
+	if browserFallbackReason(ctx, nil, ProductInfo{}, productTargetError{i18n.Msg("product.url.private")}) != "" {
 		t.Fatal("private target retried in browser")
 	}
 	if browserFallbackReason(ctx, nil, ProductInfo{}, productHTTPError{404}) != "" {
@@ -292,7 +293,7 @@ func TestClearProductBrowserData(t *testing.T) {
 }
 
 func TestProductImageObjectContentURL(t *testing.T) {
-	_, images, e := parseProductPage([]byte(`<meta property="og:image" content="https://cdn.example/og.jpg"><script type="application/ld+json">{"@type":"Product","name":"x","image":[{"@type":"ImageObject","contentURL":"https://cdn.example/a.jpg","thumbnail":"https://cdn.example/t.jpg"},{"contentUrl":"https://cdn.example/b.jpg"}]}</script><img src="https://cdn.example/recommended.jpg">`), "https://shop.example/item")
+	_, images, e := parseProductPage([]byte(`<meta property="og:image" content="https://cdn.example/og.jpg"><script type="application/ld+json">{"@type":"Product","name":"x","image":[{"@type":"ImageObject","contentURL":"https://cdn.example/a.jpg","thumbnail":"https://cdn.example/t.jpg"},{"contentUrl":"https://cdn.example/b.jpg"}]}</script><img src="https://cdn.example/recommended.jpg">`), "https://shop.example/item", i18n.ZhCN)
 	if e != nil || len(images) != 2 || images[0] != "https://cdn.example/a.jpg" || images[1] != "https://cdn.example/b.jpg" {
 		t.Fatal(images, e)
 	}

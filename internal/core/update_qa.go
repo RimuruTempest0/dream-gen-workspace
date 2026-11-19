@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +35,7 @@ func (s *Service) PrepareTestUpdate(base string) (manifest, pkg []byte, e error)
 	}
 	licensePublicKey = base64.StdEncoding.EncodeToString(pub)
 	// The QA package is not a program: the one-click update stops at the restart.
-	startUpdater = func(string, ...string) error { return errors.New("测试环境不安装更新") }
+	startUpdater = func(string, ...string) error { return s.fail("update.qa.noInstall") }
 	updateManifestURL = strings.TrimSuffix(base, "/") + "/update.json"
 	s.mu.Lock()
 	program := s.programDir
@@ -60,7 +59,7 @@ func (s *Service) PrepareTestUpdate(base string) (manifest, pkg []byte, e error)
 		return nil, nil, e
 	}
 	sum := sha256.Sum256(b.Bytes())
-	manifest, e = update.Sign(update.Manifest{Version: "9.9.9", Notes: "QA 测试更新：只验证检查、下载和校验。", URL: strings.TrimSuffix(base, "/") + "/ImageWorkbench-update-9.9.9.zip", SHA256: hex.EncodeToString(sum[:]), Size: int64(b.Len())}, priv)
+	manifest, e = update.Sign(update.Manifest{Version: "9.9.9", Notes: "QA 测试更新：只验证检查、下载和校验。", NotesEn: "QA test update: only checking, downloading and verifying.", URL: strings.TrimSuffix(base, "/") + "/ImageWorkbench-update-9.9.9.zip", SHA256: hex.EncodeToString(sum[:]), Size: int64(b.Len())}, priv)
 	_ = os.MkdirAll(filepath.Join(program, updateDir), 0o700)
 	return manifest, b.Bytes(), e
 }

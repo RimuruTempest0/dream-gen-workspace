@@ -122,7 +122,7 @@ func TestLLMMonitorRecordsBridgeRequests(t *testing.T) {
 	defer up.Close()
 	llm := saveLLM(t, s, up.URL+"/v1")
 	s.store.Get("connection", llm.ID, &llm)
-	run := AgentRun{ID: NewID(), Status: "submitted", AuthorizedCount: 12, LLMConnection: llm, Input: AgentInput{Instruction: "圣诞卫衣套图 12 张"}, Events: []AgentEvent{{Now(), "分析参考图"}, {Now(), "等待 AI 模型响应"}}}
+	run := AgentRun{ID: NewID(), Status: "submitted", AuthorizedCount: 12, LLMConnection: llm, Input: AgentInput{Instruction: "圣诞卫衣套图 12 张"}, Events: []AgentEvent{{At: Now(), Text: "分析参考图"}, {At: Now(), Text: "等待 AI 模型响应"}}}
 	s.store.Put("agent_run", run.ID, run)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -188,7 +188,7 @@ func TestDropReasonsInPlainWords(t *testing.T) {
 		"context deadline exceeded": "等待超时",
 	}
 	for in, want := range cases {
-		if got := dropReason(in); got != want {
+		if got := dropReason("zh-CN", in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
 		}
 	}

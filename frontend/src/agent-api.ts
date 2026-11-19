@@ -73,6 +73,8 @@ export type SkillRecord = {
   enabled: boolean;
   source: string;
   attachments: { name: string; path: string }[];
+  /** Set by ImportSkill when a skill of that name exists (nothing imported). */
+  conflict?: boolean;
   sealed?: boolean;
   /** Product category; empty = used for every category. */
   category?: string;
@@ -88,6 +90,8 @@ export type AgentRun = {
   updatedAt: string;
   status: string;
   stage: string;
+  /** Code of a stage the page reacts to, whatever the stage text's language. */
+  stageCode?: string;
   error: string;
   llmReconnects?: number;
   llmReconnectError?: string;
@@ -102,7 +106,7 @@ export type AgentRun = {
   product: ProductInfo;
   questions: AgentQuestion[];
   plans: SuitePlan[];
-  events: { at: string; text: string }[];
+  events: { at: string; text: string; code?: string }[];
   batchID: string;
   submittedRevision: number;
 };
@@ -166,12 +170,4 @@ export const blankAgentDraft: AgentInput = {
   imageConnectionID: "",
   imageModel: "",
   skillIDs: ["product-analysis", "etsy-suite", "embroidery-rules"],
-};
-export const agentStateNames: Record<string, string> = {
-  analyzing: "分析中",
-  needs_input: "待补充资料",
-  review: "待确认方案",
-  submitted: "已提交生图",
-  interrupted: "已中断",
-  failed: "分析失败",
 };

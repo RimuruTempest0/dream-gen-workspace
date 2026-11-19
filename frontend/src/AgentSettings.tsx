@@ -28,7 +28,41 @@ import type {
   LLMCapabilities,
   SkillRecord,
 } from "./agent-api";
-import { DataState, SecretInput, useActions, useData } from "./ui";
+import {
+  DataState,
+  hostedLineName,
+  SecretInput,
+  useActions,
+  useData,
+} from "./ui";
+import { t, textIn, type MessageKey } from "./i18n";
+
+// The backend stores where a skill came from as a fixed Chinese word.
+const skillSources: Record<string, MessageKey> = {
+  内置: "agentSettings.skill.source.builtin",
+  导入: "agentSettings.skill.source.imported",
+  自定义: "agentSettings.skill.source.custom",
+};
+function skillSource(source: string) {
+  const key = skillSources[source];
+  return key ? t(key) : source;
+}
+// The built-in skills store a Chinese name and description (they are part of
+// the skill content for the AI). While unchanged, they are shown in the
+// display language; a name or description the customer edited is shown as is.
+const builtinSkillIDs = [
+  "product-analysis",
+  "etsy-suite",
+  "embroidery-rules",
+  "p004-rules",
+  "image-prompting",
+] as const;
+function skillShown(v: SkillRecord, field: "name" | "description") {
+  const id = builtinSkillIDs.find((b) => b === v.id);
+  if (!id) return v[field];
+  const key = `agentSettings.builtin.${id}.${field}` as const;
+  return v[field] === textIn("zh-CN", key) ? t(key) : v[field];
+}
 
 export function ConnectionFields({
   editing,
@@ -41,11 +75,15 @@ export function ConnectionFields({
     <>
       <UIForm.Item
         name="name"
-        label="连接名称"
-        rules={[{ required: true, message: "请填写便于识别的连接名称" }]}
+        label={t("agentSettings.name")}
+        rules={[{ required: true, message: t("agentSettings.name.required") }]}
       >
         <Input
-          placeholder={llm ? "例如：我的 AI 模型" : "例如：我的图片服务"}
+          placeholder={
+            llm
+              ? t("agentSettings.name.placeholderLLM")
+              : t("agentSettings.name.placeholderImage")
+          }
           maxLength={100}
         />
       </UIForm.Item>
@@ -54,11 +92,11 @@ export function ConnectionFields({
         label="Base URL"
         extra={
           llm
-            ? "填写 Anthropic Messages API 前缀，例如 https://example.com/anthropic/v1；保留路径，不重复追加 /v1。"
-            : "填写 API 前缀，例如 https://example.com/v1；保留你的路径，不自动追加 /v1。"
+            ? t("agentSettings.baseURL.hintLLM")
+            : t("agentSettings.baseURL.hintImage")
         }
         rules={[
-          { required: true, message: "请填写 Base URL" },
+          { required: true, message: t("agentSettings.baseURL.required") },
           {
             validator: (_, v) => {
               try {
@@ -74,9 +112,7 @@ export function ConnectionFields({
                 return Promise.resolve();
               } catch {
                 return Promise.reject(
-                  new Error(
-                    "请输入完整 HTTP/HTTPS 地址，不能包含凭证、查询参数或片段",
-                  ),
+                  new Error(t("agentSettings.baseURL.invalid")),
                 );
               }
             },
@@ -90,35 +126,50 @@ export function ConnectionFields({
         label="API Key"
         extra={
           editing?.hasKey
-            ? "留空保留原密钥；修改时请填写新密钥。"
-            : "密钥使用当前 Windows 用户加密，不进入备份。"
+            ? t("agentSettings.key.keep")
+            : t("agentSettings.key.hint")
         }
         rules={
-          editing?.hasKey ? [] : [{ required: true, message: "请填写 API Key" }]
+          editing?.hasKey
+            ? []
+            : [{ required: true, message: t("agentSettings.key.required") }]
         }
       >
         <SecretInput
-          placeholder={editing?.hasKey ? "已保存 · 留空保留" : "输入 API Key"}
+          placeholder={
+            editing?.hasKey
+              ? t("agentSettings.key.savedPlaceholder")
+              : t("agentSettings.key.placeholder")
+          }
           autoComplete="off"
         />
       </UIForm.Item>
       <UIForm.Item
         name="model"
-        label={llm ? "模型 ID" : "默认模型 ID（可选）"}
-        rules={llm ? [{ required: true, message: "请填写 模型 ID" }] : []}
+        label={
+          llm ? t("agentSettings.model") : t("agentSettings.model.default")
+        }
+        rules={
+          llm
+            ? [{ required: true, message: t("agentSettings.model.required") }]
+            : []
+        }
       >
-        <Input placeholder="从查询结果选择，或手动填写" />
+        <Input placeholder={t("agentSettings.model.placeholder")} />
       </UIForm.Item>
       {!llm && (
         <UIForm.Item
           name="protocol"
-          label="接口协议"
-          extra="大多数图片服务是 OpenAI Images（一次请求直接返回图片）。异步任务：提交后返回任务 ID，再轮询结果；应用重启后继续查询同一个任务，不会重复提交。"
+          label={t("agentSettings.protocol")}
+          extra={t("agentSettings.protocol.hint")}
         >
           <UISelect
             options={[
-              { value: "openai-images", label: "OpenAI Images（同步，默认）" },
-              { value: "async-jobs", label: "异步任务（提交后轮询）" },
+              {
+                value: "openai-images",
+                label: t("agentSettings.protocol.sync"),
+              },
+              { value: "async-jobs", label: t("agentSettings.protocol.async") },
             ]}
           />
         </UIForm.Item>
@@ -126,26 +177,29 @@ export function ConnectionFields({
       {llm && (
         <UIForm.Item
           name="maxOutputTokens"
-          label="单次输出上限（tokens）"
-          extra="默认 65536（包括模型思考）；模型支持的上限更低时再调低。"
+          label={t("agentSettings.maxTokens")}
+          extra={t("agentSettings.maxTokens.hint")}
         >
           <InputNumber min={256} max={65536} className="full-width" />
         </UIForm.Item>
       )}
       {llm && (
         <div className="parameter-grid">
-          <UIForm.Item name="mode" label="模型模式">
+          <UIForm.Item name="mode" label={t("agentSettings.mode")}>
             <UISelect
               options={[
-                { value: "claude", label: "Claude 模型" },
-                { value: "compatible", label: "其他模型 · 兼容接入" },
+                { value: "claude", label: t("agentSettings.mode.claude") },
+                {
+                  value: "compatible",
+                  label: t("agentSettings.mode.compatible"),
+                },
               ]}
             />
           </UIForm.Item>
-          <UIForm.Item name="authMode" label="认证方式">
+          <UIForm.Item name="authMode" label={t("agentSettings.auth")}>
             <UISelect
               options={[
-                { value: "api-key", label: "x-api-key（默认）" },
+                { value: "api-key", label: t("agentSettings.auth.apiKey") },
                 { value: "bearer", label: "Bearer Token" },
               ]}
             />
@@ -244,7 +298,7 @@ export function LLMConnections() {
             kind: "llm",
             clearKey: false,
           }),
-        "AI 模型连接已保存",
+        t("agentSettings.llm.saved"),
       );
       if (out) {
         setEditing(undefined);
@@ -261,13 +315,20 @@ export function LLMConnections() {
       form.resetFields();
     };
     if (form.isFieldsTouched())
-      actions.confirm("放弃未保存的连接修改？", "密钥仅在保存后持久化。", done);
+      actions.confirm(
+        t("agentSettings.llm.discard.title"),
+        t("agentSettings.llm.discard.body"),
+        done,
+      );
     else void done();
   }
   function validate(c: Connection) {
     actions.confirm(
-      "验证 Agent 能力？",
-      `将使用“${c.name}”的 ${c.model} 发送 4 项小型验证请求（文本、图片、工具、流式）。可能产生 AI 模型费用，不会生成商品图片。`,
+      t("agentSettings.validate.title"),
+      t("agentSettings.validate.body", {
+        name: hostedLineName(c),
+        model: c.model,
+      }),
       async () => {
         const id = crypto.randomUUID();
         validationID.current = id;
@@ -282,7 +343,7 @@ export function LLMConnections() {
           .catch((e) => {
             if (validationID.current === id)
               notification.error({
-                message: "Agent 验证未完成",
+                message: t("agentSettings.validate.failed"),
                 description: errorText(e),
                 duration: 0,
               });
@@ -295,7 +356,7 @@ export function LLMConnections() {
           });
       },
       false,
-      "开始验证",
+      t("agentSettings.validate.ok"),
     );
   }
   const llms = q.data?.filter((c) => c.kind === "llm") || [];
@@ -303,25 +364,22 @@ export function LLMConnections() {
     <section className="panel">
       <div className="panel-heading">
         <h2>
-          <ApiOutlined aria-hidden="true" /> AI 模型
+          <ApiOutlined aria-hidden="true" /> {t("agentSettings.llm.title")}
         </h2>
         {!llms.some((c) => c.managed) && (
           <Button
             icon={<PlusOutlined aria-hidden="true" />}
             onClick={() => open(null)}
           >
-            添加 AI 模型
+            {t("agentSettings.llm.add")}
           </Button>
         )}
       </div>
-      <p className="hint">
-        用于链接分析、图片分析和套图规划。其他模型需提供 Anthropic Messages
-        兼容接口，能力以验证结果为准。
-      </p>
+      <p className="hint">{t("agentSettings.llm.hint")}</p>
       <DataState
         query={q}
         empty={!llms.length}
-        emptyText="配置创作使用的 AI 模型"
+        emptyText={t("agentSettings.llm.empty")}
       >
         <div className="connection-list">
           {llms.map((c) => (
@@ -331,25 +389,31 @@ export function LLMConnections() {
               </div>
               <div className="connection-info">
                 <strong>
-                  {c.name}{" "}
+                  {hostedLineName(c)}{" "}
                   <Tag color={c.hasKey ? "success" : "warning"}>
-                    {c.hasKey ? "密钥已保存" : "需要密钥"}
+                    {c.hasKey
+                      ? t("agentSettings.key.saved")
+                      : t("agentSettings.key.needed")}
                   </Tag>
-                  <Tag>{c.mode === "compatible" ? "兼容接入" : "Claude"}</Tag>
+                  <Tag>
+                    {c.mode === "compatible"
+                      ? t("agentSettings.mode.compatibleTag")
+                      : "Claude"}
+                  </Tag>
                 </strong>
                 {c.managed ? (
-                  <p className="hint">由软件授权提供</p>
+                  <p className="hint">{t("agentSettings.managed.by")}</p>
                 ) : (
                   <p className="mono">{c.baseURL}</p>
                 )}
-                <small>{c.model || "未设置模型"}</small>
+                <small>{c.model || t("agentSettings.model.unset")}</small>
                 <div className="capability-tags">
                   {(
                     [
-                      ["text", "文本"],
-                      ["vision", "图片"],
-                      ["tools", "工具"],
-                      ["streaming", "流式"],
+                      ["text", t("agentSettings.cap.text")],
+                      ["vision", t("agentSettings.cap.vision")],
+                      ["tools", t("agentSettings.cap.tools")],
+                      ["streaming", t("agentSettings.cap.streaming")],
                     ] as const
                   ).map(([key, label]) => (
                     <Tag
@@ -364,35 +428,35 @@ export function LLMConnections() {
                     >
                       {label} ·{" "}
                       {c.capabilities?.[key]
-                        ? "通过"
+                        ? t("agentSettings.cap.passed")
                         : c.capabilities?.checkedAt
-                          ? "未通过"
-                          : "待验证"}
+                          ? t("agentSettings.cap.failed")
+                          : t("agentSettings.cap.pending")}
                     </Tag>
                   ))}
                 </div>
               </div>
               {c.managed ? (
-                <Tag>由软件授权管理</Tag>
+                <Tag>{t("agentSettings.managed.tag")}</Tag>
               ) : (
                 <Space wrap>
                   <Button disabled={!!validating} onClick={() => open(c)}>
-                    编辑 / 获取模型
+                    {t("agentSettings.llm.edit")}
                   </Button>
                   <Button
                     disabled={!c.hasKey || !c.model || !!validating}
                     loading={validating === c.id}
                     onClick={() => validate(c)}
                   >
-                    验证 Agent 能力
+                    {t("agentSettings.validate")}
                   </Button>
                   {c.hasKey && (
                     <Button
                       disabled={!!validating}
                       onClick={() =>
                         actions.confirm(
-                          "清除 AI 模型密钥？",
-                          "新分析将无法启动，模型能力验证会重置。",
+                          t("agentSettings.llm.clearKey.title"),
+                          t("agentSettings.llm.clearKey.body"),
                           () =>
                             call("SaveConnection", {
                               ...c,
@@ -402,18 +466,22 @@ export function LLMConnections() {
                         )
                       }
                     >
-                      清除密钥
+                      {t("agentSettings.clearKey")}
                     </Button>
                   )}
                   <Button
                     danger
                     disabled={!!validating}
-                    aria-label={`删除 AI 模型连接 ${c.name}`}
+                    aria-label={t("agentSettings.llm.delete.aria", {
+                      name: hostedLineName(c),
+                    })}
                     icon={<DeleteOutlined aria-hidden="true" />}
                     onClick={() =>
                       actions.confirm(
-                        `删除连接“${c.name}”？`,
-                        "历史分析与方案保留。",
+                        t("agentSettings.llm.delete.title", {
+                          name: hostedLineName(c),
+                        }),
+                        t("agentSettings.llm.delete.body"),
                         () => call("DeleteConnection", c.id),
                         true,
                       )
@@ -427,7 +495,7 @@ export function LLMConnections() {
       </DataState>
       {validating && (
         <Space>
-          <span role="status">正在验证模型能力，最多等待 2 分钟</span>
+          <span role="status">{t("agentSettings.validate.running")}</span>
           <Button
             onClick={() => {
               const id = validationID.current;
@@ -436,7 +504,7 @@ export function LLMConnections() {
               if (id) call("CancelConnectionTest", id).catch(() => {});
             }}
           >
-            取消能力验证
+            {t("agentSettings.validate.cancel")}
           </Button>
         </Space>
       )}
@@ -451,19 +519,23 @@ export function LLMConnections() {
               : "warning"
           }
           showIcon
-          message="Agent 能力验证结果"
+          message={t("agentSettings.validate.result")}
           description={
             <div className="prewrap">{capResult.details.join("\n")}</div>
           }
         />
       )}
       <Modal
-        title={editing ? "编辑 AI 模型连接" : "添加 AI 模型"}
+        title={
+          editing
+            ? t("agentSettings.llm.editTitle")
+            : t("agentSettings.llm.add")
+        }
         open={editing !== undefined}
         onCancel={close}
         onOk={save}
-        okText="保存连接"
-        cancelText="取消"
+        okText={t("agentSettings.llm.saveOk")}
+        cancelText={t("agentSettings.cancel")}
         confirmLoading={actions.busy}
         okButtonProps={{ disabled: testing }}
         maskClosable={!testing}
@@ -474,14 +546,14 @@ export function LLMConnections() {
           <ConnectionFields editing={editing} llm />
           <Space wrap>
             <Button loading={testing} onClick={getModels}>
-              获取模型
+              {t("agentSettings.llm.getModels")}
             </Button>
             {testing && (
               <Button disabled={false} onClick={cancelTest}>
-                取消查询
+                {t("agentSettings.llm.cancelQuery")}
               </Button>
             )}
-            <span className="muted">仅查询模型，不调用 AI 模型</span>
+            <span className="muted">{t("agentSettings.llm.queryOnly")}</span>
           </Space>
           {error && <Alert type="error" showIcon message={error} />}{" "}
           {result && (
@@ -496,7 +568,7 @@ export function LLMConnections() {
                 <UISelect
                   className="full-width"
                   showSearch
-                  aria-label="查询到的 AI 模型模型"
+                  aria-label={t("agentSettings.llm.models")}
                   options={result.ids.map((id) => ({ value: id, label: id }))}
                   onChange={(id) => form.setFieldValue("model", id)}
                 />
@@ -525,10 +597,7 @@ export function AgentSettings() {
   function open(v: SkillRecord | null) {
     setEditing(v);
     setName(v?.name || "");
-    setContent(
-      v?.content ||
-        "---\nname: my-image-skill\ndescription: 描述什么时候使用这个技能\n---\n\n写下图片制作规则和操作步骤。\n",
-    );
+    setContent(v?.content || t("agentSettings.skill.template"));
     setError("");
     setDirty(false);
   }
@@ -536,26 +605,25 @@ export function AgentSettings() {
     await actions.run(async () => {
       const path = await call<string>("ChooseSkillSource", directory);
       if (!path) return;
-      try {
-        await call("ImportSkill", path, false);
-        notification.success({ message: "Skill 已导入" });
-      } catch (e) {
-        if (errorText(e).includes("已存在")) {
-          actions.confirm(
-            "覆盖同名 Skill？",
-            "现有内容将被替换。正在执行的分析保留已冻结版本。",
-            () => call("ImportSkill", path, true),
-            true,
-            "覆盖导入",
-          );
-        } else throw e;
+      // A skill of the same name comes back flagged, not as an error text.
+      const r = await call<SkillRecord>("ImportSkill", path, false);
+      if (r?.conflict) {
+        actions.confirm(
+          t("agentSettings.skill.overwrite.title"),
+          t("agentSettings.skill.overwrite.body"),
+          () => call("ImportSkill", path, true),
+          true,
+          t("agentSettings.skill.overwrite.ok"),
+        );
+        return;
       }
+      notification.success({ message: t("agentSettings.skill.imported") });
     });
   }
   async function save() {
     setError("");
     if (!name.trim()) {
-      setError("请填写技能名称");
+      setError(t("agentSettings.skill.name.required"));
       return;
     }
     await actions.run(async () => {
@@ -569,7 +637,7 @@ export function AgentSettings() {
         });
         setEditing(undefined);
         setDirty(false);
-        notification.success({ message: "Skill 已保存" });
+        notification.success({ message: t("agentSettings.skill.saved") });
       } catch (e) {
         setError(errorText(e));
         throw e;
@@ -579,8 +647,8 @@ export function AgentSettings() {
   function close() {
     if (dirty)
       actions.confirm(
-        "放弃未保存的 Skill 修改？",
-        "已保存版本仍会保留。",
+        t("agentSettings.skill.discard.title"),
+        t("agentSettings.skill.discard.body"),
         async () => setEditing(undefined),
       );
     else setEditing(undefined);
@@ -588,19 +656,23 @@ export function AgentSettings() {
   return (
     <section className="panel">
       <div className="panel-heading">
-        <h2>Claude Code 与 Skills</h2>
+        <h2>{t("agentSettings.skills.title")}</h2>
         <Space wrap>
-          <Button onClick={() => runtime.refetch()}>检查运行时</Button>
-          <Button onClick={() => open(null)}>新建 Skill</Button>
+          <Button onClick={() => runtime.refetch()}>
+            {t("agentSettings.runtime.check")}
+          </Button>
+          <Button onClick={() => open(null)}>
+            {t("agentSettings.skill.new")}
+          </Button>
           <Button
             icon={<UploadOutlined aria-hidden="true" />}
             onClick={() => importSkill(false)}
             disabled={actions.busy}
           >
-            导入 ZIP
+            {t("agentSettings.skill.importZip")}
           </Button>
           <Button onClick={() => importSkill(true)} disabled={actions.busy}>
-            导入文件夹
+            {t("agentSettings.skill.importFolder")}
           </Button>
         </Space>
       </div>
@@ -612,62 +684,76 @@ export function AgentSettings() {
           description={runtime.data?.message}
         />
       </DataState>
-      <p className="hint">
-        Skills 用于商品分析、套图规划与工艺规则。支持 SKILL.md
-        和文本、JSON、图片附件；第一版不运行脚本。
-      </p>
+      <p className="hint">{t("agentSettings.skills.hint")}</p>
       <DataState
         query={q}
         empty={!q.data?.length}
-        emptyText="创建或导入你的第一个 Skill"
+        emptyText={t("agentSettings.skills.empty")}
       >
         <div className="connection-list">
           {q.data?.map((v) => (
             <div className="connection-row" key={v.id}>
               <div className="connection-info">
                 <strong>
-                  {v.name}{" "}
+                  {skillShown(v, "name")}{" "}
                   <Tag>
-                    {v.source} · v{v.version}
+                    {skillSource(v.source)} · v{v.version}
                   </Tag>
                 </strong>
-                <p>{v.description}</p>
+                <p>{skillShown(v, "description")}</p>
                 {!!v.attachments?.length && (
-                  <small>{v.attachments.length} 个附件</small>
+                  <small>
+                    {t("agentSettings.skill.attachments", {
+                      count: v.attachments.length,
+                    })}
+                  </small>
                 )}
                 <small>
-                  品类：{v.category || "通用（每个品类都用）"}{" "}
+                  {t("agentSettings.skill.category", {
+                    category:
+                      v.category || t("agentSettings.skill.category.all"),
+                  })}{" "}
                   <Button
                     type="link"
                     size="small"
-                    aria-label={`设置技能 ${v.name} 的品类`}
+                    aria-label={t("agentSettings.skill.setCategory.aria", {
+                      name: skillShown(v, "name"),
+                    })}
                     onClick={() => {
                       setCategoryFor(v);
                       setCategory(v.category || "");
                     }}
                   >
-                    设置品类
+                    {t("agentSettings.skill.setCategory")}
                   </Button>
                 </small>
               </div>
               <Space>
                 <Switch
                   checked={v.enabled}
-                  aria-label={`启用技能 ${v.name}`}
+                  aria-label={t("agentSettings.skill.enable", {
+                    name: skillShown(v, "name"),
+                  })}
                   disabled={actions.busy}
                   onChange={(enabled) =>
                     actions.run(() => call("SetSkillEnabled", v.id, enabled))
                   }
                 />
-                <Button onClick={() => open(v)}>编辑 Skill</Button>
+                <Button onClick={() => open(v)}>
+                  {t("agentSettings.skill.edit")}
+                </Button>
                 <Button
                   danger
-                  aria-label={`删除技能 ${v.name}`}
+                  aria-label={t("agentSettings.skill.delete.aria", {
+                    name: skillShown(v, "name"),
+                  })}
                   icon={<DeleteOutlined aria-hidden="true" />}
                   onClick={() =>
                     actions.confirm(
-                      `删除技能“${v.name}”？`,
-                      "历史分析保留此技能的内容快照。",
+                      t("agentSettings.skill.delete.title", {
+                        name: skillShown(v, "name"),
+                      }),
+                      t("agentSettings.skill.delete.body"),
                       () => call("DeleteSkill", v.id),
                       true,
                     )
@@ -679,7 +765,9 @@ export function AgentSettings() {
         </div>
       </DataState>
       <Modal
-        title={`设置品类：${categoryFor?.name || ""}`}
+        title={t("agentSettings.category.title", {
+          name: categoryFor ? skillShown(categoryFor, "name") : "",
+        })}
         open={!!categoryFor}
         onCancel={() => setCategoryFor(null)}
         onOk={() =>
@@ -688,15 +776,13 @@ export function AgentSettings() {
             setCategoryFor(null);
           })
         }
-        okText="保存"
-        cancelText="取消"
+        okText={t("agentSettings.save")}
+        cancelText={t("agentSettings.cancel")}
         destroyOnHidden
       >
-        <p className="hint">
-          留空表示通用：每次制作都用。填了品类的技能只在创作选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。
-        </p>
+        <p className="hint">{t("agentSettings.category.hint")}</p>
         <label className="field-label" htmlFor="skill-category">
-          品类
+          {t("agentSettings.category.label")}
         </label>
         <AutoComplete
           id="skill-category"
@@ -704,22 +790,24 @@ export function AgentSettings() {
           value={category}
           options={(categories.data || []).map((value) => ({ value }))}
           onChange={setCategory}
-          placeholder="通用"
+          placeholder={t("agentSettings.category.placeholder")}
         />
       </Modal>
       <Modal
-        title={editing ? "编辑 Skill" : "新建 Skill"}
+        title={
+          editing ? t("agentSettings.skill.edit") : t("agentSettings.skill.new")
+        }
         open={editing !== undefined}
         onCancel={close}
         onOk={save}
-        okText="保存 Skill"
-        cancelText="取消"
+        okText={t("agentSettings.skill.saveOk")}
+        cancelText={t("agentSettings.cancel")}
         confirmLoading={actions.busy}
         width={800}
         destroyOnHidden
       >
         <label className="field-label" htmlFor="skill-name">
-          技能名称
+          {t("agentSettings.skill.name")}
         </label>
         <Input
           id="skill-name"

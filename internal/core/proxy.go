@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var errProxyAddress = errors.New("系统代理地址格式不受支持")
+var errProxyAddress = errors.New("system proxy address format is not supported")
 
 // Keep explicit environment configuration first. Normal Explorer launches do
 // not inherit terminal-only proxy variables, so use Windows' static system
@@ -95,7 +95,7 @@ func proxyURL(server, scheme string) (*url.URL, error) {
 		return nil, e
 	}
 	if u.Host == "" || !(u.Scheme == "http" || u.Scheme == "https" || u.Scheme == "socks5" || u.Scheme == "socks5h") {
-		return nil, &url.Error{Op: "proxy", URL: "[系统代理]", Err: errProxyAddress}
+		return nil, &url.Error{Op: "proxy", URL: "[system proxy]", Err: errProxyAddress}
 	}
 	return u, nil
 }

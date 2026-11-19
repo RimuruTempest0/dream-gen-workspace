@@ -1,10 +1,9 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"image"
 	stdDraw "image/draw"
 	"image/png"
@@ -69,13 +68,13 @@ func (b *agentBridge) cropReference(r AgentRun, args json.RawMessage) ([]any, er
 		allowed = allowed || id == v.AssetID
 	}
 	if !allowed {
-		return nil, errors.New("只能截取本次需求的参考图")
+		return nil, b.service.fail("agent.crop.foreign")
 	}
 	if len(r.Crops) >= maxCropsPerRun {
-		return nil, fmt.Errorf("每次制作最多截取 %d 张", maxCropsPerRun)
+		return nil, b.service.fail("agent.crop.max", "n", maxCropsPerRun)
 	}
 	if box.Left < 0 || box.Top < 0 || box.Width <= 0 || box.Height <= 0 || box.Left+box.Width > 1.0001 || box.Top+box.Height > 1.0001 {
-		return nil, errors.New("截取范围无效：left、top、width、height 都是 0–1 的比例，且不能超出图片")
+		return nil, b.service.fail("agent.crop.box")
 	}
 	label := strings.TrimSpace(v.Label)
 	if utf8.RuneCountInString(label) > 60 {
@@ -91,21 +90,21 @@ func (b *agentBridge) cropReference(r AgentRun, args json.RawMessage) ([]any, er
 	}
 	s.mu.Unlock()
 	if e != nil {
-		return nil, errors.New("参考图文件不可用")
+		return nil, s.fail("agent.crop.unusable")
 	}
 	cut, e := cropImage(data, box.Left, box.Top, box.Width, box.Height)
 	if e != nil {
-		return nil, e
+		return nil, s.localErr(e)
 	}
 	s.mu.Lock()
-	saved, e := s.saveImage(cut, "截图-"+label+".png", "reference", "", r.Input.ProjectID, "")
+	saved, e := s.saveImage(cut, s.msg("agent.crop.filename", "label", label), "reference", "", r.Input.ProjectID, "")
 	s.mu.Unlock()
 	if e != nil {
 		return nil, e
 	}
-	if e = s.updateAgent(b.runID, "截取参考图局部", func(run *AgentRun) error {
+	if e = s.updateAgent(b.runID, s.msg("agent.stage.crop"), func(run *AgentRun) error {
 		if len(run.Crops) >= maxCropsPerRun {
-			return fmt.Errorf("每次制作最多截取 %d 张", maxCropsPerRun)
+			return s.fail("agent.crop.max", "n", maxCropsPerRun)
 		}
 		run.Crops = append(run.Crops, saved.ID)
 		return nil
@@ -125,7 +124,7 @@ func (b *agentBridge) cropReference(r AgentRun, args json.RawMessage) ([]any, er
 func cropImage(data []byte, left, top, width, height float64) ([]byte, error) {
 	src, _, e := image.Decode(bytes.NewReader(data))
 	if e != nil {
-		return nil, errors.New("参考图无法读取")
+		return nil, i18n.Fail("agent.crop.unreadable")
 	}
 	bounds := src.Bounds()
 	w, h := float64(bounds.Dx()), float64(bounds.Dy())
@@ -134,7 +133,7 @@ func cropImage(data []byte, left, top, width, height float64) ([]byte, error) {
 		bounds.Min.X+int((left+width)*w), bounds.Min.Y+int((top+height)*h),
 	).Intersect(bounds)
 	if rect.Dx() < minCropPixels || rect.Dy() < minCropPixels {
-		return nil, fmt.Errorf("截取范围太小（至少 %d×%d 像素）", minCropPixels, minCropPixels)
+		return nil, i18n.Fail("agent.crop.tooSmall", "n", minCropPixels)
 	}
 	outW, outH := rect.Dx(), rect.Dy()
 	if longest := max(outW, outH); longest < cropTargetSide {

@@ -49,14 +49,20 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $conflict 'data-location.tx
 Assert-Rejected { Set-LocalReleaseProfile $fixture $conflict $migratedData } 'Existing broken preference was silently replaced'
 
 # Package the same explicit shipping entries used by build.ps1, with private files present.
+# The manuals (one per display language) are read from build.ps1, so the two lists cannot drift.
+$buildScript = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'build.ps1'), [Text.Encoding]::UTF8)
+$manualList = [regex]::Match($buildScript, '(?m)^\$manuals = @\((.+)\)\s*$')
+Assert-True $manualList.Success 'The manual list was not found in build.ps1'
+$manuals = @([regex]::Matches($manualList.Groups[1].Value, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+Assert-True ($manuals.Count -eq 5) "build.ps1 should ship five manuals, found $($manuals.Count)"
 foreach ($directory in @('runtime', 'agent')) {
     New-Item -ItemType Directory -Path (Join-Path $nextRelease $directory) | Out-Null
     [IO.File]::WriteAllText((Join-Path $nextRelease "$directory\fixture.txt"), 'runtime')
 }
-foreach ($file in @('ImageWorkbench.exe', 'product-browser.exe', '使用说明.txt', 'version.json')) {
+foreach ($file in @('ImageWorkbench.exe', 'product-browser.exe', 'version.json') + $manuals) {
     [IO.File]::WriteAllText((Join-Path $nextRelease $file), 'shipping-fixture')
 }
-$shipping = @('ImageWorkbench.exe', 'product-browser.exe', 'runtime', 'agent', '使用说明.txt', 'version.json') | ForEach-Object { Join-Path $nextRelease $_ }
+$shipping = @('ImageWorkbench.exe', 'product-browser.exe', 'runtime', 'agent', 'version.json') + $manuals | ForEach-Object { Join-Path $nextRelease $_ }
 $archivePath = Join-Path $fixture 'shipping.zip'
 Compress-Archive -LiteralPath $shipping -DestinationPath $archivePath
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -65,6 +71,7 @@ try {
     $entries = @($archive.Entries | ForEach-Object { $_.FullName })
     Assert-True (-not ($entries -match 'data-location|app\.db|secrets|\.local|product-browser[\\/]')) 'Shipping archive exposed local profile'
     Assert-True ($entries -contains 'product-browser.exe') 'Shipping archive is missing the product browser helper'
+    foreach ($manual in $manuals) { Assert-True ($entries -contains $manual) "Shipping archive is missing the manual $manual" }
 } finally { $archive.Dispose() }
 
 [IO.File]::WriteAllText((Join-Path $nextRelease 'data-location.txt'), (Join-Path $fixture 'missing data'))

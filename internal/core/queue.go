@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 // loop dispatches queued tasks oldest first, keeping up to the configured number
@@ -98,9 +100,9 @@ func (s *Service) claimTask(download bool) bool {
 			// Past the trial limit (or with an invalid licence) nothing more is sent.
 			if !download && s.trialStopLocked() {
 				t.Status, t.UpdatedAt = "blocked", Now()
-				t.Error = "此图尚未提交、未计费。" + trialUsedUp
+				t.Error = s.msg("generation.unsent") + s.text(trialUsedUp)
 				if msg := s.licenseBlockMessageLocked(); msg != "" {
-					t.Error = "此图尚未提交、未计费。" + msg
+					t.Error = s.msg("generation.unsent") + msg
 				}
 				_ = s.store.Put("task", t.ID, t)
 				continue
@@ -171,7 +173,7 @@ func (s *Service) step(claimed Task) bool {
 	}
 	if e != nil {
 		t.Status = "failed"
-		t.Error = "参考图记录不可用"
+		t.Error = s.msg("generation.referenceRecordMissing")
 		s.store.Put("task", t.ID, t)
 		s.mu.Unlock()
 		s.signal()
@@ -183,7 +185,7 @@ func (s *Service) step(claimed Task) bool {
 		s.mu.Unlock()
 		return false
 	}
-	ctx, cancel := context.WithCancel(s.ctx)
+	ctx, cancel := context.WithCancel(i18n.WithLanguage(s.ctx, operationLanguage(t.Language)))
 	defer cancel()
 	s.genCancel[t.ID] = cancel
 	s.mu.Unlock()
@@ -203,9 +205,9 @@ func (s *Service) step(claimed Task) bool {
 	// cancellation is recorded instead of a failure.
 	if userCanceled && e != nil {
 		t.Status, t.UpdatedAt = "canceled", Now()
-		t.Error = canceledInFlight
+		t.Error = s.taskMsg(t, "task.canceledInFlight")
 		saveErr := s.store.Put("task", t.ID, t)
-		_ = s.store.appendLog("warn", "image", t.ID, fmt.Sprintf("已取消生成：请求发出后等待 %d 秒时取消", t.Diagnostic.ElapsedMS/1000))
+		_ = s.store.appendLog("warn", "image", t.ID, s.msg("task.log.canceledInFlight", "seconds", t.Diagnostic.ElapsedMS/1000))
 		s.mu.Unlock()
 		s.signal()
 		return saveErr == nil
@@ -225,17 +227,17 @@ func (s *Service) step(claimed Task) bool {
 		if unknown {
 			t.Status = "unknown"
 		}
-		t.Error = redact(e.Error(), key)
+		t.Error = redactIn(operationLanguage(t.Language), e.Error(), key)
 		switch {
 		case policy:
-			t.Error = fmt.Sprintf("%s（HTTP %d），图片没有生成，一般不计费。%s原始错误：%s", policyRefusedPrefix, t.Diagnostic.HTTPStatus, s.policyRetryLocked(&t), t.Error)
+			t.Error = s.taskMsg(t, "generation.policyRefused") + s.taskMsg(t, "generation.policyRefusedDetail", "status", t.Diagnostic.HTTPStatus, "note", s.policyRetryLocked(&t), "raw", t.Error)
 		case rejected == "balance" && t.Trial:
 			// The trial key's upstream quota is the hard trial limit.
-			t.Error = fmt.Sprintf("试用额度已用完（HTTP %d，图片服务返回额度不足），此图未生成也不计费。请在“系统 → 连接”输入激活码后继续使用。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			t.Error = s.taskMsg(t, "generation.trialQuota", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
 		case rejected == "balance":
-			t.Error = fmt.Sprintf("图片服务账户余额不足（HTTP %d），图片服务拒绝了请求，未生成也不计费。请到该图片服务后台充值后重新生成，API Key 不需要重新输入。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			t.Error = s.taskMsg(t, "generation.balance", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
 		case rejected == "auth":
-			t.Error = fmt.Sprintf("API Key 无效（HTTP %d），图片服务拒绝了请求，未生成也不计费。请在“系统 → 连接”重新输入该图片服务的 API Key 后重新生成。原始错误：%s", t.Diagnostic.HTTPStatus, t.Error)
+			t.Error = s.taskMsg(t, "generation.keyRejected", "status", t.Diagnostic.HTTPStatus, "raw", t.Error)
 			// Re-check the key right away with the free probe.
 			delete(s.probes, t.Connection.ID)
 		}
@@ -250,11 +252,11 @@ func (s *Service) step(claimed Task) bool {
 		if unknown {
 			note := s.autoRegenerateLocked(&t)
 			if connectionLost(e) {
-				t.Error = fmt.Sprintf("等待约 %d 秒时发现与图片服务的连接已经断开（网络或代理中断，连接不再响应），没能收到结果。这张图可能已在图片服务生成并计费。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, note, t.Error)
+				t.Error = s.taskMsg(t, "generation.connectionLost", "seconds", t.Diagnostic.ElapsedMS/1000, "note", note, "raw", t.Error)
 			} else if relayTimedOut(t.Diagnostic) {
-				t.Error = fmt.Sprintf("图片服务等待约 %d 秒后断开（%s），没有返回确定的生图结果。这张图可能仍在图片服务生成并已计费。降低同时生成张数或质量可能减少这类超时，但不能保证避免。%s原始错误：%s", t.Diagnostic.ElapsedMS/1000, timeoutLabel(t.Diagnostic), note, t.Error)
+				t.Error = s.taskMsg(t, "generation.relayTimeout", "seconds", t.Diagnostic.ElapsedMS/1000, "cause", timeoutLabel(operationLanguage(t.Language), t.Diagnostic), "note", note, "raw", t.Error)
 			} else {
-				t.Error = "结果未知，这张图可能已生成并计费。" + note + "原始错误：" + t.Error
+				t.Error = s.taskMsg(t, "generation.unknown", "note", note, "raw", t.Error)
 			}
 		}
 	} else {
@@ -292,22 +294,30 @@ func connectionLost(e error) bool {
 	return e != nil && strings.Contains(e.Error(), "client connection lost")
 }
 
-func timeoutLabel(d GenerationDiagnostic) string {
+func timeoutLabel(lang string, d GenerationDiagnostic) string {
 	if d.HTTPStatus != 0 {
 		return fmt.Sprintf("HTTP %d", d.HTTPStatus)
 	}
-	return "连接被关闭"
+	return i18n.T(lang, "generation.connectionClosed")
 }
 
 // pauseBatchForRejectionLocked blocks the batch's queued, unsent images after the
 // relay rejected the API key or the account has no balance. Requests already in
 // flight finish on their own.
+// taskMsg is a message written on a task once its image request has started:
+// in the language the task was started in, so a task under way when the
+// interface language is switched finishes in its own language. Log lines keep
+// using s.msg.
+func (s *Service) taskMsg(t Task, key string, args ...any) string {
+	return i18n.T(operationLanguage(t.Language), key, args...)
+}
+
 func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
-	reason, fix, logText := "API Key 无效", "重新输入密钥后可恢复生成。", "图片服务拒绝 API Key"
+	note, logKey := "generation.paused.auth", "generation.log.paused.auth"
 	if kind == "balance" {
-		reason, fix, logText = "图片服务账户余额不足", "到图片服务充值后可恢复生成。", "图片服务账户余额不足"
+		note, logKey = "generation.paused.balance", "generation.log.paused.balance"
 	} else if kind == "trial" {
-		reason, fix, logText = "试用额度已用完", "输入激活码后可恢复生成。", "试用额度已用完"
+		note, logKey = "generation.paused.trial", "generation.log.paused.trial"
 	}
 	if failed.BatchID == "" {
 		return
@@ -320,7 +330,7 @@ func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
 	for _, t := range tasks {
 		if t.BatchID == failed.BatchID && t.Status == "queued" && t.Connection.ID == failed.Connection.ID {
 			t.Status = "blocked"
-			t.Error = "同批图片因" + reason + "已暂停，尚未提交、未计费。" + fix
+			t.Error = s.taskMsg(t, note)
 			t.UpdatedAt = Now()
 			if s.store.Put("task", t.ID, t) == nil {
 				paused++
@@ -328,7 +338,7 @@ func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
 		}
 	}
 	if paused > 0 {
-		_ = s.store.appendLog("warn", "image", failed.BatchID, fmt.Sprintf("%s，已暂停同批 %d 张未提交图片", logText, paused))
+		_ = s.store.appendLog("warn", "image", failed.BatchID, s.msg(logKey, "n", paused))
 	}
 }
 
@@ -347,7 +357,7 @@ func (s *Service) download(t *Task) {
 		already := s.store.Get("asset", assetID, &existing) == nil
 		s.mu.Unlock()
 		if !already {
-			b, e := s.outputBytes(s.ctx, out)
+			b, e := s.outputBytes(i18n.WithLanguage(s.ctx, operationLanguage(t.Language)), out)
 			if e != nil {
 				s.downloadError(t, e)
 				return
@@ -423,7 +433,7 @@ func (s *Service) downloadError(t *Task, e error) {
 		t.Status = "downloading"
 		t.Error = ""
 		t.DownloadRetryAt = time.Now().Add(wait).UTC().Format(time.RFC3339Nano)
-		_ = s.store.appendLog("warn", "image", t.BatchID, fmt.Sprintf("图片下载未完成，%d 秒后自动补下载（第 %d 次，不会重新生图）：%s", int(wait.Seconds()), t.AutoDownloads, e.Error()))
+		_ = s.store.appendLog("warn", "image", t.BatchID, s.msg("generation.log.autoDownload", "seconds", int(wait.Seconds()), "n", t.AutoDownloads, "error", e.Error()))
 	}
 	s.store.Put("task", t.ID, *t)
 	s.mu.Unlock()

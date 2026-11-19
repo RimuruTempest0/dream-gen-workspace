@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"imageworkbench/internal/core"
+	"imageworkbench/internal/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,11 @@ type App struct {
 	service    *core.Service
 	force      atomic.Bool
 	configRoot string
+}
+
+// msg is a backend message in the current interface language.
+func (a *App) msg(key string, args ...any) string {
+	return i18n.T(a.service.Language(), key, args...)
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -44,9 +50,25 @@ func (a *App) ForceQuit() {
 	runtime.Quit(a.ctx)
 }
 func (a *App) Dashboard() (core.Summary, error) { return a.service.Dashboard() }
-func (a *App) OpenDataDirectory() error         { return openDirectory(a.service.Root()) }
+
+// InterfaceLanguage is the saved interface language (zh-CN, en, vi, ja, ko).
+func (a *App) InterfaceLanguage() string { return a.service.Language() }
+
+// SetInterfaceLanguage saves the interface language and renames the window.
+func (a *App) SetInterfaceLanguage(code string) error {
+	if e := a.service.SetLanguage(code); e != nil {
+		return e
+	}
+	if a.ctx != nil {
+		runtime.WindowSetTitle(a.ctx, i18n.AppName(code))
+	}
+	return nil
+}
+func (a *App) OpenDataDirectory() error {
+	return a.service.LocalError(openDirectory(a.service.Root()))
+}
 func (a *App) ChooseDataDirectory() (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择新的保存位置（空文件夹）", DefaultDirectory: a.service.Root()})
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.dataDirectory"), DefaultDirectory: a.service.Root()})
 }
 func (a *App) ChangeDataDirectory(path string) (core.Summary, error) {
 	if e := a.service.ChangeDataDirectory(path, func(target string) error { return saveDataPath(a.configRoot, target) }); e != nil {
@@ -92,7 +114,7 @@ func (a *App) UpdateAsset(id, project string, hidden bool) error {
 	return a.service.UpdateAsset(id, project, hidden)
 }
 func (a *App) ImportFiles() ([]core.Asset, error) {
-	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "添加参考图", Filters: []runtime.FileFilter{{DisplayName: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.webp"}}})
+	paths, e := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.references"), Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.images"), Pattern: "*.png;*.jpg;*.jpeg;*.webp"}}})
 	if e != nil {
 		return nil, e
 	}
@@ -101,7 +123,7 @@ func (a *App) ImportFiles() ([]core.Asset, error) {
 func (a *App) importPaths(paths []string) ([]core.Asset, error) {
 	out := []core.Asset{}
 	if len(paths) > 4 {
-		return nil, errors.New("一次最多导入 4 张参考图")
+		return nil, errors.New(a.msg("app.references.max"))
 	}
 	for _, path := range paths {
 		info, e := os.Stat(path)
@@ -109,7 +131,7 @@ func (a *App) importPaths(paths []string) ([]core.Asset, error) {
 			return out, e
 		}
 		if info.Size() > core.MaxImageBytes {
-			return out, errors.New("图片超过 32 MB")
+			return out, errors.New(a.msg("app.image.tooLarge"))
 		}
 		b, e := os.ReadFile(path)
 		if e != nil {
@@ -140,17 +162,17 @@ func (a *App) ChooseExportPath(name string) (string, error) {
 		ext = ".png"
 	}
 	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".zip" && ext != ".csv" {
-		return "", errors.New("导出格式不受支持")
+		return "", errors.New(a.msg("app.export.format"))
 	}
-	title := "保存图片"
-	label := "图片"
+	title := a.msg("app.dialog.saveImage")
+	label := a.msg("app.filter.images")
 	if ext == ".zip" {
-		title = "保存套图 ZIP"
-		label = "ZIP 套图"
+		title = a.msg("app.dialog.saveSuite")
+		label = a.msg("app.filter.suite")
 	}
 	if ext == ".csv" {
-		title = "保存调用记录 CSV"
-		label = "CSV 表格"
+		title = a.msg("app.dialog.saveCalls")
+		label = a.msg("app.filter.csv")
 	}
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: title, DefaultFilename: filepath.Base(name), Filters: []runtime.FileFilter{{DisplayName: label, Pattern: "*" + ext}}})
 }
@@ -183,7 +205,7 @@ func (a *App) SetGuideMode(on bool) error                          { return a.se
 func (a *App) SaveTemplate(v core.Template) (core.Template, error) { return a.service.SaveTemplate(v) }
 func (a *App) DeleteTemplate(id string) error                      { return a.service.DeleteTemplate(id) }
 func (a *App) Backup() (bool, error) {
-	path, e := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "保存数据备份", DefaultFilename: "ImageWorkbench-backup.zip", Filters: []runtime.FileFilter{{DisplayName: "ZIP 备份", Pattern: "*.zip"}}})
+	path, e := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: a.msg("app.dialog.backup"), DefaultFilename: "ImageWorkbench-backup.zip", Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.backup"), Pattern: "*.zip"}}})
 	if e != nil || path == "" {
 		return false, e
 	}
@@ -192,7 +214,7 @@ func (a *App) Backup() (bool, error) {
 
 // ChooseCustomerFile asks for a renewed customer.dat from the provider.
 func (a *App) ChooseCustomerFile() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择软件提供方发来的授权文件", Filters: []runtime.FileFilter{{DisplayName: "授权文件 customer.dat", Pattern: "*.dat"}}})
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.license"), Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.license"), Pattern: "*.dat"}}})
 }
 
 // ImportCustomerFile replaces customer.dat with a renewed one for this software.
@@ -202,8 +224,8 @@ func (a *App) ImportCustomerFile(path string) (core.LicenseStatus, error) {
 
 // ChooseDiagnosticsPath asks where to save the diagnostic package.
 func (a *App) ChooseDiagnosticsPath() (string, error) {
-	name := "ImageWorkbench-诊断包-" + time.Now().Format("20060102-1504") + ".zip"
-	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "保存诊断包", DefaultFilename: name, Filters: []runtime.FileFilter{{DisplayName: "ZIP 诊断包", Pattern: "*.zip"}}})
+	name := a.msg("app.diagnostics.filename", "time", time.Now().Format("20060102-1504"))
+	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: a.msg("app.dialog.diagnostics"), DefaultFilename: name, Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.diagnostics"), Pattern: "*.zip"}}})
 }
 
 // ExportDiagnosticsToPath writes the diagnostic package (no keys, prompts or images).
@@ -211,7 +233,7 @@ func (a *App) ExportDiagnosticsToPath(path string) error {
 	return a.service.ExportDiagnostics(path, a.configRoot)
 }
 func (a *App) Restore() (bool, error) {
-	path, e := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择备份", Filters: []runtime.FileFilter{{DisplayName: "ZIP 备份", Pattern: "*.zip"}}})
+	path, e := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: a.msg("app.dialog.restore"), Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.backup"), Pattern: "*.zip"}}})
 	if e != nil || path == "" {
 		return false, e
 	}

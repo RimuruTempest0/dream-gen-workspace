@@ -4,7 +4,6 @@ package core
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -35,7 +34,7 @@ func (s *Service) Submit(in GenerateInput) (string, error) {
 }
 func (s *Service) submit(in GenerateInput) (string, error) {
 	if in.RequestID == "" || len(in.RequestID) > 128 {
-		return "", errors.New("请求标识无效")
+		return "", s.fail("task.requestID")
 	}
 	// Mood guide (0.7.26): the prompt may be empty, and a comparison is one prompt
 	// drawn once in each rendering.
@@ -45,41 +44,41 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 	if in.Mood != nil {
 		var e error
 		if mood, e = resolveMood(*in.Mood); e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		if concept, e = resolveConceptChoice(in.Concept); e != nil {
-			return "", e
+			return "", s.localErr(e)
 		}
 		if len(in.Prompts) == 0 {
 			in.Prompts = []string{""}
 		}
 		if in.Compare {
 			if len(in.Prompts) != 1 {
-				return "", errors.New("对比出图只能用一条提示词，请关闭批量提示词")
+				return "", s.fail("task.compareOnePrompt")
 			}
 			in.Count = 1
 			renderings = []string{renderingRealistic, renderingPainterly}
 		}
 	} else if in.Compare {
-		return "", errors.New("对比出图需要先选好心境")
+		return "", s.fail("task.compareNeedsMood")
 	} else if in.Concept != nil {
-		return "", errors.New("选用的概念需要和心境一起使用")
+		return "", s.fail("task.conceptNeedsMood")
 	}
 	if in.Count < 1 || in.Count > 20 {
-		return "", errors.New("每条提示词张数应为 1–20")
+		return "", s.fail("task.count")
 	}
 	if len(in.Prompts) < 1 || len(in.Prompts)*in.Count > 200 {
-		return "", errors.New("每批最多 200 个子任务")
+		return "", s.fail("task.batchLimit")
 	}
 	if len(in.References) > 4 {
-		return "", errors.New("当前版本最多使用 4 张参考图；模型可能有更小限制")
+		return "", s.fail("task.referenceLimit")
 	}
 	var c Connection
 	if e := s.store.Get("connection", in.ConnectionID, &c); e != nil {
 		return "", e
 	}
 	if normalizeConnection(c).Kind != "image" {
-		return "", errors.New("请选择图片服务，AI 模型连接不能提交图片任务")
+		return "", s.fail("task.needsImageService")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return "", e
@@ -89,7 +88,7 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 		model = c.Model
 	}
 	if model == "" {
-		return "", errors.New("请选择或填写模型 ID")
+		return "", s.fail("task.needsModel")
 	}
 	if in.ProjectID != "" {
 		var project Project
@@ -103,11 +102,11 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 			return "", e
 		}
 		if _, e := readOwned(s.store.Root, a.Path); e != nil {
-			return "", errors.New("参考图文件不可用")
+			return "", s.fail("task.referenceUnavailable")
 		}
 	}
 	if len(in.Size) > 64 || len(in.Quality) > 64 {
-		return "", errors.New("参数过长")
+		return "", s.fail("task.paramsTooLong")
 	}
 	batch := NewID()
 	tasks := []Task{}
@@ -122,7 +121,7 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 			concept = strings.TrimSpace(labels[i])
 		}
 		if (prompt == "" && in.Mood == nil) || len(prompt) > 32000 {
-			return "", errors.New("提示词为空或过长")
+			return "", s.fail("task.promptLength")
 		}
 		for _, rendering := range renderings {
 			for n := 0; n < in.Count; n++ {
@@ -151,8 +150,10 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 			s.prepareMoodTask(&tasks[i], mood, concept, llm)
 		}
 	}
+	lang := s.Language()
 	for i := range tasks {
 		tasks[i].Trial = s.trialLocked()
+		tasks[i].Language = lang
 	}
 	result, e := s.store.Submit(in.RequestID, batch, tasks)
 	if e == nil {
@@ -162,7 +163,7 @@ func (s *Service) submit(in GenerateInput) (string, error) {
 					s.startRewordLocked(t.ID)
 				}
 			} else {
-				_ = s.store.appendLog("info", "image", batch, "未配置 AI 模型，已直接附加心境要点")
+				_ = s.store.appendLog("info", "image", batch, s.msg("task.log.moodAppended"))
 			}
 		}
 		s.signal()
@@ -226,11 +227,6 @@ func (s *Service) StopBatch(batch string) error {
 	return nil
 }
 
-const (
-	canceledUnsent   = "已取消生成。这张图尚未提交，未计费。"
-	canceledInFlight = "已取消生成，不再等待图片服务结果。请求此前已发送，图片服务可能仍会生成并计费，请以图片服务记录为准。"
-)
-
 // CancelTask cancels one image: an unsent one is simply dropped; an in-flight
 // request is aborted. A result already returned (downloading) is not cancelled.
 func (s *Service) CancelTask(id string) error {
@@ -243,22 +239,22 @@ func (s *Service) CancelTask(id string) error {
 	switch t.Status {
 	case "queued", "blocked":
 		// A worker that already claimed it re-reads the status before sending.
-		t.Status, t.Error, t.UpdatedAt = "canceled", canceledUnsent, Now()
+		t.Status, t.Error, t.UpdatedAt = "canceled", s.msg("task.canceledUnsent"), Now()
 		if e := s.store.Put("task", t.ID, t); e != nil {
 			return e
 		}
-		_ = s.store.appendLog("info", "image", t.ID, "已取消生成：图片尚未提交")
+		_ = s.store.appendLog("info", "image", t.ID, s.msg("task.log.canceledUnsent"))
 	case "submitting", "running":
 		cancel := s.genCancel[id]
 		if cancel == nil {
-			return errors.New("这张图正在提交，请稍后再取消")
+			return s.fail("task.cancelSubmitting")
 		}
 		s.canceled[id] = true
 		cancel()
 	case "downloading":
-		return errors.New("图片服务已返回这张图，正在保存，不能取消")
+		return s.fail("task.cancelDownloading")
 	default:
-		return errors.New("这张图已结束，无需取消")
+		return s.fail("task.cancelFinished")
 	}
 	s.signal()
 	return nil
@@ -272,7 +268,7 @@ func (s *Service) Retry(id string) (string, error) {
 		return "", e
 	}
 	if active(t.Status) {
-		return "", errors.New("任务仍在执行，不能重复生成")
+		return "", s.fail("task.stillRunning")
 	}
 	if t.AgentRunID != "" {
 		if e := s.retryAgentLocked(t); e != nil {
@@ -294,10 +290,10 @@ func (s *Service) RetryDownload(id string) error {
 		return e
 	}
 	if t.Status != "download_failed" {
-		return errors.New("此任务没有待补下载的结果")
+		return s.fail("task.nothingToDownload")
 	}
 	if len(t.Results) == 0 {
-		return errors.New("没有保留可下载的结果链接，请核对平台记录；不会自动重新生成")
+		return s.fail("task.noResultLinks")
 	}
 	t.Status = "downloading"
 	t.Error = ""
@@ -327,10 +323,11 @@ func (s *Service) ResumeBlocked(id string) error {
 func (s *Service) retryAgentLocked(t Task) error {
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
-		return missing(e, "这张图片使用的图片服务已删除，请新建需求")
+		return missing(e, s.msg("task.serviceDeleted"))
 	}
 	// A manual retry starts the automatic resends after a content refusal afresh.
 	t.PolicyStep = 0
+	t.Language = s.Language() // a new request: the language chosen now
 	_, e := s.queueAttemptLocked(t, c, "")
 	return e
 }
@@ -339,7 +336,7 @@ func (s *Service) retryAgentLocked(t Task) error {
 // autoRetryOf marks an automatic re-generation after a relay timeout.
 func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (Task, error) {
 	if normalizeConnection(c).Kind != "image" {
-		return Task{}, errors.New("请选择图片服务")
+		return Task{}, s.fail("task.chooseImageService")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return Task{}, e
@@ -369,17 +366,17 @@ func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (
 // resumeBlockedLocked puts an unsent, paused task back in the queue.
 func (s *Service) resumeBlockedLocked(t Task) error {
 	if t.Status != "blocked" {
-		return errors.New("只有未提交的暂停任务可恢复")
+		return s.fail("task.resumeOnlyBlocked")
 	}
 	if e := s.ensureCanGenerateLocked(1, t.Connection.ID); e != nil {
 		return e
 	}
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
-		return missing(e, "这张图片使用的图片服务已删除，请新建需求")
+		return missing(e, s.msg("task.serviceDeleted"))
 	}
 	if c.BaseURL != t.Connection.BaseURL {
-		return errors.New("连接地址已修改，请先恢复原地址，或明确重新生成")
+		return s.fail("task.addressChanged")
 	}
 	if _, e := s.key(c.Credential); e != nil {
 		return e
@@ -422,9 +419,9 @@ func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 		retried++
 	}
 	if retried == 0 {
-		return 0, errors.New("没有需要重新生成的失败或暂停图片")
+		return 0, s.fail("task.nothingToRetry")
 	}
-	_ = s.store.appendLog("info", "image", runID, fmt.Sprintf("重新生成全部失败图片：%d 张", retried))
+	_ = s.store.appendLog("info", "image", runID, s.msg("task.log.retriedAll", "n", retried))
 	s.signal()
 	return retried, nil
 }

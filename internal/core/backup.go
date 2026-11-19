@@ -2,8 +2,7 @@ package core
 
 import (
 	"archive/zip"
-	"errors"
-	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"os"
 	"path/filepath"
@@ -31,7 +30,7 @@ func (s *Service) CreateBackup(destination string) error {
 	if e != nil {
 		return e
 	}
-	if e = sanitizeBackup(snapshot); e != nil {
+	if e = sanitizeBackup(snapshot, s.Language()); e != nil {
 		snapshot.Close()
 		return e
 	}
@@ -66,7 +65,7 @@ func (s *Service) CreateBackup(destination string) error {
 					return walkErr
 				}
 				if d.Type()&os.ModeSymlink != 0 {
-					return errors.New("备份目录中存在符号链接")
+					return s.fail("data.backup.symlink")
 				}
 				if d.IsDir() || strings.HasPrefix(d.Name(), ".partial-") {
 					return nil
@@ -96,7 +95,7 @@ func (s *Service) CreateBackup(destination string) error {
 	}
 	return os.Rename(name, destination)
 }
-func sanitizeBackup(st *Store) error {
+func sanitizeBackup(st *Store, lang string) error {
 	runs, e := List[AgentRun](st, "agent_run")
 	if e != nil {
 		return e
@@ -111,7 +110,7 @@ func sanitizeBackup(st *Store) error {
 		r.CancelRequested = false
 		if r.Status == "analyzing" {
 			r.Status = "interrupted"
-			r.Error = "备份恢复后请配置密钥并明确继续"
+			r.Error = i18n.T(lang, "data.backup.runRestored")
 		}
 		if e = st.Put("agent_run", r.ID, r); e != nil {
 			return e
@@ -140,13 +139,13 @@ func sanitizeBackup(st *Store) error {
 		switch t.Status {
 		case "queued", "blocked":
 			t.Status = "blocked"
-			t.Error = "恢复后请重新保存连接密钥，并显式恢复未提交的任务"
+			t.Error = i18n.T(lang, "data.backup.taskQueued")
 		case "submitting", "running":
 			t.Status = "unknown"
-			t.Error = "备份时正在提交，结果未知，请核对平台记录"
+			t.Error = i18n.T(lang, "data.backup.taskSubmitting")
 		case "downloading", "download_failed":
 			t.Status = "download_failed"
-			t.Error = "备份不保留临时图片链接，已归档图片仍在作品与素材中"
+			t.Error = i18n.T(lang, "data.backup.taskDownloading")
 		}
 		if e = st.Put("task", t.ID, t); e != nil {
 			return e
@@ -167,14 +166,14 @@ func (s *Service) RestoreBackup(source string) error {
 	}
 	for _, t := range tasks {
 		if active(t.Status) {
-			return errors.New("请先停止待执行任务，并等待活动任务结束后恢复")
+			return s.fail("data.restore.busy")
 		}
 	}
 	s.paused = true
 	defer func() { s.paused = false; s.signal() }()
 	zipFile, e := zip.OpenReader(source)
 	if e != nil {
-		return errors.New("备份不是有效 ZIP 文件")
+		return s.fail("data.restore.notZip")
 	}
 	defer zipFile.Close()
 	temp, e := os.MkdirTemp(filepath.Dir(s.store.Root), ".restore-*")
@@ -192,15 +191,15 @@ func (s *Service) RestoreBackup(source string) error {
 		n := f.Name
 		valid := n == "app.db" || strings.HasPrefix(n, "images/") || strings.HasPrefix(n, "references/") || strings.HasPrefix(n, "thumbnails/") || strings.HasPrefix(n, "skills/")
 		if !valid || strings.Contains(n, "\\") || f.Mode()&os.ModeSymlink != 0 {
-			return errors.New("备份包含非法文件")
+			return s.fail("data.restore.badFile")
 		}
 		if seen[n] {
-			return errors.New("备份包含重复文件")
+			return s.fail("data.restore.duplicate")
 		}
 		seen[n] = true
 		total += f.UncompressedSize64
 		if total > 4<<30 || f.UncompressedSize64 > 256<<20 {
-			return errors.New("备份文件过大")
+			return s.fail("data.restore.tooLarge")
 		}
 		path, e := owned(temp, n)
 		if e != nil {
@@ -232,19 +231,19 @@ func (s *Service) RestoreBackup(source string) error {
 		}
 	}
 	if !hasDB {
-		return errors.New("备份缺少数据库")
+		return s.fail("data.restore.noDatabase")
 	}
 	check, e := Open(temp)
 	if e != nil {
-		return errors.New("备份数据库无法打开")
+		return s.fail("data.restore.databaseUnreadable")
 	}
 	var integrity string
 	e = check.db.QueryRow("PRAGMA integrity_check").Scan(&integrity)
 	if e != nil || integrity != "ok" {
 		check.Close()
-		return errors.New("备份数据库校验失败")
+		return s.fail("data.restore.databaseCheck")
 	}
-	if e = sanitizeBackup(check); e != nil {
+	if e = sanitizeBackup(check, s.Language()); e != nil {
 		check.Close()
 		return e
 	}
@@ -256,7 +255,7 @@ func (s *Service) RestoreBackup(source string) error {
 	for _, a := range assets {
 		if _, e = readOwned(temp, a.Path); e != nil {
 			check.Close()
-			return fmt.Errorf("备份缺少图片：%s", a.Name)
+			return s.fail("data.restore.missingImage", "name", a.Name)
 		}
 	}
 	check.Close()
@@ -276,7 +275,7 @@ func (s *Service) RestoreBackup(source string) error {
 	}
 	s.store, e = Open(root)
 	if e != nil {
-		return errors.New("恢复后的数据库启动失败，原数据保留于 " + old)
+		return s.fail("data.restore.reopenFailed", "path", old)
 	}
 	return s.initializeAgents()
 }
