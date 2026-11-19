@@ -47,6 +47,12 @@ small,
 .hint {
   color: var(--muted);
 }
+/* A link inside a sentence is underlined: its colour alone is too close to
+   the muted text around it (WCAG link-in-text-block). */
+.hint a,
+small a {
+  text-decoration: underline;
+}
 .mono,
 code {
   font-family: Consolas, monospace;

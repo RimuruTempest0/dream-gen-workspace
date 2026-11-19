@@ -1549,14 +1549,13 @@ test("LLM monitor shows requests, tokens, the retried drop and capability tests"
 });
 
 // Text on the 创作 page that is not interface text: what the user typed, what the
-// AI wrote (ADR 0004: stored text keeps its language), and backend-written
-// text. Everything else must be in the display language.
+// AI wrote (ADR 0004: stored text keeps its language). Everything else,
+// backend-written text included, must be in the display language.
 const foreignText = [
   ".agent-history-row strong", // the user's instruction
   ".agent-judgment-question", // AI-written questions, answers and reasons
   ".agent-judgment-answer",
   ".agent-judgments li > small",
-  ".run-activity-log", // backend activity feed (#7/#8)
 ].join(", ");
 // Sample areas the mock AI named (胸前, 袖口) appear inside interface sentences,
 // and the image connection the user named "Agent QA 生图" in the picker.

@@ -64,8 +64,8 @@ async function open(hash: string) {
   await page.waitForFunction(() => !!window.go?.main?.App);
 }
 // The page's text and accessible names, mood, concept and template bars and
-// the license notice included. Backend-written error text is left out (#8);
-// user data in this test is ASCII.
+// the license notice included, backend-written text too; user data in this
+// test is ASCII.
 async function pageText() {
   return page.evaluate(() => {
     const roots = [
@@ -75,11 +75,6 @@ async function pageText() {
     const parts: string[] = [];
     for (const root of roots) {
       const copy = root.cloneNode(true) as Element;
-      copy
-        .querySelectorAll(
-          ".error-text, .task-error-details p",
-        )
-        .forEach((e) => e.remove());
       parts.push(copy.textContent || "");
       copy
         .querySelectorAll("[aria-label],[placeholder],[title],[alt]")

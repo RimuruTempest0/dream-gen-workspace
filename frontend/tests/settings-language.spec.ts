@@ -1,8 +1,8 @@
 // 界面语言 (0.8.0) on the system pages: connections and settings, the hosted
 // licence (trial, expiry, renewal), updates, both monitors, logs, templates and
 // shop rules show no Chinese interface text in English, Vietnamese, Japanese
-// and Korean. Text the backend writes (#7/#8) and stored text (ADR 0004) are
-// not checked here. All upstreams are local mocks.
+// and Korean, backend messages included. Stored log text (ADR 0004) is not
+// checked here. All upstreams are local mocks.
 import {
   test,
   expect,
@@ -75,12 +75,11 @@ async function open(route: string) {
   await page.waitForFunction(() => !!window.go?.main?.App);
 }
 // Interface text on screen: visible text plus the names screen readers and
-// tooltips read. Text the backend wrote is skipped: log entries, upstream and
-// licence messages in alerts, connection test results.
+// tooltips read. Stored log entries are skipped (written in the language of
+// their moment).
 async function screenText(scope = "body") {
   return page.evaluate((scope) => {
-    const skip =
-      ".log-message, .ant-alert-description, .license-panel .ant-alert-message, .ant-notification";
+    const skip = ".log-message";
     const root = document.querySelector(scope)!;
     const parts: string[] = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -100,18 +99,10 @@ async function screenText(scope = "body") {
   }, scope);
 }
 async function expectNoChinese(lang: Lang, where: string, scope = "main") {
-  // Data, not interface text: each language's own name in the language panel,
-  // the built-in skills' names and descriptions (instructions for the AI), and
-  // the customer and line names the provider wrote into the licence file.
-  const skills =
-    await go<{ name: string; description: string }[]>("ListSkills");
-  const data = [
-    "中文",
-    "日本語",
-    "QA 客户",
-    ...[1, 2, 3, 4, 5, 6].flatMap((n) => [`图片线路 ${n}`, `LLM 线路 ${n}`]),
-    ...skills.flatMap((s) => [s.name, s.description]),
-  ];
+  // Data, not interface text: each language's own name in the language panel
+  // and the customer name the provider wrote into the license file. Built-in
+  // skills and the license's default line names are shown translated.
+  const data = ["中文", "日本語", "QA 客户"];
   const text = data.reduce(
     (v, w) => v.split(w).join(""),
     await screenText(scope),
@@ -230,10 +221,12 @@ for (const lang of ["en", "vi", "ja", "ko"] as const) {
       page.getByRole("heading", { name: tr(lang, "settings.title"), level: 1 }),
     ).toBeVisible();
     await expect(
-      page.locator(".connection-row").filter({ hasText: "Image A" }),
+      // Anchored: translated skill descriptions also mention images and rules.
+      page.locator(".connection-row").filter({ hasText: /^Image A/ }),
     ).toBeVisible();
     await expect(
-      page.locator(".connection-row").filter({ hasText: "Rule" }),
+      // Anchored: translated skill descriptions also mention images and rules.
+      page.locator(".connection-row").filter({ hasText: /^Rule/ }),
     ).toBeVisible();
     await expect(page.locator("#update")).toContainText(
       tr(lang, "updates.title"),

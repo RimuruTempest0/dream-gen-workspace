@@ -34,7 +34,47 @@ export function useData<T>(
     queryKey: key,
     queryFn: () => call<T>(method, ...args),
     refetchInterval: interval,
+    select: localizeLines<T>,
   });
+}
+
+// The admin tool writes each hosted line's name into the license file as
+// 图片线路 N / LLM 线路 N. Such a default name is shown in the display
+// language; any other name is the provider's or customer's data.
+const defaultLineName = /^(?:(图片线路)|LLM 线路) (\d+)$/;
+export function lineName(name: string): string {
+  const m = defaultLineName.exec(name);
+  if (!m) return name;
+  return t(m[1] ? "ui.line.image" : "ui.line.llm", { n: m[2] });
+}
+// Fields that hold a line's name (connections, tasks, monitors).
+const lineNameFields = new Set(["name", "connectionName", "routedFromName"]);
+// Copies only what changes, so unchanged data keeps its identity.
+export function localizeLines<T>(data: T): T;
+export function localizeLines(data: unknown): unknown {
+  if (Array.isArray(data)) {
+    let changed = false;
+    const out = data.map((v) => {
+      const n = localizeLines(v);
+      if (n !== v) changed = true;
+      return n;
+    });
+    return changed ? out : data;
+  }
+  if (data && typeof data === "object") {
+    let out: Record<string, unknown> | undefined;
+    for (const [k, v] of Object.entries(data)) {
+      const n =
+        typeof v === "string"
+          ? lineNameFields.has(k)
+            ? lineName(v)
+            : v
+          : localizeLines(v);
+      if (n !== v) (out ??= { ...(data as Record<string, unknown>) })[k] = n;
+    }
+    return out ?? data;
+  }
+  return data;
 }
 // A saved image never changes, so refreshing after an action skips the images.
 export const notImages = {
