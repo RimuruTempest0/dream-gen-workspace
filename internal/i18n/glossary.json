@@ -17,6 +17,7 @@
     { "zh-CN": "形体", "en": "form", "vi": "hình khối", "ja": "形体", "ko": "형체", "note": "Half of a concept: what is in the picture (from architecture)." },
     { "zh-CN": "立场", "en": "stance", "vi": "lập trường", "ja": "立場", "ko": "입장", "note": "Other half of a concept: how to look at it (an -ism)." },
     { "zh-CN": "概念", "en": "concept", "vi": "khái niệm", "ja": "コンセプト", "ko": "콘셉트", "note": "One form with one stance." },
+    { "zh-CN": "撤销改写", "en": "Undo rewrite", "vi": "Hoàn tác viết lại", "ja": "書き換えを元に戻す", "ko": "다시 쓰기 취소", "note": "Bring back the prompt a concept rewrite replaced." },
     { "zh-CN": "开源版", "en": "open-source edition", "vi": "bản mã nguồn mở", "ja": "オープンソース版", "ko": "오픈소스판", "note": "Delivery without a license file; the customer sets up services." },
     { "zh-CN": "托管版", "en": "hosted edition", "vi": "bản dịch vụ", "ja": "ホスト版", "ko": "호스팅판", "note": "Delivery with a license file; lines and keys come from the provider." },
     { "zh-CN": "授权文件", "en": "license file", "vi": "tệp giấy phép", "ja": "ライセンスファイル", "ko": "라이선스 파일", "note": "Signed customer.dat." },

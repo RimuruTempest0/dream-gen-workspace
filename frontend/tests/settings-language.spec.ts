@@ -100,7 +100,22 @@ async function screenText(scope = "body") {
   }, scope);
 }
 async function expectNoChinese(lang: Lang, where: string, scope = "main") {
-  const text = await screenText(scope);
+  // Data, not interface text: each language's own name in the language panel,
+  // the built-in skills' names and descriptions (instructions for the AI), and
+  // the customer and line names the provider wrote into the licence file.
+  const skills =
+    await go<{ name: string; description: string }[]>("ListSkills");
+  const data = [
+    "中文",
+    "日本語",
+    "QA 客户",
+    ...[1, 2, 3, 4, 5, 6].flatMap((n) => [`图片线路 ${n}`, `LLM 线路 ${n}`]),
+    ...skills.flatMap((s) => [s.name, s.description]),
+  ];
+  const text = data.reduce(
+    (v, w) => v.split(w).join(""),
+    await screenText(scope),
+  );
   const found = leftovers(lang).filter((p) => text.includes(p));
   expect(found, `${lang} ${where}: Chinese interface text`).toEqual([]);
   // English, Vietnamese and Korean have no Han characters at all.
@@ -110,7 +125,15 @@ async function expectNoChinese(lang: Lang, where: string, scope = "main") {
   }
 }
 async function a11y(include = "main") {
-  await page.waitForFunction(() => document.getAnimations().length === 0);
+  // The pointer stays where the last click was; a hover colour is not what
+  // is checked here.
+  await page.mouse.move(0, 0);
+  // Wait for transitions to end; a looping animation (a spinner) never does.
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every((a) => a.effect?.getComputedTiming().endTime === Infinity),
+  );
   const scan = await new AxeBuilder({ page })
     .include(include)
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
@@ -228,7 +251,9 @@ for (const lang of ["en", "vi", "ja", "ko"] as const) {
     });
     await expect(dialog).toBeVisible();
     await expectNoChinese(lang, "connection dialog", ".ant-modal");
-    await page.keyboard.press("Escape");
+    await dialog
+      .getByRole("button", { name: tr(lang, "settings.cancel"), exact: true })
+      .click();
     await expect(dialog).toBeHidden();
 
     await open("/templates");

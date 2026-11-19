@@ -29,7 +29,18 @@ import type {
   SkillRecord,
 } from "./agent-api";
 import { DataState, SecretInput, useActions, useData } from "./ui";
-import { t } from "./i18n";
+import { t, type MessageKey } from "./i18n";
+
+// The backend stores where a skill came from as a fixed Chinese word.
+const skillSources: Record<string, MessageKey> = {
+  内置: "agentSettings.skill.source.builtin",
+  导入: "agentSettings.skill.source.imported",
+  自定义: "agentSettings.skill.source.custom",
+};
+function skillSource(source: string) {
+  const key = skillSources[source];
+  return key ? t(key) : source;
+}
 
 export function ConnectionFields({
   editing,
@@ -660,7 +671,7 @@ export function AgentSettings() {
                 <strong>
                   {v.name}{" "}
                   <Tag>
-                    {v.source} · v{v.version}
+                    {skillSource(v.source)} · v{v.version}
                   </Tag>
                 </strong>
                 <p>{v.description}</p>
