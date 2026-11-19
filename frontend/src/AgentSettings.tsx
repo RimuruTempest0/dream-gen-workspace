@@ -29,7 +29,7 @@ import type {
   SkillRecord,
 } from "./agent-api";
 import { DataState, SecretInput, useActions, useData } from "./ui";
-import { t, type MessageKey } from "./i18n";
+import { t, textIn, type MessageKey } from "./i18n";
 
 // The backend stores where a skill came from as a fixed Chinese word.
 const skillSources: Record<string, MessageKey> = {
@@ -40,6 +40,22 @@ const skillSources: Record<string, MessageKey> = {
 function skillSource(source: string) {
   const key = skillSources[source];
   return key ? t(key) : source;
+}
+// The built-in skills store a Chinese name and description (they are part of
+// the skill content for the AI). While unchanged, they are shown in the
+// display language; a name or description the customer edited is shown as is.
+const builtinSkillIDs = [
+  "product-analysis",
+  "etsy-suite",
+  "embroidery-rules",
+  "p004-rules",
+  "image-prompting",
+] as const;
+function skillShown(v: SkillRecord, field: "name" | "description") {
+  const id = builtinSkillIDs.find((b) => b === v.id);
+  if (!id) return v[field];
+  const key = `agentSettings.builtin.${id}.${field}` as const;
+  return v[field] === textIn("zh-CN", key) ? t(key) : v[field];
 }
 
 export function ConnectionFields({
@@ -668,12 +684,12 @@ export function AgentSettings() {
             <div className="connection-row" key={v.id}>
               <div className="connection-info">
                 <strong>
-                  {v.name}{" "}
+                  {skillShown(v, "name")}{" "}
                   <Tag>
                     {skillSource(v.source)} · v{v.version}
                   </Tag>
                 </strong>
-                <p>{v.description}</p>
+                <p>{skillShown(v, "description")}</p>
                 {!!v.attachments?.length && (
                   <small>
                     {t("agentSettings.skill.attachments", {
@@ -690,7 +706,7 @@ export function AgentSettings() {
                     type="link"
                     size="small"
                     aria-label={t("agentSettings.skill.setCategory.aria", {
-                      name: v.name,
+                      name: skillShown(v, "name"),
                     })}
                     onClick={() => {
                       setCategoryFor(v);
@@ -704,7 +720,9 @@ export function AgentSettings() {
               <Space>
                 <Switch
                   checked={v.enabled}
-                  aria-label={t("agentSettings.skill.enable", { name: v.name })}
+                  aria-label={t("agentSettings.skill.enable", {
+                    name: skillShown(v, "name"),
+                  })}
                   disabled={actions.busy}
                   onChange={(enabled) =>
                     actions.run(() => call("SetSkillEnabled", v.id, enabled))
@@ -716,12 +734,14 @@ export function AgentSettings() {
                 <Button
                   danger
                   aria-label={t("agentSettings.skill.delete.aria", {
-                    name: v.name,
+                    name: skillShown(v, "name"),
                   })}
                   icon={<DeleteOutlined aria-hidden="true" />}
                   onClick={() =>
                     actions.confirm(
-                      t("agentSettings.skill.delete.title", { name: v.name }),
+                      t("agentSettings.skill.delete.title", {
+                        name: skillShown(v, "name"),
+                      }),
                       t("agentSettings.skill.delete.body"),
                       () => call("DeleteSkill", v.id),
                       true,
@@ -735,7 +755,7 @@ export function AgentSettings() {
       </DataState>
       <Modal
         title={t("agentSettings.category.title", {
-          name: categoryFor?.name || "",
+          name: categoryFor ? skillShown(categoryFor, "name") : "",
         })}
         open={!!categoryFor}
         onCancel={() => setCategoryFor(null)}

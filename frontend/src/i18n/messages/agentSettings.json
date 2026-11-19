@@ -105,7 +105,17 @@
     "agentSettings.category.title": "设置品类：{name}",
     "agentSettings.category.hint": "留空表示通用：每次制作都用。填了品类的技能只在创作选了这个品类时使用。品类名称自己定，例如“刺绣卫衣”“马克杯”。",
     "agentSettings.category.label": "品类",
-    "agentSettings.category.placeholder": "通用"
+    "agentSettings.category.placeholder": "通用",
+    "agentSettings.builtin.product-analysis.name": "商品与参考图分析",
+    "agentSettings.builtin.product-analysis.description": "提取商品事实，并为每个刺绣或印花文字、图案写出精确位置图（穿着者视角的位置、方向、大小、颜色）。本次有商品链接或参考图时，规划套图前先用它。",
+    "agentSettings.builtin.etsy-suite.name": "电商套图规划",
+    "agentSettings.builtin.etsy-suite.description": "规划 Etsy、Amazon、Walmart 等平台的完整商品套图并写出每张提示词：平台主图要求、统一设计规格、主题与场景、细节图/尺寸图/选项图等难画图片的处理和参考图选择。制作任何套图方案时都用它。",
+    "agentSettings.builtin.embroidery-rules.name": "刺绣定制约束",
+    "agentSettings.builtin.embroidery-rules.description": "刺绣定制商品的锁定项核对：名字拼写、字体、头像、袖口名字与脚掌的位置和方向、线色与填充色、P004 等专用规则，防止小细节在图片之间跑偏。商品有刺绣或个性化文字时使用。",
+    "agentSettings.builtin.p004-rules.name": "P004 生图规则",
+    "agentSettings.builtin.p004-rules.description": "本店铺所有套图必须遵守的项目规则（P004）：欧美模特、刺绣不超过 25 cm 且各图一致、卫衣胸前刺绣按衣服中轴居中、袖口刺绣只在画面右侧袖子且文字平行袖口接缝、全图清晰不虚化。规划任何套图时都要用它；用户提到 P004 时就是指这套规则。",
+    "agentSettings.builtin.image-prompting.name": "生图提示词写法",
+    "agentSettings.builtin.image-prompting.description": "把每张图写成生图模型能准确执行的提示词：按图片类型分行写用途、场景、主体、构图、参考图作用和逐字文字（名字附逐字母拼写），不添加用户没要求的元素，修改方案时只改相关的图。写任何套图提示词前都用它；与其他技能冲突时以其他技能为准。"
   },
   "en": {
     "agentSettings.name": "Connection name",
@@ -213,7 +223,17 @@
     "agentSettings.category.title": "Set category: {name}",
     "agentSettings.category.hint": "Leave empty for general: used every time. A skill with a category is used only when that category is chosen in Create. Name categories as you like, e.g. “embroidered hoodie” or “mug”.",
     "agentSettings.category.label": "Category",
-    "agentSettings.category.placeholder": "General"
+    "agentSettings.category.placeholder": "General",
+    "agentSettings.builtin.product-analysis.name": "Product and reference image analysis",
+    "agentSettings.builtin.product-analysis.description": "Extracts the product facts and writes a precise placement map for every embroidered or printed text and pattern (position from the wearer's view, direction, size, color). Used before planning a set whenever the job has a product link or reference images.",
+    "agentSettings.builtin.etsy-suite.name": "E-commerce set planning",
+    "agentSettings.builtin.etsy-suite.description": "Plans a complete product image set for Etsy, Amazon, Walmart and other platforms and writes each image's prompt: the platform's main-image rules, one design spec, themes and scenes, how to handle hard images such as detail, size and option images, and which reference images to use. Used for every image set plan.",
+    "agentSettings.builtin.embroidery-rules.name": "Custom embroidery constraints",
+    "agentSettings.builtin.embroidery-rules.description": "Checks the locked items of custom embroidered products: name spelling, font, portrait, the position and direction of cuff names and paw prints, thread and fill colors, and special rules such as P004, so small details do not drift between images. Used when a product has embroidery or personalized text.",
+    "agentSettings.builtin.p004-rules.name": "P004 image rules",
+    "agentSettings.builtin.p004-rules.description": "Project rules (P004) every image set of this shop must follow: Western models; embroidery no larger than 25 cm and the same in every image; hoodie chest embroidery centered on the garment's center line; cuff embroidery only on the sleeve on the right of the picture, with the text parallel to the cuff seam; the whole image sharp, never blurred. Used when planning any image set; when the user mentions P004, they mean these rules.",
+    "agentSettings.builtin.image-prompting.name": "How to write image prompts",
+    "agentSettings.builtin.image-prompting.description": "Writes each image as a prompt the image model can follow exactly: by image type, one line each for the purpose, scene, subject, composition, the role of each reference image and the exact text (names spelled out letter by letter); adds nothing the user did not ask for, and when a plan changes only the affected images are rewritten. Used before writing any set's prompts; other skills take precedence when they conflict."
   },
   "vi": {
     "agentSettings.name": "Tên kết nối",
@@ -321,7 +341,17 @@
     "agentSettings.category.title": "Đặt ngành hàng: {name}",
     "agentSettings.category.hint": "Để trống là dùng chung: lần nào cũng dùng. Kỹ năng có ngành hàng chỉ được dùng khi chọn đúng ngành hàng đó trong Sáng tác. Tên ngành hàng tùy bạn đặt, ví dụ “áo hoodie thêu”, “cốc”.",
     "agentSettings.category.label": "Ngành hàng",
-    "agentSettings.category.placeholder": "Chung"
+    "agentSettings.category.placeholder": "Chung",
+    "agentSettings.builtin.product-analysis.name": "Phân tích sản phẩm và ảnh tham khảo",
+    "agentSettings.builtin.product-analysis.description": "Trích xuất thông tin sản phẩm và viết sơ đồ vị trí chính xác cho từng chữ, họa tiết thêu hoặc in (vị trí theo góc nhìn người mặc, hướng, kích thước, màu sắc). Dùng trước khi lên kế hoạch bộ ảnh khi lần này có liên kết sản phẩm hoặc ảnh tham khảo.",
+    "agentSettings.builtin.etsy-suite.name": "Lên kế hoạch bộ ảnh thương mại điện tử",
+    "agentSettings.builtin.etsy-suite.description": "Lên kế hoạch bộ ảnh sản phẩm đầy đủ cho Etsy, Amazon, Walmart và các nền tảng khác, viết câu lệnh cho từng ảnh: yêu cầu ảnh chính của nền tảng, quy cách thiết kế thống nhất, chủ đề và bối cảnh, cách xử lý các ảnh khó như ảnh chi tiết, ảnh kích thước, ảnh tùy chọn và cách chọn ảnh tham khảo. Dùng mỗi khi lập phương án bộ ảnh.",
+    "agentSettings.builtin.embroidery-rules.name": "Ràng buộc thêu theo yêu cầu",
+    "agentSettings.builtin.embroidery-rules.description": "Kiểm tra các mục cố định của sản phẩm thêu theo yêu cầu: chính tả tên, phông chữ, chân dung, vị trí và hướng của tên ở cổ tay áo và dấu chân, màu chỉ và màu nền, các quy tắc riêng như P004, để chi tiết nhỏ không bị lệch giữa các ảnh. Dùng khi sản phẩm có thêu hoặc chữ cá nhân hóa.",
+    "agentSettings.builtin.p004-rules.name": "P004 Quy tắc tạo ảnh",
+    "agentSettings.builtin.p004-rules.description": "Quy tắc dự án (P004) mà mọi bộ ảnh của cửa hàng phải tuân theo: người mẫu Âu Mỹ; hình thêu không quá 25 cm và giống nhau ở mọi ảnh; hình thêu trước ngực áo hoodie căn giữa theo trục áo; hình thêu cổ tay chỉ ở tay áo bên phải khung hình, chữ song song với đường may cổ tay; toàn ảnh sắc nét, không mờ. Dùng khi lên kế hoạch bất kỳ bộ ảnh nào; khi người dùng nhắc đến P004 là nói về bộ quy tắc này.",
+    "agentSettings.builtin.image-prompting.name": "Cách viết câu lệnh tạo ảnh",
+    "agentSettings.builtin.image-prompting.description": "Viết mỗi ảnh thành câu lệnh mà mô hình tạo ảnh làm theo chính xác: theo loại ảnh, mỗi dòng ghi mục đích, bối cảnh, chủ thể, bố cục, vai trò của ảnh tham khảo và chữ chính xác từng chữ (tên kèm đánh vần từng chữ cái); không thêm yếu tố người dùng không yêu cầu, khi sửa phương án chỉ sửa các ảnh liên quan. Dùng trước khi viết câu lệnh cho bộ ảnh; khi mâu thuẫn với skill khác thì theo skill khác."
   },
   "ja": {
     "agentSettings.name": "接続名",
@@ -429,7 +459,17 @@
     "agentSettings.category.title": "カテゴリーを設定：{name}",
     "agentSettings.category.hint": "空欄なら共通で、毎回使われます。カテゴリーを設定したスキルは、創作でそのカテゴリーを選んだときだけ使われます。カテゴリー名は自由です（例：「刺繍パーカー」「マグカップ」）。",
     "agentSettings.category.label": "カテゴリー",
-    "agentSettings.category.placeholder": "共通"
+    "agentSettings.category.placeholder": "共通",
+    "agentSettings.builtin.product-analysis.name": "商品と参考画像の分析",
+    "agentSettings.builtin.product-analysis.description": "商品の事実を抽出し、刺繍やプリントの文字・図柄ごとに正確な配置図（着用者から見た位置、向き、大きさ、色）を書きます。商品リンクや参考画像があるときは、セットを計画する前に使います。",
+    "agentSettings.builtin.etsy-suite.name": "EC セットの計画",
+    "agentSettings.builtin.etsy-suite.description": "Etsy、Amazon、Walmart などのプラットフォーム向けに商品画像セット全体を計画し、各画像のプロンプトを書きます：メイン画像の要件、統一デザイン仕様、テーマとシーン、ディテール・サイズ・オプション画像など描きにくい画像の扱い、参考画像の選び方。画像セットの案を作るときは必ず使います。",
+    "agentSettings.builtin.embroidery-rules.name": "刺繍カスタマイズの制約",
+    "agentSettings.builtin.embroidery-rules.description": "刺繍カスタマイズ商品の固定項目を確認します：名前のつづり、フォント、似顔絵、袖口の名前と肉球の位置と向き、糸色と塗り色、P004 などの専用ルール。小さな細部が画像ごとにずれるのを防ぎます。商品に刺繍や名入れ文字があるときに使います。",
+    "agentSettings.builtin.p004-rules.name": "P004 画像生成ルール",
+    "agentSettings.builtin.p004-rules.description": "このショップのすべての画像セットが守るプロジェクトルール（P004）：欧米のモデル、刺繍は 25 cm 以内で全画像で同じ、パーカーの胸の刺繍は服の中心線に合わせて中央、袖口の刺繍は画面右側の袖だけで文字は袖口の縫い目と平行、画像全体がくっきりしてぼかさない。どの画像セットを計画するときも使います。ユーザーが P004 と言ったらこのルールのことです。",
+    "agentSettings.builtin.image-prompting.name": "画像プロンプトの書き方",
+    "agentSettings.builtin.image-prompting.description": "各画像を画像生成モデルが正確に実行できるプロンプトとして書きます：画像の種類ごとに、用途、シーン、主体、構図、参考画像の役割、正確な文字（名前は1文字ずつのつづり付き）を行ごとに書き、ユーザーが求めていない要素は加えず、案を直すときは関係する画像だけを直します。画像セットのプロンプトを書く前に必ず使います。ほかの Skill と食い違うときはほかの Skill に従います。"
   },
   "ko": {
     "agentSettings.name": "연결 이름",
@@ -537,6 +577,16 @@
     "agentSettings.category.title": "품목 설정: {name}",
     "agentSettings.category.hint": "비워 두면 공통이며 매번 사용합니다. 품목을 정한 스킬은 창작에서 그 품목을 골랐을 때만 사용합니다. 품목 이름은 자유롭게 정하세요. 예: “자수 후드티”, “머그컵”.",
     "agentSettings.category.label": "품목",
-    "agentSettings.category.placeholder": "공통"
+    "agentSettings.category.placeholder": "공통",
+    "agentSettings.builtin.product-analysis.name": "상품 및 참고 이미지 분석",
+    "agentSettings.builtin.product-analysis.description": "상품 정보를 추출하고 자수나 프린트 글자·무늬마다 정확한 위치도(착용자 시점의 위치, 방향, 크기, 색상)를 작성합니다. 상품 링크나 참고 이미지가 있으면 세트를 기획하기 전에 사용합니다.",
+    "agentSettings.builtin.etsy-suite.name": "이커머스 세트 계획",
+    "agentSettings.builtin.etsy-suite.description": "Etsy, Amazon, Walmart 등 플랫폼용 상품 이미지 세트 전체를 기획하고 이미지마다 프롬프트를 작성합니다: 플랫폼 대표 이미지 요건, 통일된 디자인 규격, 주제와 장면, 디테일·사이즈·옵션 이미지처럼 그리기 어려운 이미지 처리, 참고 이미지 선택. 이미지 세트 안을 만들 때 항상 사용합니다.",
+    "agentSettings.builtin.embroidery-rules.name": "맞춤 자수 제약",
+    "agentSettings.builtin.embroidery-rules.description": "맞춤 자수 상품의 고정 항목을 점검합니다: 이름 철자, 글꼴, 초상, 소매 이름과 발바닥 무늬의 위치와 방향, 실 색상과 채움 색상, P004 같은 전용 규칙. 작은 디테일이 이미지마다 달라지지 않게 합니다. 상품에 자수나 개인 맞춤 글자가 있을 때 사용합니다.",
+    "agentSettings.builtin.p004-rules.name": "P004 이미지 생성 규칙",
+    "agentSettings.builtin.p004-rules.description": "이 상점의 모든 이미지 세트가 지켜야 하는 프로젝트 규칙(P004): 서양인 모델, 자수는 25 cm 이하이며 모든 이미지에서 동일, 후드티 가슴 자수는 옷 중심선에 맞춰 가운데, 소매 자수는 화면 오른쪽 소매에만 두고 글자는 소매 솔기와 평행, 이미지 전체가 선명하고 흐리지 않음. 어떤 이미지 세트를 기획할 때도 사용합니다. 사용자가 P004를 말하면 이 규칙을 뜻합니다.",
+    "agentSettings.builtin.image-prompting.name": "이미지 프롬프트 작성법",
+    "agentSettings.builtin.image-prompting.description": "각 이미지를 이미지 생성 모델이 정확히 따를 수 있는 프롬프트로 작성합니다: 이미지 유형별로 용도, 장면, 주체, 구도, 참고 이미지의 역할, 정확한 글자(이름은 한 글자씩 철자 포함)를 줄마다 쓰고, 사용자가 요청하지 않은 요소는 넣지 않으며, 안을 수정할 때는 관련 이미지만 고칩니다. 이미지 세트 프롬프트를 쓰기 전에 항상 사용합니다. 다른 Skill과 충돌하면 다른 Skill을 따릅니다."
   }
 }

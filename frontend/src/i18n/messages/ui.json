@@ -89,7 +89,9 @@
     "ui.viewer.fit": "点击适应窗口",
     "ui.viewer.actual": "点击查看实际大小",
     "ui.viewer.hint": "点击图片切换“适应窗口 / 实际大小”。",
-    "ui.viewer.hintMany": "点击图片切换“适应窗口 / 实际大小”，← → 键切换上一张、下一张。"
+    "ui.viewer.hintMany": "点击图片切换“适应窗口 / 实际大小”，← → 键切换上一张、下一张。",
+    "ui.line.image": "图片线路 {n}",
+    "ui.line.llm": "LLM 线路 {n}"
   },
   "en": {
     "ui.size.auto": "Auto (model decides)",
@@ -181,7 +183,9 @@
     "ui.viewer.fit": "Click to fit the window",
     "ui.viewer.actual": "Click for actual size",
     "ui.viewer.hint": "Click the image to switch between “fit window” and “actual size”.",
-    "ui.viewer.hintMany": "Click the image to switch between “fit window” and “actual size”; use ← → for the previous or next image."
+    "ui.viewer.hintMany": "Click the image to switch between “fit window” and “actual size”; use ← → for the previous or next image.",
+    "ui.line.image": "Image line {n}",
+    "ui.line.llm": "LLM line {n}"
   },
   "vi": {
     "ui.size.auto": "Tự động (do mô hình quyết định)",
@@ -273,7 +277,9 @@
     "ui.viewer.fit": "Bấm để vừa cửa sổ",
     "ui.viewer.actual": "Bấm để xem kích thước thật",
     "ui.viewer.hint": "Bấm vào ảnh để chuyển giữa “vừa cửa sổ” và “kích thước thật”.",
-    "ui.viewer.hintMany": "Bấm vào ảnh để chuyển giữa “vừa cửa sổ” và “kích thước thật”; dùng phím ← → để xem ảnh trước, ảnh sau."
+    "ui.viewer.hintMany": "Bấm vào ảnh để chuyển giữa “vừa cửa sổ” và “kích thước thật”; dùng phím ← → để xem ảnh trước, ảnh sau.",
+    "ui.line.image": "Đường ảnh {n}",
+    "ui.line.llm": "Đường LLM {n}"
   },
   "ja": {
     "ui.size.auto": "自動（モデルが決定）",
@@ -365,7 +371,9 @@
     "ui.viewer.fit": "クリックでウィンドウに合わせる",
     "ui.viewer.actual": "クリックで実寸表示",
     "ui.viewer.hint": "画像をクリックすると「ウィンドウに合わせる / 実寸」を切り替えます。",
-    "ui.viewer.hintMany": "画像をクリックすると「ウィンドウに合わせる / 実寸」を切り替えます。← → キーで前後の画像に移動します。"
+    "ui.viewer.hintMany": "画像をクリックすると「ウィンドウに合わせる / 実寸」を切り替えます。← → キーで前後の画像に移動します。",
+    "ui.line.image": "画像回線 {n}",
+    "ui.line.llm": "LLM 回線 {n}"
   },
   "ko": {
     "ui.size.auto": "자동 (모델이 결정)",
@@ -457,6 +465,8 @@
     "ui.viewer.fit": "클릭하여 창에 맞추기",
     "ui.viewer.actual": "클릭하여 실제 크기로 보기",
     "ui.viewer.hint": "이미지를 클릭하면 “창에 맞춤 / 실제 크기”가 바뀝니다.",
-    "ui.viewer.hintMany": "이미지를 클릭하면 “창에 맞춤 / 실제 크기”가 바뀝니다. ← → 키로 이전·다음 이미지로 이동합니다."
+    "ui.viewer.hintMany": "이미지를 클릭하면 “창에 맞춤 / 실제 크기”가 바뀝니다. ← → 키로 이전·다음 이미지로 이동합니다.",
+    "ui.line.image": "이미지 회선 {n}",
+    "ui.line.llm": "LLM 회선 {n}"
   }
 }

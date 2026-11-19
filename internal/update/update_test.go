@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 func manifest() Manifest {
@@ -270,6 +272,34 @@ func TestManualsExistInEveryLanguage(t *testing.T) {
 		text := strings.Join(got, "\n")
 		if !strings.HasPrefix(text, "Image Workbench") || strings.Contains(text, "生图工作台") {
 			t.Errorf("%s must name the software Image Workbench", name)
+		}
+	}
+}
+
+// Each manual line that uses a fixed term in Chinese uses the glossary's
+// translation on the same line of the other manuals, so the guides call
+// things what the interface calls them.
+func TestManualsUseTheGlossary(t *testing.T) {
+	read := func(name string) []string {
+		b, e := os.ReadFile(filepath.Join("..", "..", "docs", name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		return strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+	}
+	zh := read(Manuals[0])
+	for i, lang := range []string{"en", "vi", "ja", "ko"} {
+		name := Manuals[i+1]
+		lines := read(name)
+		for n, line := range zh {
+			if n >= len(lines) {
+				break
+			}
+			for _, term := range i18n.Glossary() {
+				if strings.Contains(line, term["zh-CN"]) && !strings.Contains(strings.ToLower(lines[n]), strings.ToLower(term[lang])) {
+					t.Errorf("%s line %d: %s must be %q", name, n+1, term["zh-CN"], term[lang])
+				}
+			}
 		}
 	}
 }

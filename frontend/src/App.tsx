@@ -254,7 +254,7 @@ export default function App() {
           <RailLanguageSwitch tooltip={collapsed} />
           <small className="rail-version">
             {t("shell.rail.version", {
-              version: summary.data?.version || "0.7.39",
+              version: summary.data?.version || "0.8.0",
             })}
           </small>
         </div>

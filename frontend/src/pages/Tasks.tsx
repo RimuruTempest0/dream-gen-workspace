@@ -13,6 +13,7 @@ import { PictureOutlined } from "@ant-design/icons";
 import { call, stateNames, type Task, type Page } from "../api";
 import {
   useData,
+  localizeLines,
   useActions,
   DataState,
   Header,
@@ -35,6 +36,7 @@ export function Tasks() {
     queryFn: () => call<Task>("GetTask", selected!.id),
     enabled: !!selected,
     refetchInterval: 2500,
+    select: localizeLines<Task>,
   });
   const detail = selected ? detailQuery.data || selected : null;
   const q = useData<Page<Task>>(

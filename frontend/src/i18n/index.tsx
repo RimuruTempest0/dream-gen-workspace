@@ -63,6 +63,15 @@ export function t(key: MessageKey, params?: Params): string {
   });
 }
 
+/**
+ * The text for key in a given language, placeholders unfilled. For telling
+ * apart data the program wrote in Chinese (a default name) from data the
+ * customer changed.
+ */
+export function textIn(lang: Lang, key: MessageKey): string {
+  return tables[lang][key] ?? key;
+}
+
 /** The program name: 生图工作台 in Chinese, Image Workbench otherwise. */
 export function appName(): string {
   return t("shell.appName");

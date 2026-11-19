@@ -50,6 +50,7 @@ import {
   withViewTransition,
   AssetOption,
   CancelTaskButton,
+  localizeLines,
   DataState,
   Header,
   ImageViewer,
@@ -158,6 +159,7 @@ export function SmartImages() {
     queryFn: () => call<Task[]>("GetAgentTasks", runID),
     enabled: !!runID,
     refetchInterval: 2500,
+    select: localizeLines<Task[]>,
   });
   const run = runQuery.data,
     tasks = taskQuery.data || [];
