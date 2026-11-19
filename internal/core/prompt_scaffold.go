@@ -121,3 +121,43 @@ func cutSampleFix(prompt string) string {
 	}
 	return prompt
 }
+
+// enMoodFallback is moodFallback in English: with no AI 模型 to rewrite the
+// prompt, the options' English phrases describe the atmosphere.
+func enMoodFallback(base string, m moodParts, concept *conceptParts, rendering string) string {
+	points := []string{}
+	for _, o := range []MoodOption{m.weather, m.time, m.distance, m.expectation} {
+		points = append(points, moodIn(o, i18n.En).Phrase)
+	}
+	if r, ok := findMood(moodRenderings, rendering); ok {
+		points = append(points, moodIn(r, i18n.En).Name)
+	}
+	text := "Atmosphere: " + strings.Join(points, "; ") + "."
+	base = strings.TrimSpace(base)
+	if base == "" {
+		text = "A landscape that fits the atmosphere below, with no product and no text.\n" + text
+	}
+	if concept != nil {
+		text = enConceptFallback(text, concept.form, concept.stance, true)
+	}
+	if base == "" {
+		return text
+	}
+	return base + "\n" + text
+}
+
+// enConceptFallback is conceptFallback in English: the form's and the stance's
+// English names and looks.
+func enConceptFallback(prompt string, form, stance Concept, single bool) string {
+	f, st := conceptIn(form, i18n.En), conceptIn(stance, i18n.En)
+	text := fmt.Sprintf("Concept %s × %s: %s; %s.", f.Name, st.Name, f.Look, st.Look)
+	prompt = strings.TrimSpace(prompt)
+	switch {
+	case prompt == "":
+		return text
+	case single:
+		return prompt + "\n" + text
+	default:
+		return oneLine(prompt) + " " + text
+	}
+}

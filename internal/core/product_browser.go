@@ -1,7 +1,6 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"bufio"
 	"bytes"
 	"context"
@@ -9,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"net/url"
 	"os"
@@ -96,7 +96,7 @@ type browserSession struct {
 	nextID  int
 }
 
-func startProductBrowser(cfg productBrowserConfig, profile, target string) (*browserSession, error) {
+func startProductBrowser(cfg productBrowserConfig, profile, target, title string) (*browserSession, error) {
 	if e := verifyBundled(cfg.Executable, expectedProductBrowserSHA256, i18n.Msg("data.bundled.productBrowser")); e != nil {
 		return nil, e
 	}
@@ -104,7 +104,7 @@ func startProductBrowser(cfg productBrowserConfig, profile, target string) (*bro
 		"-url", target, "-runtime", cfg.Runtime, "-profile", profile,
 		"-timeout", strconv.Itoa(int(productBrowserTimeout/time.Second)),
 		"-challenge-after", strconv.Itoa(int(productBrowserChallengeAfter/time.Second)),
-		"-max-html", strconv.Itoa(productBrowserMaxHTML), "-max-image", strconv.Itoa(MaxImageBytes))
+		"-max-html", strconv.Itoa(productBrowserMaxHTML), "-max-image", strconv.Itoa(MaxImageBytes), "-title", title)
 	b := &browserSession{cmd: exec.Command(cfg.Executable, args...), events: make(chan browserEvent, 16), done: make(chan struct{})}
 	b.cmd.Stderr = &b.stderr
 	out, e := b.cmd.StdoutPipe()
@@ -185,6 +185,10 @@ func browserFailure(ev browserEvent) error {
 		return i18n.Fail("product.browser.crashed")
 	case "too_large":
 		return i18n.Fail("product.pageTooLarge")
+	case "network":
+		return i18n.Fail("product.browser.unreachable")
+	case "webview", "window":
+		return i18n.Fail("product.browser.webview")
 	}
 	if ev.Message != "" {
 		return errors.New(cutProductText(ev.Message, 300))
@@ -211,7 +215,7 @@ func (s *Service) readProductWithBrowser(ctx context.Context, id, target string)
 		s.browserMu.Unlock()
 		return nil, "", nil, e
 	}
-	b, e := startProductBrowser(cfg, profile, target)
+	b, e := startProductBrowser(cfg, profile, target, s.msg("product.browser.windowTitle", "app", i18n.AppName(s.Language())))
 	if e != nil {
 		s.browserMu.Unlock()
 		return nil, "", nil, e
@@ -335,6 +339,9 @@ func (b *browserSession) Image(ctx context.Context, target string) ([]byte, erro
 			}
 			if ev.Event != "image" || ev.ID != id {
 				continue
+			}
+			if ev.Error == "too_large" {
+				return nil, i18n.Fail("product.browser.imageTooLarge")
 			}
 			if ev.Error != "" {
 				return nil, errors.New(cutProductText(ev.Error, 300))

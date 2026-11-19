@@ -245,7 +245,6 @@ var conceptStrengths = []string{
 const (
 	conceptPromptLimit = 32000 // same limit as one submitted prompt
 	conceptTimeout     = rewordTimeout
-	conceptStage       = "按概念改写提示词"
 )
 
 const conceptInstruction = `你要把一个“画面概念”融进一条生图提示词。概念由一个建筑形体和一个艺术立场组成，下面的规则写的是看得见的画面决定。
@@ -288,7 +287,10 @@ func conceptRequest(in ConceptInput, form, stance Concept, single bool) string {
 }
 
 // conceptFallback appends the card points to the prompt when no LLM can rewrite it.
-func conceptFallback(prompt string, form, stance Concept, single bool) string {
+func conceptFallback(prompt string, form, stance Concept, single bool, lang string) string {
+	if !zhPrompt(lang) {
+		return enConceptFallback(prompt, form, stance, single)
+	}
 	points := func(rules string) string {
 		lines := []string{}
 		for _, line := range strings.Split(rules, "\n") {
@@ -320,29 +322,29 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 	lang := s.Language() // the whole composition keeps the language it started in
 	form, ok := findConcept(conceptForms, in.Form)
 	if !ok {
-		return ConceptResult{}, errors.New("请选择一个形体")
+		return ConceptResult{}, s.fail("concept.chooseForm")
 	}
 	if len(in.Stances) < 1 || len(in.Stances) > 3 {
-		return ConceptResult{}, errors.New("请选择 1–3 个立场")
+		return ConceptResult{}, s.fail("concept.chooseStances")
 	}
 	stances := []Concept{}
 	for i, id := range in.Stances {
 		st, ok := findConcept(conceptStances, id)
 		if !ok {
-			return ConceptResult{}, errors.New("立场不存在")
+			return ConceptResult{}, s.fail("concept.stanceMissing")
 		}
 		for _, prev := range in.Stances[:i] {
 			if prev == id {
-				return ConceptResult{}, errors.New("立场重复")
+				return ConceptResult{}, s.fail("concept.stanceDuplicate")
 			}
 		}
 		stances = append(stances, st)
 	}
 	if in.Strength < 0 || in.Strength >= len(conceptStrengths) {
-		return ConceptResult{}, errors.New("概念强度无效")
+		return ConceptResult{}, s.fail("concept.strength")
 	}
 	if len(in.Prompt) > conceptPromptLimit {
-		return ConceptResult{}, errors.New("提示词过长")
+		return ConceptResult{}, s.fail("concept.promptTooLong")
 	}
 	single := len(stances) == 1
 	result := ConceptResult{Prompts: make([]string, len(stances)), Labels: make([]string, len(stances))}
@@ -365,10 +367,10 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 
 	if !ok {
 		for i, st := range stances {
-			result.Prompts[i] = conceptFallback(in.Prompt, form, st, single)
+			result.Prompts[i] = conceptFallback(in.Prompt, form, st, single, lang)
 		}
 		s.mu.Lock()
-		_ = s.store.appendLog("info", "image", "", "未配置 AI 模型，已直接附加概念要点")
+		_ = s.store.appendLog("info", "image", "", s.msg("concept.log.fallback"))
 		s.mu.Unlock()
 		return result, nil
 	}
@@ -380,11 +382,11 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 	check := func(text string) error {
 		for _, want := range quoted {
 			if !strings.Contains(text, want) {
-				return fmt.Errorf("改写结果没有保留画面文字“%s”", want)
+				return s.fail("agent.rewrite.lostText", "text", want)
 			}
 		}
 		if len(text) > conceptPromptLimit || utf8.RuneCountInString(text) > 6000 {
-			return errors.New("改写结果过长")
+			return s.fail("concept.rewrite.tooLong")
 		}
 		return nil
 	}
@@ -396,7 +398,7 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 		wg.Add(1)
 		go func(i int, st Concept) {
 			defer wg.Done()
-			text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, conceptRequest(in, form, st, single)), conceptStage, check)
+			text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, conceptRequest(in, form, st, single)), s.msg("concept.llmStage"), check)
 			if e == nil && !single {
 				text = oneLine(text)
 			}
@@ -406,13 +408,13 @@ func (s *Service) ComposeConcept(in ConceptInput) (ConceptResult, error) {
 	wg.Wait()
 	for i, e := range errs {
 		if e != nil {
-			return ConceptResult{}, fmt.Errorf("“%s”改写没有成功：%s", result.Labels[i], s.redact(e.Error(), key))
+			return ConceptResult{}, s.fail("concept.rewriteFailed", "label", result.Labels[i], "error", s.redact(e.Error(), key))
 		}
 	}
 	result.UsedLLM = true
 	// The prompt itself is not logged.
 	s.mu.Lock()
-	_ = s.store.appendLog("info", "image", "", "已按概念改写提示词")
+	_ = s.store.appendLog("info", "image", "", s.msg("concept.log.rewritten"))
 	s.mu.Unlock()
 	return result, nil
 }

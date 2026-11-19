@@ -124,6 +124,9 @@ func fail(code, message string) {
 	os.Exit(1)
 }
 
+// windowTitle is set from -title in main.
+var windowTitle *string
+
 func main() {
 	target := flag.String("url", "", "")
 	browser := flag.String("runtime", "", "")
@@ -132,9 +135,11 @@ func main() {
 	challengeAfter := flag.Int("challenge-after", 20, "")
 	maxHTML := flag.Int("max-html", 4<<20, "")
 	maxImage := flag.Int("max-image", 32<<20, "")
+	// The verification window's title, in the interface language (passed by the app).
+	windowTitle = flag.String("title", "Image Workbench", "")
 	flag.Parse()
 	if *target == "" || *profile == "" {
-		fail("arguments", "缺少页面或资料目录参数")
+		fail("arguments", "missing -url or -profile")
 	}
 	runtime.LockOSThread()
 	start := time.Now()
@@ -155,7 +160,7 @@ func main() {
 		done := pageDone
 		mu.Unlock()
 		if !done {
-			fail("timeout", "读取商品页超时")
+			fail("timeout", "reading the page timed out")
 		}
 	}()
 
@@ -168,7 +173,7 @@ func main() {
 				chromium.Resize()
 			}
 		case wmClose:
-			fail("closed", "验证窗口已关闭")
+			fail("closed", "the verification window was closed")
 		case wmRun:
 			mu.Lock()
 			jobs := queue
@@ -185,10 +190,10 @@ func main() {
 	wc := wndClassEx{WndProc: wndProc, Instance: instance, ClassName: className}
 	wc.Size = uint32(unsafe.Sizeof(wc))
 	pRegisterClassEx.Call(uintptr(unsafe.Pointer(&wc)))
-	title, _ := syscall.UTF16PtrFromString("完成验证后将自动继续 - 生图工作台")
+	title, _ := syscall.UTF16PtrFromString(*windowTitle)
 	hwnd, _, _ = pCreateWindowEx.Call(0, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(title)), wsWindow, 120, 80, 1100, 820, 0, 0, instance, 0)
 	if hwnd == 0 {
-		fail("window", "无法创建浏览器窗口")
+		fail("window", "cannot create the browser window")
 	}
 	onUI := func(job func()) {
 		mu.Lock()
@@ -202,7 +207,7 @@ func main() {
 	chromium.DataPath = *profile
 	chromium.SetErrorCallback(func(e error) { fail("webview", e.Error()) })
 	chromium.ProcessFailedCallback = func(*edge.ICoreWebView2, *edge.ICoreWebView2ProcessFailedEventArgs) {
-		fail("crashed", "浏览器进程异常退出")
+		fail("crashed", "the browser process quit unexpectedly")
 	}
 	chromium.MessageCallback = func(message string, _ *edge.ICoreWebView2, _ *edge.ICoreWebView2WebMessageReceivedEventArgs) {
 		var m struct {
@@ -250,14 +255,14 @@ func main() {
 				return
 			}
 			if len(m.HTML) > *maxHTML {
-				fail("too_large", "商品页超过大小限制")
+				fail("too_large", "the page is over the size limit")
 			}
 			pageDone = true
 			pShowWindow.Call(hwnd, 0)
 			emit(map[string]any{"event": "page", "url": m.URL, "html": m.HTML, "elapsedMs": time.Since(start).Milliseconds()})
 		case "image":
 			if len(m.Data)/4*3 > *maxImage {
-				emit(map[string]any{"event": "image", "id": m.ID, "error": "图片超过大小限制"})
+				emit(map[string]any{"event": "image", "id": m.ID, "error": "too_large"})
 				return
 			}
 			emit(map[string]any{"event": "image", "id": m.ID, "status": m.Status, "mime": m.MIME, "data": m.Data, "error": m.Error})
@@ -277,7 +282,7 @@ func main() {
 		}
 		navFails++
 		if navFails >= maxNavAttempts {
-			fail("network", fmt.Sprintf("浏览器也打不开商品页（网络连接失败，已重试 %d 次）", navFails))
+			fail("network", fmt.Sprintf("the page cannot be reached (network failure, %d retries)", navFails))
 		}
 		emit(map[string]any{"event": "retry", "attempt": navFails})
 		wait := time.Duration(navFails) * navRetryDelay
@@ -287,7 +292,7 @@ func main() {
 		}()
 	}
 	if !chromium.Embed(hwnd) {
-		fail("webview", "无法启动浏览器组件")
+		fail("webview", "cannot start the browser component")
 	}
 	if settings, e := chromium.GetSettings(); e == nil {
 		settings.PutAreDevToolsEnabled(false)

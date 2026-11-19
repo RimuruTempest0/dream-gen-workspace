@@ -44,7 +44,9 @@
     "product.browser.imageStatus": "浏览器补取图片 HTTP {status}",
     "product.browser.imageTooLarge": "图片超过大小限制",
     "product.browser.busy": "正在读取商品页，请稍后再清除",
-    "product.httpStatus": "商品资料 HTTP {status}；请上传图片或粘贴商品描述"
+    "product.httpStatus": "商品资料 HTTP {status}；请上传图片或粘贴商品描述",
+    "product.browser.windowTitle": "完成验证后将自动继续 - {app}",
+    "product.browser.webview": "无法启动浏览器组件"
   },
   "en": {
     "product.tooLarge": "The product page is over the size limit",
@@ -91,7 +93,9 @@
     "product.browser.imageStatus": "Fetching an image in the browser returned HTTP {status}",
     "product.browser.imageTooLarge": "The image is over the size limit",
     "product.browser.busy": "A product page is being read. Clear it later",
-    "product.httpStatus": "Product page HTTP {status}; upload images or paste a product description"
+    "product.httpStatus": "Product page HTTP {status}; upload images or paste a product description",
+    "product.browser.windowTitle": "Continues by itself after the check - {app}",
+    "product.browser.webview": "Cannot start the browser component"
   },
   "vi": {
     "product.tooLarge": "Thông tin sản phẩm vượt giới hạn dung lượng",
@@ -138,7 +142,9 @@
     "product.browser.imageStatus": "Lấy thêm ảnh bằng trình duyệt trả về HTTP {status}",
     "product.browser.imageTooLarge": "Ảnh vượt giới hạn dung lượng",
     "product.browser.busy": "Đang đọc trang sản phẩm, hãy xóa sau",
-    "product.httpStatus": "Trang sản phẩm HTTP {status}; hãy tải ảnh lên hoặc dán mô tả sản phẩm"
+    "product.httpStatus": "Trang sản phẩm HTTP {status}; hãy tải ảnh lên hoặc dán mô tả sản phẩm",
+    "product.browser.windowTitle": "Tự tiếp tục sau khi xác minh xong - {app}",
+    "product.browser.webview": "Không khởi động được thành phần trình duyệt"
   },
   "ja": {
     "product.tooLarge": "商品資料がサイズ上限を超えています",
@@ -185,7 +191,9 @@
     "product.browser.imageStatus": "ブラウザーでの画像取得が HTTP {status} を返しました",
     "product.browser.imageTooLarge": "画像がサイズ上限を超えています",
     "product.browser.busy": "商品ページを読み込み中です。後で消去してください",
-    "product.httpStatus": "商品資料 HTTP {status}。画像をアップロードするか商品説明を貼り付けてください"
+    "product.httpStatus": "商品資料 HTTP {status}。画像をアップロードするか商品説明を貼り付けてください",
+    "product.browser.windowTitle": "確認が終わると自動で続きます - {app}",
+    "product.browser.webview": "ブラウザーコンポーネントを起動できません"
   },
   "ko": {
     "product.tooLarge": "상품 자료가 크기 한도를 넘습니다",
@@ -232,6 +240,8 @@
     "product.browser.imageStatus": "브라우저로 이미지 가져오기 결과 HTTP {status}",
     "product.browser.imageTooLarge": "이미지가 크기 한도를 넘습니다",
     "product.browser.busy": "상품 페이지를 읽는 중입니다. 나중에 지우세요",
-    "product.httpStatus": "상품 자료 HTTP {status}. 이미지를 올리거나 상품 설명을 붙여 넣으세요"
+    "product.httpStatus": "상품 자료 HTTP {status}. 이미지를 올리거나 상품 설명을 붙여 넣으세요",
+    "product.browser.windowTitle": "확인을 마치면 자동으로 계속됩니다 - {app}",
+    "product.browser.webview": "브라우저 구성 요소를 시작할 수 없습니다"
   }
 }

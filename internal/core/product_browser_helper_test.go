@@ -221,7 +221,7 @@ func TestRealHelperBlocksWindowsDownloadsAndOtherSchemes(t *testing.T) {
 		t.Skip("set IMAGEWORKBENCH_TEST_BROWSER and IMAGEWORKBENCH_TEST_WEBVIEW2 (scripts/test-product-browser.ps1)")
 	}
 	server := mockShop(t)
-	b, e := startProductBrowser(productBrowserConfig{Executable: exe, Runtime: runtimeDir}, t.TempDir(), server.URL+"/guarded")
+	b, e := startProductBrowser(productBrowserConfig{Executable: exe, Runtime: runtimeDir}, t.TempDir(), server.URL+"/guarded", "QA")
 	if e != nil {
 		t.Fatal(e)
 	}

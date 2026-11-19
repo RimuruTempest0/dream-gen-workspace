@@ -1,6 +1,7 @@
 package core
 
 import (
+	"imageworkbench/internal/i18n"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -89,7 +90,7 @@ func TestComposeConceptRewritesWithLLM(t *testing.T) {
 		t.Fatal("request misses the card rules, the reference note or the prompt:", req)
 	}
 	calls, _ := List[LLMCall](s.store, "llm_call")
-	if len(calls) != 1 || calls[0].Stage != conceptStage || calls[0].Status != "completed" {
+	if len(calls) != 1 || calls[0].Stage != i18n.T(i18n.ZhCN, "concept.llmStage") || calls[0].Status != "completed" {
 		t.Fatalf("rewrite not recorded in the LLM monitor: %+v", calls)
 	}
 	var logged, leaked int

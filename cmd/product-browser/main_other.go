@@ -8,6 +8,6 @@ import (
 )
 
 func main() {
-	fmt.Println(`{"event":"error","code":"unsupported","message":"浏览器读取仅支持 Windows"}`)
+	fmt.Println(`{"event":"error","code":"unsupported","message":"reading in a browser works only on Windows"}`)
 	os.Exit(1)
 }

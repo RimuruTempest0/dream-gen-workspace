@@ -1,0 +1,57 @@
+{
+  "zh-CN": {
+    "mood.invalid": "心境选项无效，请重新选择心境",
+    "mood.llmStage": "按心境改写提示词",
+    "mood.noMood": "任务没有心境",
+    "mood.nudge.direction": "请选择一个方向",
+    "mood.nudge.notMood": "只有按心境生成的图可以再靠近一点",
+    "mood.nudge.notDone": "只能对已完成的图片再靠近一点",
+    "mood.nudge.connectionGone": "原图片服务已删除，请重新配置后再试",
+    "mood.log.nudged": "已提交“再靠近一点”：{name}（基于已完成图片，原图保留）",
+    "mood.retry.connectionGone": "这张图片使用的图片服务已删除"
+  },
+  "en": {
+    "mood.invalid": "Invalid mood option. Choose the mood again",
+    "mood.llmStage": "Rewriting the prompt for the mood",
+    "mood.noMood": "The task has no mood",
+    "mood.nudge.direction": "Choose a direction",
+    "mood.nudge.notMood": "Only images made from a mood can go a little closer",
+    "mood.nudge.notDone": "Only finished images can go a little closer",
+    "mood.nudge.connectionGone": "The original image service was deleted. Set it up again and retry",
+    "mood.log.nudged": "Sent \"a little closer\": {name} (based on the finished image; the original is kept)",
+    "mood.retry.connectionGone": "The image service this image used was deleted"
+  },
+  "vi": {
+    "mood.invalid": "Lựa chọn tâm trạng không hợp lệ, hãy chọn lại tâm trạng",
+    "mood.llmStage": "Viết lại câu lệnh theo tâm trạng",
+    "mood.noMood": "Tác vụ không có tâm trạng",
+    "mood.nudge.direction": "Hãy chọn một hướng",
+    "mood.nudge.notMood": "Chỉ ảnh tạo theo tâm trạng mới dùng được gần thêm chút nữa",
+    "mood.nudge.notDone": "Chỉ ảnh đã hoàn tất mới dùng được gần thêm chút nữa",
+    "mood.nudge.connectionGone": "Dịch vụ tạo ảnh ban đầu đã bị xóa. Hãy thiết lập lại rồi thử lại",
+    "mood.log.nudged": "Đã gửi \"gần thêm chút nữa\": {name} (dựa trên ảnh đã xong, giữ ảnh gốc)",
+    "mood.retry.connectionGone": "Dịch vụ tạo ảnh mà ảnh này dùng đã bị xóa"
+  },
+  "ja": {
+    "mood.invalid": "心境の選択肢が無効です。心境を選び直してください",
+    "mood.llmStage": "心境に合わせてプロンプトを書き直し",
+    "mood.noMood": "タスクに心境がありません",
+    "mood.nudge.direction": "方向を 1 つ選んでください",
+    "mood.nudge.notMood": "もう少し近くを使えるのは心境から生成した画像だけです",
+    "mood.nudge.notDone": "もう少し近くを使えるのは完成した画像だけです",
+    "mood.nudge.connectionGone": "元の画像サービスは削除されました。設定し直してから再試行してください",
+    "mood.log.nudged": "「もう少し近く」を送信しました：{name}（完成画像を基にし、元の画像は残します）",
+    "mood.retry.connectionGone": "この画像で使った画像サービスは削除されました"
+  },
+  "ko": {
+    "mood.invalid": "심경 선택이 올바르지 않습니다. 심경을 다시 고르세요",
+    "mood.llmStage": "심경에 맞게 프롬프트 다시 쓰기",
+    "mood.noMood": "작업에 심경이 없습니다",
+    "mood.nudge.direction": "방향을 하나 고르세요",
+    "mood.nudge.notMood": "심경으로 만든 이미지만 조금 더 가까이를 쓸 수 있습니다",
+    "mood.nudge.notDone": "완성된 이미지에만 조금 더 가까이를 쓸 수 있습니다",
+    "mood.nudge.connectionGone": "원래 이미지 서비스가 삭제되었습니다. 다시 설정한 뒤 다시 시도하세요",
+    "mood.log.nudged": "\"조금 더 가까이\"를 보냈습니다: {name}(완성된 이미지 기준, 원본 유지)",
+    "mood.retry.connectionGone": "이 이미지에 쓴 이미지 서비스가 삭제되었습니다"
+  }
+}

@@ -35,7 +35,7 @@ func TestBundledHelpersAreCheckedBeforeStarting(t *testing.T) {
 	old := expectedProductBrowserSHA256
 	expectedProductBrowserSHA256 = good
 	defer func() { expectedProductBrowserSHA256 = old }()
-	if _, e := startProductBrowser(productBrowserConfig{Executable: path}, t.TempDir(), "https://example.com"); e == nil || !strings.Contains(e.Error(), "product-browser.exe") {
+	if _, e := startProductBrowser(productBrowserConfig{Executable: path}, t.TempDir(), "https://example.com", "QA"); e == nil || !strings.Contains(e.Error(), "product-browser.exe") {
 		t.Fatal("replaced browser helper started", e)
 	}
 }
