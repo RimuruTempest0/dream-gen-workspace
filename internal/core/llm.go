@@ -16,6 +16,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"imageworkbench/internal/i18n"
 )
 
 // DefaultMaxOutputTokens is the LLM single-reply output limit when none is set.
@@ -120,15 +122,15 @@ type messageResponse struct {
 	StopReason string         `json:"stop_reason"`
 }
 
-func readMessage(resp *http.Response, key string) (messageResponse, error) {
+func readMessage(resp *http.Response, key, lang string) (messageResponse, error) {
 	defer resp.Body.Close()
 	var raw json.RawMessage
 	e := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&raw)
 	if resp.StatusCode != 200 {
-		return messageResponse{}, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(raw, key))
+		return messageResponse{}, fmt.Errorf("HTTP %d：%s", resp.StatusCode, apiMessage(raw, key, lang))
 	}
 	if e != nil {
-		return messageResponse{}, errors.New("AI 模型未返回完整的 Messages JSON 响应")
+		return messageResponse{}, errors.New(i18n.T(lang, "connection.llm.incompleteMessage"))
 	}
 	var v messageResponse
 	e = json.Unmarshal(raw, &v)
@@ -184,16 +186,16 @@ func readSSE(ctx context.Context, r io.Reader, frame func([]byte) error) error {
 	if scan.Err() != nil {
 		return scan.Err()
 	}
-	return errors.New("AI 模型流在 message_stop 之前中断")
+	return failCtx(ctx, "connection.llm.streamCut")
 }
 
 func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabilities, resultErr error) {
 	defer func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		level, text := "info", "Agent 能力验证："+strings.Join(result.Details, "；")
+		level, text := "info", s.msg("connection.llm.log.checked", "details", strings.Join(result.Details, s.msg("connection.llm.detailSeparator")))
 		if resultErr != nil {
-			level, text = "warn", "Agent 能力验证："+resultErr.Error()
+			level, text = "warn", s.msg("connection.llm.log.checked", "details", resultErr.Error())
 		} else if !result.Text || !result.Vision || !result.Tools || !result.Streaming {
 			level = "warn"
 		}
@@ -205,10 +207,10 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	c = normalizeConnection(c)
 	var key string
 	if e == nil && c.Kind != "llm" {
-		e = errors.New("请选择 AI 模型")
+		e = s.fail("connection.llm.chooseLLM")
 	}
 	if e == nil && c.Model == "" {
-		e = errors.New("请先保存模型 ID")
+		e = s.fail("connection.llm.saveModelFirst")
 	}
 	if e == nil {
 		key, e = s.key(c.Credential)
@@ -225,9 +227,9 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	}
 	if _, exists := s.connectionTests[testID]; exists {
 		s.mu.Unlock()
-		return LLMCapabilities{}, errors.New("此验证已在进行")
+		return LLMCapabilities{}, s.fail("connection.llm.checkRunning")
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(s.langCtx(s.ctx), 2*time.Minute)
 	s.connectionTests[testID] = cancel
 	s.mu.Unlock()
 	defer func() { cancel(); s.mu.Lock(); delete(s.connectionTests, testID); s.mu.Unlock() }()
@@ -245,13 +247,13 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 			body["max_tokens"] = min(c.MaxOutputTokens, 2048)
 		}
 		call := s.startLLMCall("test", "", c, nil)
-		call.Stage = "能力验证：" + label
+		call.Stage = s.msg("connection.llm.stage", "check", label)
 		started := time.Now()
 		resp, e := messagesRequest(ctx, client, c, key, body)
 		if e == nil {
 			call.HTTPStatus = resp.StatusCode
 			call.RequestID = resp.Header.Get("request-id")
-			v, err := readMessage(resp, key)
+			v, err := readMessage(resp, key, s.Language())
 			if err == nil {
 				call.Status, call.FirstByteMS = "completed", max(time.Since(started).Milliseconds(), 1)
 				call.addUsage(v.Usage)
@@ -262,10 +264,10 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 		}
 		call.Status, call.Error = "error", redact(e.Error(), key)
 		s.saveLLMCall(call, started)
-		cap.Details = append(cap.Details, label+"："+redact(e.Error(), key))
+		cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", label, "result", redact(e.Error(), key)))
 		return messageResponse{}, e
 	}
-	if v, err := probe("文本", "Reply exactly OK.", nil); err == nil {
+	if v, err := probe(s.msg("connection.llm.check.text"), "Reply exactly OK.", nil); err == nil {
 		for _, b := range v.Content {
 			if b.Type == "text" && strings.TrimSpace(b.Text) == "OK" {
 				cap.Text = true
@@ -288,7 +290,7 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	png.Encode(&pngBuf, img)
 	vision := []any{map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": "image/png", "data": base64.StdEncoding.EncodeToString(pngBuf.Bytes())}}, map[string]any{"type": "text", "text": "Identify the solid color in this image. Reply exactly RED or BLUE."}}
 	if ctx.Err() == nil {
-		if v, err := probe("图片输入", vision, nil); err == nil {
+		if v, err := probe(s.msg("connection.llm.check.vision"), vision, nil); err == nil {
 			for _, b := range v.Content {
 				if b.Type == "text" && strings.TrimSpace(b.Text) == expected {
 					cap.Vision = true
@@ -299,7 +301,7 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	nonce := NewID()
 	tools := []any{map[string]any{"name": "capability_echo", "description": "Return the provided nonce.", "input_schema": map[string]any{"type": "object", "properties": map[string]any{"nonce": map[string]any{"type": "string"}}, "required": []string{"nonce"}}}}
 	if ctx.Err() == nil {
-		if v, err := probe("工具调用", "Call capability_echo with nonce "+nonce, tools); err == nil {
+		if v, err := probe(s.msg("connection.llm.check.tools"), "Call capability_echo with nonce "+nonce, tools); err == nil {
 			for _, b := range v.Content {
 				if b.Type == "tool_use" && b.Name == "capability_echo" && b.Input["nonce"] == nonce {
 					cap.Tools = true
@@ -310,7 +312,7 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	if ctx.Err() == nil {
 		body := map[string]any{"model": c.Model, "max_tokens": 64, "stream": true, "messages": []any{map[string]any{"role": "user", "content": "Reply exactly OK."}}}
 		call := s.startLLMCall("test", "", c, nil)
-		call.Stage, call.Stream = "能力验证：流式响应", true
+		call.Stage, call.Stream = s.msg("connection.llm.stage", "check", s.msg("connection.llm.check.streaming")), true
 		started := time.Now()
 		resp, err := messagesRequest(ctx, client, c, key, body)
 		if err == nil {
@@ -337,9 +339,9 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 				})
 				cap.Streaming = err == nil && strings.TrimSpace(text) == "OK"
 			} else {
-				_, err = readMessage(resp, key)
+				_, err = readMessage(resp, key, s.Language())
 				if err == nil {
-					err = errors.New("未返回 SSE 流")
+					err = s.fail("connection.llm.noSSE")
 				}
 			}
 			resp.Body.Close()
@@ -347,22 +349,22 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 		call.Status = "completed"
 		if err != nil {
 			call.Status, call.Error = "error", redact(err.Error(), key)
-			cap.Details = append(cap.Details, "流式响应："+redact(err.Error(), key))
+			cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", s.msg("connection.llm.check.streaming"), "result", redact(err.Error(), key)))
 		}
 		s.saveLLMCall(call, started)
 	}
 	if ctx.Err() != nil {
-		return cap, errors.New("Agent 能力验证已取消或超时；未更新连接能力")
+		return cap, s.fail("connection.llm.checkCanceled")
 	}
 	for _, check := range []struct {
 		label string
 		ok    bool
-	}{{"文本", cap.Text}, {"图片输入", cap.Vision}, {"工具调用", cap.Tools}, {"流式响应", cap.Streaming}} {
+	}{{"connection.llm.check.text", cap.Text}, {"connection.llm.check.vision", cap.Vision}, {"connection.llm.check.tools", cap.Tools}, {"connection.llm.check.streaming", cap.Streaming}} {
+		result := s.msg("connection.llm.failed")
 		if check.ok {
-			cap.Details = append(cap.Details, check.label+"：通过")
-		} else {
-			cap.Details = append(cap.Details, check.label+"：未通过")
+			result = s.msg("connection.llm.passed")
 		}
+		cap.Details = append(cap.Details, s.msg("connection.llm.detail", "check", s.msg(check.label), "result", result))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -372,7 +374,7 @@ func (s *Service) ValidateLLMCapabilities(id, testID string) (result LLMCapabili
 	}
 	current = normalizeConnection(current)
 	if current.BaseURL != c.BaseURL || current.Model != c.Model || current.Credential != c.Credential || current.Mode != c.Mode || current.AuthMode != c.AuthMode || current.MaxOutputTokens != c.MaxOutputTokens {
-		return cap, errors.New("连接已修改，请重新验证")
+		return cap, s.fail("connection.llm.changed")
 	}
 	current.Capabilities = cap
 	return cap, s.store.Put("connection", id, current)

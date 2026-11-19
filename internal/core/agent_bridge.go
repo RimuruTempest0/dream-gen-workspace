@@ -269,10 +269,10 @@ func (b *agentBridge) forward(w http.ResponseWriter, r *http.Request, suffix str
 		stopWatch()
 		var raw json.RawMessage
 		json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&raw)
-		finish("error", resp.StatusCode, apiMessage(raw, key))
+		finish("error", resp.StatusCode, apiMessage(raw, key, b.service.Language()))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{"type": "api_error", "message": apiMessage(raw, key)}})
+		json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{"type": "api_error", "message": apiMessage(raw, key, b.service.Language())}})
 		return forwardDone
 	}
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {

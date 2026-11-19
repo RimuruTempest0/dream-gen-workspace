@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
+
+	"imageworkbench/internal/i18n"
 )
 
 func taskByStatus(s *Service, status string) (Task, bool) {
@@ -50,7 +52,7 @@ func TestCancelUnsentAndInFlightImages(t *testing.T) {
 	var a, b Task
 	s.store.Get("task", queued.ID, &a)
 	s.store.Get("task", sent.ID, &b)
-	if a.Error != canceledUnsent || b.Error != canceledInFlight {
+	if a.Error != i18n.T(i18n.ZhCN, "task.canceledUnsent") || b.Error != i18n.T(i18n.ZhCN, "task.canceledInFlight") {
 		t.Fatalf("messages: %q / %q", a.Error, b.Error)
 	}
 	if relay.total.Load() != 1 {

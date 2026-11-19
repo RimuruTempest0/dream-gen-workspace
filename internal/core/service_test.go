@@ -54,7 +54,7 @@ func request(c Connection) GenerateInput {
 func TestURLAndKeyBoundary(t *testing.T) {
 	s := testService(t)
 	for _, bad := range []string{"ftp://x", "https://user:pass@x/v1", "https://x/v1?key=x", "https://x/#fragment"} {
-		if _, e := NormalizeURL(bad); e == nil {
+		if _, e := NormalizeURL(bad, "zh-CN"); e == nil {
 			t.Fatalf("accepted %s", bad)
 		}
 	}

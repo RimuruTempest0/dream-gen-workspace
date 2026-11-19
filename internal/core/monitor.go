@@ -175,9 +175,9 @@ func (s *Service) gatewayCallsLocked(q MonitorQuery, now time.Time) ([]GatewayCa
 		}
 		if t.AgentRunID != "" {
 			c.Source = "smart"
-			c.SourceLabel = "创作"
+			c.SourceLabel = s.msg("monitor.source.creation")
 			if n := slots[t.AgentRunID+"/"+t.PlanItemID]; n > 0 {
-				c.SourceLabel = fmt.Sprintf("创作 · 第 %d 张", n)
+				c.SourceLabel = s.msg("monitor.source.creationSlot", "n", n)
 			}
 		} else {
 			c.Source = "workbench"
@@ -185,7 +185,7 @@ func (s *Service) gatewayCallsLocked(q MonitorQuery, now time.Time) ([]GatewayCa
 			if len(batch) > 6 {
 				batch = batch[:6]
 			}
-			c.SourceLabel = "专业模式 · 批次 " + batch
+			c.SourceLabel = s.msg("monitor.source.workbench", "batch", batch)
 		}
 		if (q.ConnectionID != "" && c.ConnectionID != q.ConnectionID) || (q.Source != "" && c.Source != q.Source) {
 			continue
@@ -331,7 +331,24 @@ func (s *Service) GatewayMonitor(q MonitorQuery) (GatewayMonitorResult, error) {
 	return r, nil
 }
 
-var resultLabels = map[string]string{"succeeded": "成功", "unknown": "结果未知", "failed": "失败", "running": "进行中", "completed": "完成", "dropped": "连接中断", "error": "错误"}
+var resultLabels = map[string]string{"succeeded": "monitor.result.succeeded", "unknown": "monitor.result.unknown", "failed": "monitor.result.failed", "running": "monitor.result.running", "completed": "monitor.result.completed", "dropped": "monitor.result.dropped", "error": "monitor.result.error"}
+
+// resultLabel is the shown name of a call result (monitor.result.*).
+func (s *Service) resultLabel(status string) string {
+	if key, ok := resultLabels[status]; ok {
+		return s.msg(key)
+	}
+	return status
+}
+
+// csvHeader is a CSV header row in the current interface language.
+func csvHeader(s *Service, keys ...string) []string {
+	row := make([]string, len(keys))
+	for i, k := range keys {
+		row[i] = s.msg(k)
+	}
+	return row
+}
 
 func msText(ms int64) string {
 	if ms <= 0 {
@@ -381,17 +398,17 @@ func (s *Service) ExportGatewayCalls(q MonitorQuery, path string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	rows := [][]string{{"时间", "图片服务", "来源", "模型", "结果", "HTTP 状态", "生成秒数", "下载秒数", "图片服务请求 ID", "转入自", "自动重新生成", "任务 ID"}}
+	rows := [][]string{csvHeader(s, "monitor.csv.time", "monitor.csv.imageService", "monitor.csv.source", "monitor.csv.model", "monitor.csv.result", "monitor.csv.httpStatus", "monitor.csv.generationSeconds", "monitor.csv.downloadSeconds", "monitor.csv.imageRequestID", "monitor.csv.routedFrom", "monitor.csv.autoRetry", "monitor.csv.taskID")}
 	for _, c := range calls {
 		if q.Result != "" && c.Result != q.Result {
 			continue
 		}
-		result := resultLabels[c.Result]
+		result := s.resultLabel(c.Result)
 		if c.DownloadFailed {
-			result += "（下载未完成）"
+			result += s.msg("monitor.csv.downloadUnfinished")
 		}
 		if c.FailReason != "" {
-			result += "（" + rejectionLabels[c.FailReason] + "）"
+			result += s.msg("monitor.csv.failReason", "reason", s.msg(rejectionLabels[c.FailReason]))
 		}
 		status := ""
 		if c.HTTPStatus != 0 {
@@ -399,7 +416,7 @@ func (s *Service) ExportGatewayCalls(q MonitorQuery, path string) (int, error) {
 		}
 		auto := ""
 		if c.AutoRetry {
-			auto = "是"
+			auto = s.msg("monitor.csv.yes")
 		}
 		rows = append(rows, []string{localTime(c.At), c.Name, c.SourceLabel, c.Model, result, status, msText(c.GenerationMS), msText(c.DownloadMS), c.RequestID, c.RoutedFromName, auto, c.TaskID})
 	}
