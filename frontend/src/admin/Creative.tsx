@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Input, Space, Table } from "antd";
+import { Alert, App as AntApp, Button, Input, Space, Table } from "antd";
 import { FolderOpenOutlined, LinkOutlined } from "@ant-design/icons";
 import { call, errorText } from "../api";
 import { Header, time, useActions } from "../ui";
@@ -13,6 +13,7 @@ export function Creative() {
   const state = useAdminState();
   const source = useLineSource("creative");
   const actions = useActions();
+  const { modal } = AntApp.useApp();
   // Notes proposed from the changelog, kept per version; what the provider
   // typed wins until the version changes.
   const [proposed, setProposed] = useState<{ version: string; text: string }>();
@@ -31,6 +32,32 @@ export function Creative() {
         ? proposed.text
         : undefined;
   const setNotes = (text: string) => setEdited({ version, text });
+  // The English notes (app 0.8.0 shows them in every language but Chinese):
+  // translated on request, read and edited here before the build signs them.
+  const [english, setEnglish] = useState<{ version: string; text: string }>();
+  const notesEn = english?.version === version ? english.text : "";
+  const setNotesEn = (text: string) => setEnglish({ version, text });
+  const [translating, setTranslating] = useState(false);
+  const translate = () =>
+    modal.confirm({
+      title: "把更新说明翻译成英文？",
+      content:
+        "会用 Key 池里一个通过能力验证、没有分给客户的 LLM Key 发 1 个请求，产生少量费用。翻译结果会填进下面的英文更新说明，请看一遍再构建。",
+      okText: "翻译（产生少量费用）",
+      cancelText: "取消",
+      onOk: async () => {
+        setTranslating(true);
+        try {
+          const text = await actions.run(
+            () => call<string>("TranslateNotes", notes ?? ""),
+            "已翻译，请检查英文更新说明",
+          );
+          if (text !== undefined) setNotesEn(text);
+        } finally {
+          setTranslating(false);
+        }
+      },
+    });
 
   // Propose the notes from the changelog of the commit to be built.
   useEffect(() => {
@@ -93,7 +120,7 @@ export function Creative() {
         </div>
         <div className="admin-build">
           <label htmlFor="creative-notes" className="field-label">
-            更新说明（顾客在更新前看到）
+            中文更新说明（中文界面的顾客在更新前看到）
           </label>
           <Input.TextArea
             id="creative-notes"
@@ -102,19 +129,50 @@ export function Creative() {
             onChange={(e) => setNotes(e.target.value)}
           />
           <p className="hint">
-            已从 docs/CHANGELOG.md 取这一版的条目预填，可以改短。
+            已从 docs/CHANGELOG.md 取这一版的条目预填，可以改短。0.8.0
+            以前的软件只显示中文更新说明。
+          </p>
+          <label htmlFor="creative-notes-en" className="field-label">
+            英文更新说明（英语、越南语、日语、韩语界面的顾客看到）
+          </label>
+          <Input.TextArea
+            id="creative-notes-en"
+            lang="en"
+            value={notesEn}
+            placeholder="点“翻译成英文”生成，或直接填写"
+            autoSize={{ minRows: 4, maxRows: 12 }}
+            onChange={(e) => setNotesEn(e.target.value)}
+          />
+          <Space wrap>
+            <Button
+              loading={translating}
+              disabled={!notes?.trim()}
+              onClick={translate}
+            >
+              {notesEn.trim() ? "重新翻译" : "翻译成英文"}
+            </Button>
+          </Space>
+          <p className="hint">
+            翻译后请看一遍，可以直接修改；构建时签进 update.json
+            的就是这里的文字。
           </p>
           <Space wrap>
             <Button
               type="primary"
               loading={building}
-              disabled={!src || !!src.blocked || !version || !notes?.trim()}
+              disabled={
+                !src ||
+                !!src.blocked ||
+                !version ||
+                !notes?.trim() ||
+                !notesEn.trim()
+              }
               onClick={async () => {
                 setLog([]);
                 setDone(undefined);
                 try {
                   setBuilding(true);
-                  await call("BuildCreative", version, notes ?? "");
+                  await call("BuildCreative", version, notes ?? "", notesEn);
                 } catch (e) {
                   setBuilding(false);
                   setLog([errorText(e)]);

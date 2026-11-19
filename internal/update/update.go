@@ -51,10 +51,24 @@ type Manifest struct {
 	Version     string `json:"version"`
 	MinVersion  string `json:"minVersion,omitempty"` // oldest version that may update in place
 	PublishedAt string `json:"publishedAt"`
-	Notes       string `json:"notes"`
-	URL         string `json:"url"`    // the update package
-	SHA256      string `json:"sha256"` // of the package
-	Size        int64  `json:"size"`
+	// Notes are the Chinese update notes; apps before 0.8.0 read only these.
+	Notes string `json:"notes"`
+	// NotesEn are the English update notes (0.8.0), shown in every interface
+	// language but Chinese. Manifests of earlier releases have none.
+	NotesEn string `json:"notesEn,omitempty"`
+	URL     string `json:"url"`    // the update package
+	SHA256  string `json:"sha256"` // of the package
+	Size    int64  `json:"size"`
+}
+
+// NotesFor returns the update notes for an interface language and the
+// language they are written in: the Chinese notes for zh-CN, the English ones
+// for every other language, and the Chinese ones when there are no English notes.
+func (m Manifest) NotesFor(lang string) (notes, notesLang string) {
+	if lang != "zh-CN" && strings.TrimSpace(m.NotesEn) != "" {
+		return m.NotesEn, "en"
+	}
+	return m.Notes, "zh-CN"
 }
 
 type signedFile struct {
@@ -175,6 +189,7 @@ func init() {
 		topFiles[m] = true
 	}
 }
+
 var topDirs = map[string]bool{"runtime": true, "agent": true}
 
 // AllowedEntry reports whether a package path may be written into the program folder.

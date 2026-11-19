@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -270,5 +271,72 @@ func TestManualsExistInEveryLanguage(t *testing.T) {
 		if !strings.HasPrefix(text, "Image Workbench") || strings.Contains(text, "生图工作台") {
 			t.Errorf("%s must name the software Image Workbench", name)
 		}
+	}
+}
+
+// Chinese interface: the Chinese notes. English, Vietnamese, Japanese and
+// Korean: the English notes, or the Chinese ones when there are none.
+func TestNotesFollowTheInterfaceLanguage(t *testing.T) {
+	m := manifest()
+	m.NotesEn = "Fixes"
+	if n, l := m.NotesFor("zh-CN"); n != "修复" || l != "zh-CN" {
+		t.Fatal("zh-CN", n, l)
+	}
+	for _, lang := range []string{"en", "vi", "ja", "ko"} {
+		if n, l := m.NotesFor(lang); n != "Fixes" || l != "en" {
+			t.Fatal(lang, n, l)
+		}
+	}
+	m.NotesEn = "  "
+	for _, lang := range []string{"zh-CN", "en", "vi", "ja", "ko"} {
+		if n, l := m.NotesFor(lang); n != "修复" || l != "zh-CN" {
+			t.Fatal("fallback", lang, n, l)
+		}
+	}
+}
+
+// A manifest signed before 0.8.0 (no English notes) is still read, and an app
+// before 0.8.0 reading a new manifest finds its Chinese notes where it always did.
+func TestManifestNotesStayCompatible(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	keys := []string{base64.StdEncoding.EncodeToString(pub)}
+
+	// Old format: a payload exactly as 0.7.x manifests carry it.
+	payload := []byte(`{"format":1,"version":"0.7.13","minVersion":"0.7.10","publishedAt":"2026-01-01T00:00:00Z","notes":"修复","url":"https://example.test/u.zip","sha256":"` + strings.Repeat("a", 64) + `","size":10}`)
+	old, _ := json.Marshal(signedFile{Format: 1, Payload: base64.StdEncoding.EncodeToString(payload), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))})
+	m, e := Verify(old, keys, "")
+	if e != nil || m.NotesEn != "" {
+		t.Fatal(m, e)
+	}
+	if n, _ := m.NotesFor("en"); n != "修复" {
+		t.Fatal("old manifest in English", n)
+	}
+
+	// New format, read as an app before 0.8.0 does: its manifest type has no
+	// English field, and the signature covers the payload bytes as they are.
+	nm := manifest()
+	nm.NotesEn = "Fixes"
+	data, e := Sign(nm, priv)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var f signedFile
+	json.Unmarshal(data, &f)
+	raw, _ := base64.StdEncoding.DecodeString(f.Payload)
+	sig, _ := base64.StdEncoding.DecodeString(f.Signature)
+	if !ed25519.Verify(pub, raw, sig) {
+		t.Fatal("signature")
+	}
+	var before struct {
+		Format  int    `json:"format"`
+		Version string `json:"version"`
+		Notes   string `json:"notes"`
+		URL     string `json:"url"`
+	}
+	if e := json.Unmarshal(raw, &before); e != nil || before.Notes != "修复" || before.Version != "0.7.13" || before.Format != 1 {
+		t.Fatal("old app reads", before, e)
+	}
+	if !strings.Contains(string(raw), `"notesEn":"Fixes"`) {
+		t.Fatal("English notes not in the payload", string(raw))
 	}
 }

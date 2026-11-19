@@ -62,7 +62,7 @@ func TestHostedPackageIsTheBuiltMassMarketProgramPlusALicenceFile(t *testing.T) 
 		t.Fatal("hosted package without a built program:", e)
 	}
 	// A program from before the licence file was read would ignore it.
-	if _, e = a.BuildCreative(context.Background(), "0.7.33", "说明", fakeBuilder{update: true}, "", func(string) {}); e != nil {
+	if _, e = a.BuildCreative(context.Background(), "0.7.33", "说明", "Notes", fakeBuilder{update: true}, "", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = pack("0.7.33"); e == nil || !strings.Contains(e.Error(), HostedSince) {
@@ -70,7 +70,7 @@ func TestHostedPackageIsTheBuiltMassMarketProgramPlusALicenceFile(t *testing.T) 
 	}
 
 	sourceAt(a, "0.7.34")
-	if _, e = a.BuildCreative(context.Background(), "0.7.34", "说明", fakeBuilder{update: true}, "", func(string) {}); e != nil {
+	if _, e = a.BuildCreative(context.Background(), "0.7.34", "说明", "Notes", fakeBuilder{update: true}, "", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	if s := a.HostedSource(); s.Version != "0.7.34" || s.Blocked != "" {

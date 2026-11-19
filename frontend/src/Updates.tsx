@@ -14,6 +14,8 @@ export type UpdateStatus = {
   available: boolean;
   version?: string;
   notes?: string;
+  /** Language of the notes: zh-CN, or en in the other interface languages. */
+  notesLang?: "zh-CN" | "en";
   size?: number;
   stage?: "" | "downloading" | "ready";
   downloaded?: number;
@@ -46,7 +48,11 @@ function UpdateOffer({ u }: { u: UpdateStatus }) {
       <strong>
         新版本 {u.version}（{mb(u.size)}）
       </strong>
-      {u.notes && <p className="update-notes">{u.notes}</p>}
+      {u.notes && (
+        <p className="update-notes" lang={u.notesLang}>
+          {u.notes}
+        </p>
+      )}
       {u.stage === "downloading" && (
         <Progress
           percent={Math.min(

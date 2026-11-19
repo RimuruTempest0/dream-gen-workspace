@@ -194,14 +194,18 @@ func (x *App) CreativeNotes(version string) string { return x.a.CreativeNotes(ve
 // BuildCreative builds, checks and signs a version of the mass-market line in
 // the background; progress and the result arrive as "creative:log" and
 // "creative:done". Nothing is uploaded.
-func (x *App) BuildCreative(version, notes string) error {
+// TranslateNotes translates the Chinese update notes into English with an LLM
+// key of the pool: one short, billable call; the UI asks first.
+func (x *App) TranslateNotes(zh string) (string, error) { return x.a.TranslateNotes(zh) }
+
+func (x *App) BuildCreative(version, notes, notesEn string) error {
 	if !x.building.TryLock() {
 		return errors.New("正在进行另一次构建，请等它完成")
 	}
 	go func() {
 		defer x.building.Unlock()
 		log := func(s string) { runtime.EventsEmit(x.ctx, "creative:log", s) }
-		r, e := x.a.BuildCreative(context.Background(), version, notes, x.builder, admin.LocalDataDir(x.a.State().RepoRoot), log)
+		r, e := x.a.BuildCreative(context.Background(), version, notes, notesEn, x.builder, admin.LocalDataDir(x.a.State().RepoRoot), log)
 		result := map[string]any{"ok": e == nil}
 		if e != nil {
 			result["error"] = e.Error()
