@@ -198,8 +198,8 @@ test("pro mode, history and works pages show no Chinese in en, vi, ja and ko", a
     await page.locator(".result-item .image-open").first().click();
     await expect(page.locator(".image-viewer img")).toBeVisible();
     await expectTranslated(lang, `${lang} viewer`);
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".image-viewer")).toHaveCount(0);
+    await page.locator(".image-viewer-modal .ant-modal-close").click();
+    await expect(page.locator(".image-viewer")).toBeHidden();
     await page.locator(".generate-footer button").click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expectTranslated(lang, `${lang} generate dialog`);
@@ -214,6 +214,11 @@ test("pro mode, history and works pages show no Chinese in en, vi, ja and ko", a
     await expect(page.locator(".ant-pagination-prev")).toBeVisible();
     await expectTranslated(lang, `${lang} tasks`);
     await page.locator(".records-panel .panel-heading .ant-select").click();
+    await expect(
+      page
+        .locator(".ant-select-dropdown:visible .ant-select-item-option")
+        .last(),
+    ).toBeVisible();
     const states = await page
       .locator(".ant-select-dropdown:visible .ant-select-item-option")
       .allTextContents();
@@ -228,8 +233,8 @@ test("pro mode, history and works pages show no Chinese in en, vi, ja and ko", a
       .click();
     await expect(page.locator(".ant-modal .details")).toBeVisible();
     await expectTranslated(lang, `${lang} task detail`);
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".ant-modal .details")).toHaveCount(0);
+    await page.locator(".ant-modal-wrap:visible .ant-modal-close").click();
+    await expect(page.locator(".ant-modal .details")).toBeHidden();
     await page.setViewportSize({ width: 800, height: 900 });
     await noHorizontalScroll(`${lang} tasks`);
 
