@@ -62,6 +62,7 @@ import { LicenseNotice } from "../License";
 import { gatewayLabel, useGateways } from "../Gateways";
 import { ConceptBar, ConceptStage } from "../Concepts";
 import { MoodBar, MoodGuide, MoodNudges, MoodTags } from "../Mood";
+import { t as tr } from "../i18n";
 
 // What the prompt box held before a concept rewrite, and what the rewrite put there.
 type ConceptUndo = {
@@ -198,7 +199,7 @@ export function Workbench() {
     call("SetGuideMode", on).catch((e) => {
       qc.invalidateQueries({ queryKey: ["guide-mode"] });
       notification.error({
-        message: "引导模式未保存",
+        message: tr("workbench.guide.notSaved"),
         description: errorText(e),
       });
     });
@@ -222,11 +223,8 @@ export function Workbench() {
   function nudge(t: Task, assetID: string, n: MoodOption) {
     const requestID = crypto.randomUUID();
     actions.confirm(
-      `再出 1 张（${n.name}）？`,
-      <>
-        以这张图为底图，只往“{n.name}
-        ”改一点，其余保持。这是新的生图请求，费用以图片服务实际计费为准。
-      </>,
+      tr("workbench.nudge.title", { name: n.name }),
+      tr("workbench.nudge.body", { name: n.name }),
       async () => {
         await call("NudgeMoodImage", {
           requestID,
@@ -238,7 +236,7 @@ export function Workbench() {
         await qc.invalidateQueries({ queryKey: ["tasks"] });
       },
       false,
-      "再出 1 张",
+      tr("workbench.nudge.ok"),
     );
   }
   // Labels count per prompt line; once the lines no longer match they are dropped.
@@ -256,14 +254,13 @@ export function Workbench() {
     if (!batch || lines.length < 2) return Promise.resolve(prompt.trim());
     return new Promise<string | null>((resolve) => {
       modal.confirm({
-        title: `替换当前 ${lines.length} 条批量提示词？`,
+        title: tr("workbench.concept.replaceTitle", { count: lines.length }),
         content:
-          (n > 1
-            ? `将以第一条为底稿生成 ${n} 条对比提示词，替换现有内容。`
-            : "将以第一条为底稿融入概念，替换现有内容。") +
-          "改写后可点“撤销改写”恢复。",
-        okText: "替换",
-        cancelText: "取消",
+          n > 1
+            ? tr("workbench.concept.replaceCompare", { count: n })
+            : tr("workbench.concept.replaceFuse"),
+        okText: tr("workbench.replace"),
+        cancelText: tr("common.cancel"),
         autoFocusButton: "cancel",
         onOk: () => resolve(lines[0]),
         onCancel: () => resolve(null),
@@ -285,10 +282,10 @@ export function Workbench() {
     if (r.usedLLM)
       notification.success({
         message: single
-          ? "已按概念改写提示词"
-          : `已生成 ${r.prompts.length} 条对比提示词`,
+          ? tr("workbench.concept.rewritten")
+          : tr("workbench.concept.compared", { count: r.prompts.length }),
       });
-    else notification.info({ message: "未配置 AI 模型，已直接附加概念要点" });
+    else notification.info({ message: tr("workbench.concept.noLLM") });
   }
   function undoConcept() {
     if (!conceptUndo) return;
@@ -322,16 +319,16 @@ export function Workbench() {
   }
   function addReference(assetID: string) {
     if (input.references.includes(assetID)) {
-      notification.info({ message: "这张图已经是参考图" });
+      notification.info({ message: tr("workbench.ref.already") });
       return;
     }
     if (input.references.length >= 4) {
-      notification.warning({ message: "参考图最多 4 张，请先移除一张" });
+      notification.warning({ message: tr("workbench.ref.max") });
       return;
     }
     change({ references: [...input.references, assetID] });
     setNewReference(assetID);
-    notification.success({ message: "已添加为参考图" });
+    notification.success({ message: tr("workbench.ref.added") });
   }
   // Puts a past prompt and its size and quality back in the form. The current text
   // is replaced only after a confirm, so nothing typed is lost by a stray click.
@@ -363,12 +360,12 @@ export function Workbench() {
     const current = prompt.trim();
     if (!current || current === text.trim()) return apply();
     modal.confirm({
-      title: "用这条提示词替换当前内容？",
+      title: tr("workbench.reuse.title"),
       content: t.moodChoice
-        ? "同时套用它的心境、尺寸和质量。"
-        : "同时套用它的尺寸和质量。",
-      okText: "替换",
-      cancelText: "取消",
+        ? tr("workbench.reuse.withMood")
+        : tr("workbench.reuse.plain"),
+      okText: tr("workbench.replace"),
+      cancelText: tr("common.cancel"),
       autoFocusButton: "cancel",
       onOk: apply,
     });
@@ -377,44 +374,39 @@ export function Workbench() {
   const blocked = !ready
     ? ""
     : !connections.data?.length
-      ? "先添加图片服务"
+      ? tr("workbench.blocked.noService")
       : !input.connectionID
-        ? "请选择图片服务"
+        ? tr("workbench.blocked.pickService")
         : !selected?.hasKey
-          ? "所选图片服务未保存 API Key"
+          ? tr("workbench.blocked.noKey")
           : total > 200
-            ? `一次最多 200 张，当前 ${total} 张`
+            ? tr("workbench.blocked.tooMany", { max: 200, total })
             : "";
   async function generate() {
     if (!selected?.hasKey) {
-      setFormError("请先选择已保存密钥的连接。");
+      setFormError(tr("workbench.error.noKey"));
       return;
     }
     if (!(input.model || selected.model)) {
-      setFormError("请选择模型。");
+      setFormError(tr("workbench.error.noModel"));
       return;
     }
     if (!prompts.length && !moodActive) {
-      setFormError("请填写提示词。");
+      setFormError(tr("workbench.error.noPrompt"));
       promptRef.current?.focus();
       return;
     }
     setFormError("");
     const requestID = crypto.randomUUID();
     actions.confirm(
-      `生成 ${total} 张图片？`,
-      moodActive ? (
-        <>
-          将使用“{selected.name}”按心境改写提示词后生成 {total} 张
-          {compare ? "（写实、写意各 1 张，会产生双倍费用）" : ""}
-          。改写由 AI
-          模型完成，改写没有成功的图片不发送、不计费。费用以图片服务实际计费为准。
-        </>
-      ) : (
-        <>
-          将使用“{selected.name}”提交 {total}{" "}
-          个子任务。费用以图片服务实际计费为准。
-        </>
+      tr("workbench.confirm.title", { total }),
+      tr(
+        moodActive
+          ? compare
+            ? "workbench.confirm.moodCompare"
+            : "workbench.confirm.mood"
+          : "workbench.confirm.plain",
+        { name: selected.name, total },
       ),
       async () => {
         await call("Submit", {
@@ -464,7 +456,7 @@ export function Workbench() {
   async function browserDrop(files: FileList) {
     for (const f of Array.from(files).slice(0, 4 - input.references.length)) {
       if (f.size > 32 * 1024 * 1024) {
-        setFormError("图片超过 32 MB");
+        setFormError(tr("workbench.error.tooLarge"));
         continue;
       }
       const data = await f.arrayBuffer();
@@ -485,52 +477,52 @@ export function Workbench() {
     <>
       <LicenseNotice />
       <Header
-        title="专业模式"
-        sub="自己写提示词，选择连接、模型和参数。结果自动保存在本机。"
+        title={tr("shell.nav.pro")}
+        sub={tr("workbench.sub")}
         action={
           <Button
             icon={<SettingOutlined aria-hidden="true" />}
             onClick={() => navigate("/settings")}
           >
-            管理连接
+            {tr("workbench.manage")}
           </Button>
         }
       />
       {connections.error && (
         <Alert
           type="error"
-          message="连接读取失败"
+          message={tr("workbench.connError")}
           description={errorText(connections.error)}
         />
       )}
       <div className="workbench">
         <section className="panel composer">
           <div className="panel-heading">
-            <h2>生成内容</h2>
+            <h2>{tr("workbench.compose")}</h2>
             <Space size={18}>
               <Space>
-                <span>引导模式</span>
+                <span>{tr("workbench.guide")}</span>
                 <Switch
                   checked={guideOn}
                   onChange={setGuide}
                   disabled={guideMode.isPending}
-                  aria-label="引导模式"
+                  aria-label={tr("workbench.guide")}
                 />
               </Space>
               <Space>
-                <span>批量提示词</span>
+                <span>{tr("workbench.batch")}</span>
                 <Switch
                   checked={batch}
                   onChange={setBatch}
                   disabled={compare}
-                  aria-label="批量提示词"
+                  aria-label={tr("workbench.batch")}
                 />
               </Space>
             </Space>
           </div>
           <div className="field-header prompt-header">
             <label className="field-label" htmlFor="prompt">
-              {batch ? "提示词（每行一条）" : "提示词"}
+              {batch ? tr("workbench.promptLines") : tr("workbench.prompt")}
             </label>
             <TemplateBar
               text={prompt}
@@ -562,22 +554,24 @@ export function Workbench() {
             style={{ resize: "none" }}
             placeholder={
               moodActive
-                ? "写下想画什么，气氛交给心境；也可以留空，按心境自定画面"
-                : "例如：白色背景上的陶瓷咖啡杯，柔和自然光，突出釉面质感，电商产品摄影"
+                ? tr("workbench.placeholder.mood")
+                : tr("workbench.placeholder.plain")
             }
             aria-invalid={!!formError}
             aria-describedby="generate-error"
           />
           <div className="prompt-meta">
             <span>
-              {prompt.length} 字 ·{" "}
+              {tr("workbench.meta.chars", { count: prompt.length })} ·{" "}
               {moodActive && !prompts.length
-                ? "提示词留空：按心境自定画面"
+                ? tr("workbench.meta.moodEmpty")
                 : batch
-                  ? `${prompts.length} 条提示词，每行独立生成`
+                  ? tr("workbench.meta.batch", { count: prompts.length })
                   : input.references.length
-                    ? `图生图 · ${input.references.length} 张参考图`
-                    : "文生图 / 添加参考图后转为图生图"}
+                    ? tr("workbench.meta.img2img", {
+                        count: input.references.length,
+                      })
+                    : tr("workbench.meta.txt2img")}
             </span>
           </div>
           {guideOn && (
@@ -638,7 +632,8 @@ export function Workbench() {
           />
           <div className="field-header">
             <label className="field-label">
-              参考图 <span className="muted">可选 · 最多 4 张</span>
+              {tr("workbench.refs.label")}{" "}
+              <span className="muted">{tr("workbench.refs.hint")}</span>
             </label>
             <Button
               size="small"
@@ -647,7 +642,7 @@ export function Workbench() {
               disabled={input.references.length >= 4}
               loading={actions.busy}
             >
-              添加图片
+              {tr("workbench.refs.add")}
             </Button>
           </div>
           <div
@@ -682,7 +677,7 @@ export function Workbench() {
                   <Button
                     size="small"
                     icon={<CloseOutlined aria-hidden="true" />}
-                    aria-label={`移除参考图 ${i + 1}`}
+                    aria-label={tr("workbench.refs.remove", { n: i + 1 })}
                     onClick={() =>
                       change({
                         references: input.references.filter((x) => x !== id),
@@ -701,23 +696,21 @@ export function Workbench() {
                 <UploadOutlined aria-hidden="true" />
                 <span>
                   {dragging
-                    ? "松开即可添加"
-                    : "拖入 PNG、JPEG、WebP，或点击添加图片"}
+                    ? tr("workbench.refs.drop")
+                    : tr("workbench.refs.empty")}
                 </span>
-                <span className="muted">
-                  也可在“最近生成”里把结果设为参考图
-                </span>
+                <span className="muted">{tr("workbench.refs.fromRecent")}</span>
               </button>
             )}
           </div>
           <div className="divider" />
           <div className="parameter-grid">
             <div>
-              <label className="field-label">图片服务</label>
+              <label className="field-label">{tr("workbench.service")}</label>
               <UISelect
-                aria-label="图片服务"
+                aria-label={tr("workbench.service")}
                 value={input.connectionID || undefined}
-                placeholder="选择已配置连接"
+                placeholder={tr("workbench.servicePlaceholder")}
                 options={(connections.data || []).map((c) => ({
                   value: c.id,
                   label: gatewayLabel(
@@ -731,7 +724,7 @@ export function Workbench() {
             </div>
             <div>
               <label className="field-label" htmlFor="model">
-                模型
+                {tr("workbench.model")}
               </label>
               <ModelSelect
                 id="model"
@@ -742,7 +735,7 @@ export function Workbench() {
             </div>
             <div>
               <label className="field-label" htmlFor="size">
-                尺寸
+                {tr("workbench.size")}
               </label>
               <UISelect
                 id="size"
@@ -753,7 +746,7 @@ export function Workbench() {
             </div>
             <div>
               <label className="field-label" htmlFor="quality">
-                质量
+                {tr("workbench.quality")}
               </label>
               <UISelect
                 id="quality"
@@ -764,7 +757,7 @@ export function Workbench() {
             </div>
             <div>
               <label className="field-label" htmlFor="count">
-                每条生成张数
+                {tr("workbench.count")}
               </label>
               <InputNumber
                 id="count"
@@ -776,7 +769,7 @@ export function Workbench() {
               />
             </div>
           </div>
-          <p className="hint">选“自动”时不发送该参数；尺寸需由所选模型支持。</p>
+          <p className="hint">{tr("workbench.autoHint")}</p>
           {formError && (
             <Alert
               id="generate-error"
@@ -795,12 +788,12 @@ export function Workbench() {
                 aria-describedby="mood-compare-note"
               />
               <label htmlFor="mood-compare" className="mood-compare-label">
-                对比出图
+                {tr("workbench.compare")}
               </label>
               <span id="mood-compare-note" className="mood-compare-note">
                 {input.mood
-                  ? "写实、写意各出 1 张，挑更像的一张 · 会产生双倍费用"
-                  : "先选好心境才能对比出图"}
+                  ? tr("workbench.compare.note")
+                  : tr("workbench.compare.needMood")}
               </span>
             </div>
           )}
@@ -812,14 +805,17 @@ export function Workbench() {
               {blocked
                 ? blocked
                 : draftError
-                  ? "草稿未保存：" + draftError
+                  ? tr("workbench.footer.draftError", { error: draftError })
                   : ready
                     ? compare
-                      ? "对比出图：写实、写意各 1 张 · 会产生双倍费用"
+                      ? tr("workbench.footer.compare")
                       : batch && prompts.length > 1
-                        ? `${prompts.length} 条 × 每条 ${input.count} 张 · Ctrl + Enter 生成`
-                        : "草稿保存在本机 · Ctrl + Enter 生成"
-                    : "正在读取草稿"}
+                        ? tr("workbench.footer.batch", {
+                            lines: prompts.length,
+                            count: input.count,
+                          })
+                        : tr("workbench.footer.saved")
+                    : tr("workbench.footer.loading")}
             </span>
             <Button
               type="primary"
@@ -829,47 +825,60 @@ export function Workbench() {
               disabled={!ready || !!blocked}
               loading={actions.busy}
             >
-              生成{total > 1 ? ` ${total} 张图片` : "图片"}
+              {total > 1
+                ? tr("workbench.generate.many", { total })
+                : tr("workbench.generate.one")}
             </Button>
           </div>
           {!connections.isPending && !connections.data?.length && (
             <Alert
               showIcon
               type="info"
-              message="先添加一个图片服务"
-              description="在应用设置里填写 Base URL 与 API Key。"
+              message={tr("workbench.noService.title")}
+              description={tr("workbench.noService.desc")}
               action={
-                <Button onClick={() => navigate("/settings")}>去配置</Button>
+                <Button onClick={() => navigate("/settings")}>
+                  {tr("workbench.noService.action")}
+                </Button>
               }
             />
           )}
         </section>
         <section className="panel result-panel">
           <div className="panel-heading">
-            <h2>最近生成</h2>
+            <h2>{tr("workbench.recent")}</h2>
             <Button type="link" onClick={() => navigate("/tasks")}>
-              全部记录
+              {tr("workbench.allRecords")}
             </Button>
           </div>
           <DataState
             query={tasks}
             empty={!tasks.data?.length}
-            emptyText="第一张图片，从这里开始"
+            emptyText={tr("workbench.empty")}
           >
             <div className="recent-batches">
               {tasks.data?.map((batch) => (
                 <section
                   className="recent-batch"
                   key={batch.id}
-                  aria-label={`生成批次 ${batch.id.slice(0, 8)}`}
+                  aria-label={tr("workbench.batchLabel", {
+                    id: batch.id.slice(0, 8),
+                  })}
                 >
                   <div className="batch-heading">
                     <div>
                       <strong>{time(batch.createdAt)}</strong>
                       <p className="hint">
-                        已完成 {batch.completed} / {batch.total} 个任务 ·{" "}
-                        {batch.imageCount} 张图片
-                        {batch.active ? " · 仍在执行" : ""}
+                        {tr(
+                          batch.active
+                            ? "workbench.batch.progressActive"
+                            : "workbench.batch.progress",
+                          {
+                            done: batch.completed,
+                            total: batch.total,
+                            images: batch.imageCount,
+                          },
+                        )}
                       </p>
                     </div>
                     <Button
@@ -878,8 +887,12 @@ export function Workbench() {
                       onClick={() => downloads.downloadBatch(batch.id)}
                     >
                       {batch.completed === batch.total
-                        ? `下载套图（${batch.imageCount} 张）`
-                        : `下载已完成图片（${batch.imageCount} 张）`}
+                        ? tr("workbench.batch.download", {
+                            count: batch.imageCount,
+                          })
+                        : tr("workbench.batch.downloadDone", {
+                            count: batch.imageCount,
+                          })}
                     </Button>
                   </div>
                   <div className="recent-results">
@@ -892,7 +905,16 @@ export function Workbench() {
                                 <button
                                   type="button"
                                   className="image-open"
-                                  aria-label={`查看大图：${t.prompt.slice(0, 24)}${t.assetIDs.length > 1 ? `（第 ${n + 1} 张）` : ""}`}
+                                  aria-label={
+                                    t.assetIDs.length > 1
+                                      ? tr("workbench.viewNth", {
+                                          prompt: t.prompt.slice(0, 24),
+                                          n: n + 1,
+                                        })
+                                      : tr("workbench.view", {
+                                          prompt: t.prompt.slice(0, 24),
+                                        })
+                                  }
                                   onClick={() => openViewer(id)}
                                 >
                                   <AssetImage
@@ -909,7 +931,7 @@ export function Workbench() {
                                     disabled={downloads.busy}
                                     onClick={() => downloads.downloadAsset(id)}
                                   >
-                                    下载图片
+                                    {tr("workbench.download")}
                                   </Button>
                                   <Button
                                     size="small"
@@ -920,8 +942,8 @@ export function Workbench() {
                                     onClick={() => addReference(id)}
                                   >
                                     {input.references.includes(id)
-                                      ? "已是参考图"
-                                      : "作为参考图"}
+                                      ? tr("workbench.isRef")
+                                      : tr("workbench.asRef")}
                                   </Button>
                                 </div>
                               </div>
@@ -949,9 +971,7 @@ export function Workbench() {
                           </div>
                           <p className="result-prompt" title={t.prompt}>
                             {t.prompt ||
-                              (t.rewording
-                                ? "按心境自定画面，正在写提示词"
-                                : "")}
+                              (t.rewording ? tr("workbench.rewording") : "")}
                           </p>
                           {t.mood &&
                             t.status === "succeeded" &&
@@ -967,7 +987,7 @@ export function Workbench() {
                             icon={<EditOutlined aria-hidden="true" />}
                             onClick={() => reusePrompt(t)}
                           >
-                            复用提示词
+                            {tr("workbench.reuse")}
                           </Button>
                           <small>
                             {t.model} · {time(t.createdAt)}
@@ -987,8 +1007,9 @@ export function Workbench() {
                   </div>
                   {batch.total > batch.tasks.length && (
                     <p className="hint">
-                      预览 {batch.tasks.length}{" "}
-                      个任务，套图下载包含此批次所有已保存的原图。
+                      {tr("workbench.batch.preview", {
+                        count: batch.tasks.length,
+                      })}
                     </p>
                   )}
                 </section>
@@ -1011,7 +1032,7 @@ export function Workbench() {
                 disabled={downloads.busy}
                 onClick={() => downloads.downloadAsset(item.assetID)}
               >
-                下载图片
+                {tr("workbench.download")}
               </Button>
               <Button
                 disabled={
@@ -1021,15 +1042,15 @@ export function Workbench() {
                 onClick={() => addReference(item.assetID)}
               >
                 {input.references.includes(item.assetID)
-                  ? "已是参考图"
-                  : "作为参考图"}
+                  ? tr("workbench.isRef")
+                  : tr("workbench.asRef")}
               </Button>
               {t && (
                 <Button
                   icon={<EditOutlined aria-hidden="true" />}
                   onClick={() => reusePrompt(t)}
                 >
-                  复用提示词
+                  {tr("workbench.reuse")}
                 </Button>
               )}
               {t?.mood && t.status === "succeeded" && (

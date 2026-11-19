@@ -1,4 +1,5 @@
 import type { LLMCapabilities } from "./agent-api";
+import { t, type MessageKey } from "./i18n";
 export type Connection = {
   // Set on lines provided by the customer licence; they cannot be edited.
   managed?: string;
@@ -244,18 +245,26 @@ export const blankDraft: GenerateInput = {
   quality: "auto",
   projectID: "",
 };
-export const stateNames: Record<string, string> = {
-  queued: "等待执行",
-  submitting: "等待图片服务",
-  running: "生成中",
-  downloading: "保存图片",
-  succeeded: "已完成",
-  failed: "生成失败",
-  unknown: "结果未知",
-  download_failed: "下载失败",
-  canceled: "已取消",
-  blocked: "已暂停",
-};
+// Task state names in the interface language. Each name is read when it is
+// shown (a getter), so a switch of language needs no reload of this module.
+const stateKeys = {
+  queued: "common.state.queued",
+  submitting: "common.state.submitting",
+  running: "common.state.running",
+  downloading: "common.state.downloading",
+  succeeded: "common.state.succeeded",
+  failed: "common.state.failed",
+  unknown: "common.state.unknown",
+  download_failed: "common.state.download_failed",
+  canceled: "common.state.canceled",
+  blocked: "common.state.blocked",
+} as const satisfies Record<string, MessageKey>;
+export const stateNames: Record<string, string> = {};
+for (const [state, key] of Object.entries(stateKeys))
+  Object.defineProperty(stateNames, state, {
+    get: () => t(key),
+    enumerable: true,
+  });
 export function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }

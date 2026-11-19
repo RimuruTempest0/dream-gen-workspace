@@ -22,7 +22,13 @@ import {
 } from "antd";
 import { EyeOutlined, EyeInvisibleOutlined } from "@ant-design/icons";
 import { call, errorText, stateNames, type Asset, type Task } from "./api";
-import { formatDateTime, formatTime } from "./i18n";
+import {
+  formatDateTime,
+  formatTime,
+  t,
+  t as tr,
+  type MessageKey,
+} from "./i18n";
 
 export function useData<T>(
   key: unknown[],
@@ -54,20 +60,29 @@ export function coalesce(fn: () => void, wait = 400) {
   };
 }
 
+// A select option whose label is read in the interface language when shown.
+function option(value: string, key: MessageKey) {
+  return {
+    value,
+    get label() {
+      return t(key);
+    },
+  };
+}
 // Common OpenAI-compatible sizes; a previously saved custom size stays selectable.
 export const presetSizes = [
-  { value: "auto", label: "自动（由模型决定）" },
-  { value: "1024x1024", label: "1024×1024（1:1 方图）" },
-  { value: "1536x1024", label: "1536×1024（3:2 横图）" },
-  { value: "1024x1536", label: "1024×1536（2:3 竖图）" },
-  { value: "1792x1024", label: "1792×1024（16:9 横图）" },
-  { value: "1024x1792", label: "1024×1792（9:16 竖图）" },
+  option("auto", "common.size.auto"),
+  option("1024x1024", "common.size.1024x1024"),
+  option("1536x1024", "common.size.1536x1024"),
+  option("1024x1536", "common.size.1024x1536"),
+  option("1792x1024", "common.size.1792x1024"),
+  option("1024x1792", "common.size.1024x1792"),
 ];
 export const presetQualities = [
-  { value: "auto", label: "自动" },
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
+  option("auto", "common.quality.auto"),
+  option("low", "common.quality.low"),
+  option("medium", "common.quality.medium"),
+  option("high", "common.quality.high"),
 ];
 // The presets plus a saved value that is not one of them.
 export function withCurrent(
@@ -82,7 +97,8 @@ export function withCurrent(
 // What a person recognises a task by. Prompts open with fixed lines (the sample note,
 // the refine wrapper), which made every row of a set look the same.
 export function taskTitle(t: Task) {
-  if (t.refineInstruction) return "优化：" + t.refineInstruction;
+  if (t.refineInstruction)
+    return tr("common.task.refine", { instruction: t.refineInstruction });
   const lines = t.prompt
     .split("\n")
     .map((s) => s.trim())
@@ -92,7 +108,9 @@ export function taskTitle(t: Task) {
 
 // Generated images are saved under random file names, which say nothing.
 export function assetLabel(a: Asset) {
-  return a.kind === "reference" ? a.name : `生成图片 · ${time(a.createdAt)}`;
+  return a.kind === "reference"
+    ? a.name
+    : t("common.asset.generated", { time: time(a.createdAt) });
 }
 
 // Model picker for an image connection. The list is a GET /models of the saved
@@ -120,7 +138,12 @@ export function ModelSelect({
     retry: false,
   });
   const options = [
-    { value: "", label: `使用连接默认（${connection?.model || "未设置"}）` },
+    {
+      value: "",
+      label: t("common.model.default", {
+        model: connection?.model || t("common.model.unset"),
+      }),
+    },
     ...[...new Set([...(models.data || []), ...(value ? [value] : [])])].map(
       (model) => ({ value: model, label: model }),
     ),
@@ -138,9 +161,7 @@ export function ModelSelect({
         options={options}
         onChange={onChange}
       />
-      {models.isError && (
-        <p className="hint">暂时无法获取模型列表，可使用连接默认模型。</p>
-      )}
+      {models.isError && <p className="hint">{t("common.model.listFailed")}</p>}
     </>
   );
 }
@@ -168,7 +189,7 @@ export function useActions() {
     } catch (e) {
       notification.error({
         key: feedbackKey.current,
-        message: "操作未完成",
+        message: t("common.action.failed"),
         description: errorText(e),
         duration: 0,
       });
@@ -184,14 +205,15 @@ export function useActions() {
     fn: () => Promise<unknown>,
     danger = false,
     okText?: string,
-    cancelText = "取消",
+    cancelText = t("common.cancel"),
   ) {
     if (dialogOpen.current) return;
     dialogOpen.current = true;
     modal.confirm({
       title,
       content,
-      okText: okText || (danger ? "确认执行" : "继续"),
+      okText:
+        okText || (danger ? t("common.confirm.danger") : t("common.continue")),
       cancelText,
       okButtonProps: { danger },
       autoFocusButton: "cancel",
@@ -206,7 +228,7 @@ export function useActions() {
         } catch (e) {
           notification.error({
             key: feedbackKey.current,
-            message: "操作未完成",
+            message: t("common.action.failed"),
             description: errorText(e),
             duration: 0,
           });
@@ -235,18 +257,16 @@ export function CancelTaskButton({
       danger
       onClick={() =>
         actions.confirm(
-          "是否确认取消生成？",
-          sent
-            ? "这张图已提交到图片服务。取消后不再等待结果；图片服务可能仍会生成并计费，请以图片服务记录为准。"
-            : "这张图尚未提交，取消后不会计费。",
+          t("common.cancelTask.title"),
+          sent ? t("common.cancelTask.sent") : t("common.cancelTask.unsent"),
           () => call("CancelTask", task.id),
           true,
-          "取消生成",
-          "继续生成",
+          t("common.cancelTask.ok"),
+          t("common.cancelTask.keep"),
         )
       }
     >
-      取消生成
+      {t("common.cancelTask.ok")}
     </Button>
   );
 }
@@ -260,7 +280,7 @@ export function SecretInput(props: ComponentProps<typeof Input>) {
         <Button
           type="text"
           size="small"
-          aria-label={show ? "隐藏 API Key" : "显示 API Key"}
+          aria-label={show ? t("common.secret.hide") : t("common.secret.show")}
           aria-pressed={show}
           icon={
             show ? (
@@ -287,7 +307,7 @@ export function useImageDownloads() {
       );
       if (!path) return;
       await call("ExportAssetToPath", id, path);
-      notification.success({ message: "图片已保存" });
+      notification.success({ message: t("common.download.saved") });
     });
   }
   async function downloadBatch(id: string) {
@@ -298,7 +318,9 @@ export function useImageDownloads() {
       );
       if (!path) return;
       const count = await call<number>("ExportBatchToPath", id, path);
-      notification.success({ message: `已保存套图 ZIP（${count} 张）` });
+      notification.success({
+        message: t("common.download.batchSaved", { count }),
+      });
     });
   }
   return { downloadAsset, downloadBatch, busy: actions.busy };
@@ -307,7 +329,7 @@ export function DataState({
   query,
   children,
   empty = false,
-  emptyText = "暂无内容",
+  emptyText = t("common.data.empty"),
   action,
 }: {
   query: { isPending: boolean; error: unknown; refetch: () => unknown };
@@ -319,7 +341,7 @@ export function DataState({
   if (query.isPending)
     return (
       <div className="state-panel">
-        <Spin tip="正在读取本地数据" />
+        <Spin tip={t("common.data.loading")} />
       </div>
     );
   if (query.error)
@@ -327,9 +349,11 @@ export function DataState({
       <Alert
         type="error"
         showIcon
-        message="数据读取失败"
+        message={t("common.data.failed")}
         description={errorText(query.error)}
-        action={<Button onClick={() => query.refetch()}>重试</Button>}
+        action={
+          <Button onClick={() => query.refetch()}>{t("common.retry")}</Button>
+        }
       />
     );
   if (empty)
@@ -374,12 +398,12 @@ export function Status({ state, task }: { state: string; task?: Task }) {
     state === "submitting"
       ? (
           {
-            preparing: "准备请求",
-            connecting: "连接图片服务",
-            connected: "提交请求",
-            waiting: "等待图片服务",
-            receiving: "接收结果",
-          } as Record<string, string>
+            preparing: "common.phase.preparing",
+            connecting: "common.phase.connecting",
+            connected: "common.phase.connected",
+            waiting: "common.phase.waiting",
+            receiving: "common.phase.receiving",
+          } as Record<string, MessageKey>
         )[task?.diagnostic?.stage || ""]
       : undefined;
   const waitingForSample = state === "queued" && task?.samplePending;
@@ -390,13 +414,13 @@ export function Status({ state, task }: { state: string; task?: Task }) {
     <Tag color={color}>
       {rewording
         ? task?.rewordFor === "mood"
-          ? "正在按心境改写"
-          : "改写提示词"
+          ? t("common.status.moodRewording")
+          : t("common.status.rewording")
         : waitingForSample
-          ? "等待样板图"
+          ? t("common.status.waitingSample")
           : waitingForService
-            ? "等待图片服务恢复"
-            : phase || stateNames[state] || state}
+            ? t("common.status.waitingService")
+            : (phase && t(phase)) || stateNames[state] || state}
     </Tag>
   );
 }
@@ -420,8 +444,9 @@ export function TaskTiming({ task }: { task: Task }) {
     return (
       <div className="task-timing">
         <small>
-          下载未完成，{Math.ceil((retryAt - now) / 1000)}{" "}
-          秒后自动补下载（不会重新生图）
+          {t("common.timing.redownloadIn", {
+            seconds: Math.ceil((retryAt - now) / 1000),
+          })}
         </small>
         {route}
       </div>
@@ -431,11 +456,15 @@ export function TaskTiming({ task }: { task: Task }) {
       <div className="task-timing">{route}</div>
     ) : null;
   const span = (s: number) =>
-    s >= 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒` : `${s} 秒`;
+    s >= 60
+      ? t("common.timing.minutes", { m: Math.floor(s / 60), s: s % 60 })
+      : t("common.timing.seconds", { s });
   // Since 0.3.12 the download runs in its own pool after generation, so the
   // card shows both phases; older tasks only have the total time.
   const downloadStart = Date.parse(d?.downloadStartedAt || "");
-  let label = `${active ? "已等待" : "用时"} ${span(seconds)}`;
+  let label = t(active ? "common.timing.waited" : "common.timing.took", {
+    span: span(seconds),
+  });
   if (Number.isFinite(downloadStart)) {
     const generated = Math.max(
       0,
@@ -450,7 +479,10 @@ export function TaskTiming({ task }: { task: Task }) {
           : d?.downloadMS || end - downloadStart) / 1000,
       ),
     );
-    label = `生成 ${span(generated)} · ${downloading ? "下载中" : "下载"} ${span(fetched)}`;
+    label = t(
+      downloading ? "common.timing.downloading" : "common.timing.downloaded",
+      { generated: span(generated), fetched: span(fetched) },
+    );
   }
   return (
     <div className="task-timing">
@@ -459,8 +491,8 @@ export function TaskTiming({ task }: { task: Task }) {
       {active && seconds >= 120 && (
         <p>
           {task.status === "downloading"
-            ? "正在下载已返回的图片，临时网络错误会自动重试。请保持应用运行，不会重新生图。"
-            : "图片服务响应较慢，请保持应用运行。再次生成会提交新的计费请求。"}
+            ? t("common.timing.slowDownload")
+            : t("common.timing.slowService")}
         </p>
       )}
     </div>
@@ -468,29 +500,29 @@ export function TaskTiming({ task }: { task: Task }) {
 }
 // Which gateway produced the image when it was moved or re-generated automatically.
 function TaskRoute({ task }: { task: Task }) {
-  const name = task.connection?.name || "备用图片服务";
+  const name = task.connection?.name || t("common.route.backup");
   if (task.policyRetryOf)
     return (
       <small className="task-route">
         {task.rewording
-          ? "内容审核拒绝后正在改写措辞，改写完自动重发（尚未发送、不计费）"
+          ? t("common.route.policyRewording")
           : task.policyStep === 2
-            ? "内容审核拒绝后已改写措辞自动重发"
-            : "内容审核拒绝后已自动原样重发"}
+            ? t("common.route.policyReworded")
+            : t("common.route.policyResent")}
       </small>
     );
   if (task.autoRetryOf)
     return (
       <small className="task-route">
         {task.status === "queued"
-          ? `结果未知后自动重新生成：等待「${name}」或健康的备用图片服务（新的计费请求）`
-          : `结果未知后自动重新生成 · 「${name}」（可能重复计费）`}
+          ? t("common.route.retryWaiting", { name })
+          : t("common.route.retried", { name })}
       </small>
     );
   if (task.routedFrom)
     return (
       <small className="task-route" title={task.routeReason}>
-        已从「{task.routedFromName}」转到「{name}」 · 未发送过，不额外计费
+        {t("common.route.moved", { from: task.routedFromName || "", to: name })}
       </small>
     );
   return null;
@@ -515,9 +547,9 @@ const policyRefused = "生图模型的内容审核拒绝了这张图";
 // of a warning: an unknown result (since 0.6.27) or a content refusal (0.6.28).
 export function autoHandledNote(task: Task) {
   if (task.status === "unknown" && task.autoRetriedAs)
-    return "结果未知，已自动重新生成（原请求可能已计费）。";
+    return t("common.note.unknownRetried");
   if (task.status === "failed" && task.policyRetriedAs)
-    return "内容审核拒绝了这张图，已自动重发（未生成，一般不计费）。";
+    return t("common.note.policyResent");
   return "";
 }
 // A failure sentence from the backend carries its technical cause in full-width
@@ -532,7 +564,7 @@ export function TaskErrorText({ error }: { error: string }) {
     <div className="error-text">
       <p>{plain}</p>
       <details className="task-error-details">
-        <summary>查看详细错误</summary>
+        <summary>{t("common.error.details")}</summary>
         <p>{error}</p>
       </details>
     </div>
@@ -547,26 +579,24 @@ export function TaskFailureAlert({ task }: { task: Task }) {
         {note}
       </p>
     );
-  let message = "这张图片尚未完成，请查看详细错误。";
+  let message = t("common.failure.generic");
   if (task.status === "failed" && task.error.startsWith(policyRefused)) {
-    message =
-      "生图模型的内容审核拒绝了这张图，自动重发后仍未通过。图片没有生成，一般不计费。请修改提示词，或换掉可能被误判的参考图后重新生成。";
+    message = t("common.failure.policy");
   } else if (task.status === "download_failed") {
     message =
       (task.autoDownloads || 0) > 0
-        ? "已收到图片结果，自动补下载后仍未保存。可点“补下载”再试，不会重新生图。"
-        : "已收到图片结果，但尚未保存完成。可点“补下载”，不会重新生图。";
+        ? t("common.failure.downloadRetried")
+        : t("common.failure.download");
   } else if (task.status === "unknown") {
     message = task.autoRetryOf
-      ? "自动重新生成的结果仍未知，不会再次自动重发。请先核对图片服务记录。"
-      : "结果未知，未能自动重新生成，请查看详细错误并核对图片服务记录。";
+      ? t("common.failure.unknownAgain")
+      : t("common.failure.unknown");
   } else if (task.status === "blocked") {
-    message = "已暂停，尚未提交、未计费。修正后可恢复生成。";
+    message = t("common.failure.blocked");
   } else if (rejectionOf(task) === "balance") {
-    message =
-      "图片服务账户余额不足，图片服务拒绝了请求，未生成也不计费。请到图片服务后台充值后重新生成。";
+    message = t("common.failure.balance");
   } else if (rejectionOf(task) === "auth") {
-    message = "API Key 无效，图片服务拒绝了请求，未生成也不计费。";
+    message = t("common.failure.auth");
   }
   return (
     <Alert
@@ -575,7 +605,7 @@ export function TaskFailureAlert({ task }: { task: Task }) {
       message={message}
       description={
         <details className="task-error-details">
-          <summary>查看详细错误</summary>
+          <summary>{t("common.error.details")}</summary>
           <p>{task.error}</p>
         </details>
       }
@@ -641,11 +671,11 @@ export function AssetImage({
       {q.isPending ? (
         <Spin />
       ) : q.error ? (
-        <span>图片无法读取</span>
+        <span>{t("common.image.unreadable")}</span>
       ) : (
         <img
           src={q.data}
-          alt="本地图片预览"
+          alt={t("common.image.alt")}
           decoding="async"
           className={
             arrived
@@ -746,7 +776,15 @@ export function ImageViewer({
   }, [open, index, items.length, onIndex]);
   return (
     <Modal
-      title={item ? `${item.label}（${index! + 1} / ${items.length}）` : ""}
+      title={
+        item
+          ? t("common.viewer.title", {
+              label: item.label,
+              n: index! + 1,
+              total: items.length,
+            })
+          : ""
+      }
       open={open}
       onCancel={onClose}
       width="min(1200px, 94vw)"
@@ -762,13 +800,13 @@ export function ImageViewer({
                   disabled={index === 0}
                   onClick={() => onIndex(index! - 1)}
                 >
-                  上一张
+                  {t("common.viewer.prev")}
                 </Button>
                 <Button
                   disabled={index === items.length - 1}
                   onClick={() => onIndex(index! + 1)}
                 >
-                  下一张
+                  {t("common.viewer.next")}
                 </Button>
               </Space>
             )}
@@ -784,20 +822,21 @@ export function ImageViewer({
         {q.isPending ? (
           <Spin />
         ) : q.error ? (
-          <span>图片无法读取</span>
+          <span>{t("common.image.unreadable")}</span>
         ) : (
           <img
             key={item?.assetID}
             src={q.data}
-            alt={item?.label || "图片"}
-            title={actual ? "点击适应窗口" : "点击查看实际大小"}
+            alt={item?.label || t("common.image.altShort")}
+            title={actual ? t("common.viewer.fit") : t("common.viewer.actual")}
             onClick={() => setActual((v) => !v)}
           />
         )}
       </div>
       <p className="hint">
-        点击图片切换“适应窗口 / 实际大小”
-        {items.length > 1 && "，← → 键切换上一张、下一张"}。
+        {items.length > 1
+          ? t("common.viewer.hintNav")
+          : t("common.viewer.hint")}
       </p>
     </Modal>
   );
