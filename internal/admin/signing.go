@@ -127,7 +127,7 @@ func (a *Admin) ImportSigningBackup(path, password string, replace bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.d.SigningPublicKey != "" && a.d.SigningPublicKey != s.PublicKey && !replace {
-		return errors.New("当前已有另一把签名密钥；替换后已交付客户将无法用新包升级，需要明确确认")
+		return errors.New("当前已有另一把签名密钥；替换后已交付的顾客将无法用新包升级，需要明确确认")
 	}
 	ref, e := a.putSecret(priv)
 	if e != nil {

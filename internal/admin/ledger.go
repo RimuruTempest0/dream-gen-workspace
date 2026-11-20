@@ -80,8 +80,6 @@ type Delivery struct {
 	Zip           string `json:"zip"`
 	SHA256        string `json:"sha256"`
 	VaultRevision int    `json:"vaultRevision"`
-	// UpdateZip is the program update package built with it (admin 1.2.0).
-	UpdateZip string `json:"updateZip,omitempty"`
 }
 
 type Event struct {
@@ -93,8 +91,9 @@ type Event struct {
 type Customer struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Line is the product line this person uses, fixed when created: "" is the
-	// e-commerce line, "creative" a hosted user of the mass-market line (admin 1.8.0).
+	// Line is "creative": a hosted user of the mass-market line (admin 1.8.0).
+	// "" was a customer of the e-commerce line, retired in admin 1.12.0; such a
+	// record can no longer get a package or a licence file.
 	Line        string `json:"line,omitempty"`
 	SoftwareID  string `json:"softwareID"`
 	CodeRef     string `json:"codeRef"`
@@ -124,14 +123,11 @@ type ledgerData struct {
 	SigningPublicKey string `json:"signingPublicKey,omitempty"`
 	SigningKeyRef    string `json:"signingKeyRef,omitempty"`
 	RepoRoot         string `json:"repoRoot,omitempty"`
-	// UpdateURL is where customer apps read the signed update.json (admin 1.2.0);
-	// built into packages from then on, empty = no in-app updates.
-	UpdateURL string     `json:"updateURL,omitempty"`
 	// Creative lists the built versions of the mass-market line (admin 1.6.0).
 	Creative  []CreativeRelease `json:"creative,omitempty"`
-	Upstreams []Upstream `json:"upstreams"`
-	Keys      []PoolKey  `json:"keys"`
-	Customers []Customer `json:"customers"`
+	Upstreams []Upstream        `json:"upstreams"`
+	Keys      []PoolKey         `json:"keys"`
+	Customers []Customer        `json:"customers"`
 }
 
 // Slots of one customer package: what the customer app calls each line.
@@ -276,7 +272,7 @@ func (a *Admin) customerLocked(id string) (*Customer, error) {
 			return &a.d.Customers[i], nil
 		}
 	}
-	return nil, errors.New("客户不存在")
+	return nil, errors.New("顾客不存在")
 }
 
 func (a *Admin) keyLocked(id string) (*PoolKey, error) {

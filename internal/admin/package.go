@@ -37,17 +37,15 @@ type BuildRequest struct {
 	Version    string
 	ReleaseDir string // relative to RepoRoot, under release/
 	ZipPath    string // relative to RepoRoot; the build's own (temporary) ZIP
-	PublicKey  string
 	UpdateURL  string // update.json address built into the app; "" = none
-	// ProductLine and UpdateKey make a build of a line without a licence (the
-	// mass-market line): no PublicKey, updates signed with UpdateKey.
+	// ProductLine and UpdateKey make a build of the mass-market line: updates
+	// and licence files are checked with UpdateKey (ADR 0001, 0003).
 	ProductLine string
 	UpdateKey   string
 }
 
-// Shipping entries of a package, as in scripts/build.ps1, plus customer.dat.
+// Program entries of a package, as in scripts/build.ps1.
 var programEntries = []string{"ImageWorkbench.exe", "product-browser.exe", "runtime", "agent", "使用说明.txt", "version.json"}
-var shippingEntries = append(append([]string{}, programEntries...), license.FileName)
 
 // CustomerProfile assembles and signs customer.dat for a customer: image line 1,
 // LLM line 1 and whichever optional lines have a key (keys obfuscated; each
@@ -86,7 +84,7 @@ func (a *Admin) profileLocked(customerID string) ([]byte, int, error) {
 			return nil, 0, e
 		}
 		if u.Kind == "llm" && !k.Verified {
-			return nil, 0, fmt.Errorf("%s 还没有通过能力验证；客户版的智能生图需要已验证的 LLM 线路", SlotName(slot))
+			return nil, 0, fmt.Errorf("%s 还没有通过能力验证；托管版的智能生图需要已验证的 LLM 线路", SlotName(slot))
 		}
 		key, e := a.secret(k.SecretRef)
 		if e != nil {
@@ -214,10 +212,10 @@ func (a *Admin) WriteCustomerFile(customerID, dest string) error {
 	if e != nil {
 		return e
 	}
-	// A hosted user of the mass-market line may already have the program (the
-	// open edition): the licence file alone makes it the hosted edition.
-	if len(c.Deliveries) == 0 && c.Line != CreativeLine {
-		return errors.New("这位客户还没有交付包，请先生成交付包")
+	// A hosted user may already have the program (the open edition): the
+	// licence file alone makes it the hosted edition.
+	if c.Line != CreativeLine {
+		return errRetiredLine
 	}
 	data, revision, e := a.profileLocked(customerID)
 	if e != nil {
@@ -269,106 +267,28 @@ func zipName(customer, version string) string {
 	return fmt.Sprintf("ImageWorkbench-%s-%s.zip", name, version)
 }
 
-// BuildPackage builds the program, adds the signed customer.dat, zips it as
-// ImageWorkbench-<客户>-<版本>.zip and checks the ZIP before recording delivery.
-func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, builder Builder, localDataDir string, log func(string)) (Delivery, error) {
+// BuildPackage makes the package of a hosted user of the mass-market line: the
+// newest built program plus their signed customer.dat (see buildHosted). The
+// e-commerce line, which built a program per customer, was retired in admin
+// 1.12.0.
+func (a *Admin) BuildPackage(ctx context.Context, customerID, version string, localDataDir string, log func(string)) (Delivery, error) {
 	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(version) {
 		return Delivery{}, errors.New("版本号格式应为 0.6.2 这样的三段数字")
 	}
 	a.mu.Lock()
 	c, e := a.customerLocked(customerID)
-	if e != nil {
-		a.mu.Unlock()
-		return Delivery{}, e
+	if e == nil && c.Line != CreativeLine {
+		e = errRetiredLine
 	}
-	if c.Line == CreativeLine {
-		a.mu.Unlock()
-		return a.buildHosted(ctx, customerID, version, localDataDir, log)
-	}
-	repo := a.d.RepoRoot
-	pub := a.d.SigningPublicKey
-	updateURL := a.d.UpdateURL
-	softwareID, name := c.SoftwareID, c.Name
-	profile, revision, e := a.profileLocked(customerID)
-	secrets := a.customerSecretsLocked(c)
 	a.mu.Unlock()
 	if e != nil {
 		return Delivery{}, e
 	}
-	if repo == "" {
-		return Delivery{}, errors.New("请先在“设置”中选择软件源码目录")
-	}
-	// Customer packages are the e-commerce line.
-	work, e := a.checkout(repo, EcommerceLine, version, log)
-	if e != nil {
-		return Delivery{}, e
-	}
-	rel := filepath.Join("release", "customers", softwareID, version)
-	releaseDir := filepath.Join(repo, rel)
-	baseZip := filepath.Join(rel, "build-check.zip")
-	log("开始构建程序文件（约 3–5 分钟）…")
-	if e = builder.Build(ctx, BuildRequest{RepoRoot: repo, BuildDir: work, Version: version, ReleaseDir: rel, ZipPath: baseZip, PublicKey: pub, UpdateURL: updateURL}, log); e != nil {
-		return Delivery{}, fmt.Errorf("构建失败：%w", e)
-	}
-	os.Remove(filepath.Join(repo, baseZip))
-	// The program update package (no customer.dat; the same for every customer of
-	// this signing key) is kept next to the delivery for "发布程序更新".
-	updateZip := ""
-	if built := filepath.Join(repo, strings.TrimSuffix(baseZip, ".zip")+"-update.zip"); fileExists(built) {
-		updateZip = filepath.Join(repo, "release", "customers", softwareID, fmt.Sprintf("ImageWorkbench-update-%s.zip", version))
-		if e = os.Rename(built, updateZip); e != nil {
-			return Delivery{}, e
-		}
-		findings, e := packcheck.Check(updateZip, packcheck.Options{DataDir: localDataDir, Secrets: secrets})
-		if e == nil && len(findings) > 0 {
-			e = errors.New(strings.Join(findings, "；"))
-		}
-		if e != nil {
-			os.Remove(updateZip)
-			return Delivery{}, fmt.Errorf("程序更新包检查未通过，已删除：%w", e)
-		}
-	}
-	if e = os.WriteFile(filepath.Join(releaseDir, license.FileName), profile, 0o644); e != nil {
-		return Delivery{}, e
-	}
-	zipPath := filepath.Join(repo, "release", "customers", softwareID, zipName(name, version))
-	log("打包 " + filepath.Base(zipPath) + " …")
-	if e = writeZip(releaseDir, zipPath); e != nil {
-		return Delivery{}, e
-	}
-	log("检查交付包中没有明文 Key 和本机连接 …")
-	findings, e := packcheck.Check(zipPath, packcheck.Options{DataDir: localDataDir, CustomerFile: true, Secrets: secrets})
-	if e == nil && len(findings) > 0 {
-		e = errors.New(strings.Join(findings, "；"))
-	}
-	if e != nil {
-		os.Remove(zipPath)
-		return Delivery{}, fmt.Errorf("交付包检查未通过，已删除：%w", e)
-	}
-	sum, e := fileSHA256(zipPath)
-	if e != nil {
-		return Delivery{}, e
-	}
-	d := Delivery{Version: version, At: now(), Zip: zipPath, SHA256: sum, VaultRevision: revision, UpdateZip: updateZip}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	c, e = a.customerLocked(customerID)
-	if e != nil {
-		return Delivery{}, e
-	}
-	c.Deliveries = append(c.Deliveries, d)
-	c.VaultRevision, c.Changed = revision, false
-	for _, id := range c.Slots {
-		if k, e := a.keyLocked(id); e == nil {
-			k.Delivered = true
-		}
-	}
-	c.log("delivered", fmt.Sprintf("生成交付包 %s（线路版本 %d）", filepath.Base(zipPath), revision))
-	log("完成：" + zipPath)
-	return d, a.saveLocked()
+	return a.buildHosted(ctx, customerID, version, localDataDir, log)
 }
 
-func writeZip(dir, path string) error { return writeZipOf(dir, path, shippingEntries) }
+// errRetiredLine refuses a ledger record of the retired e-commerce line.
+var errRetiredLine = errors.New("这条记录属于已停用的电商版，不能再生成交付包或授权文件")
 
 // writeZipOf zips the named entries of a built program folder.
 func writeZipOf(dir, path string, entries []string) error {
@@ -376,8 +296,7 @@ func writeZipOf(dir, path string, entries []string) error {
 }
 
 // writeZipWith also adds files that are not in the folder (name → content).
-// The 《使用说明》 in other languages are added when the build has them (the
-// e-commerce line ships only the Chinese one).
+// The 《使用说明》 in other languages are added when the build has them.
 func writeZipWith(dir, path string, entries []string, extra map[string][]byte) error {
 	entries = slices.Clone(entries)
 	for _, m := range update.Manuals {
@@ -462,11 +381,7 @@ type ScriptBuilder struct{}
 
 func (ScriptBuilder) Build(ctx context.Context, b BuildRequest, log func(string)) error {
 	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(b.BuildDir, "scripts", "build.ps1"), "-Version", b.Version, "-NoLocalProfile", "-ReleaseDirectory", b.ReleaseDir, "-ZipPath", b.ZipPath}
-	if b.ProductLine != "" {
-		args = append(args, "-ProductLine", b.ProductLine, "-UpdatePublicKey", b.UpdateKey)
-	} else {
-		args = append(args, "-LicensePublicKey", b.PublicKey)
-	}
+	args = append(args, "-ProductLine", b.ProductLine, "-UpdatePublicKey", b.UpdateKey)
 	if b.UpdateURL != "" {
 		args = append(args, "-UpdateURL", b.UpdateURL)
 	}

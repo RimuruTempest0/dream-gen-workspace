@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// sourceRepo is a real Git repository shaped like the source folder: two product
-// line branches at different versions, checked out on the mass-market branch,
-// with the untracked folders a build needs.
+// sourceRepo is a real Git repository shaped like the source folder: the
+// mass-market line on main, a work branch ahead of it that is checked out, and
+// the untracked folders a build needs.
 func sourceRepo(t *testing.T) string {
 	t.Helper()
 	if _, e := exec.LookPath("git"); e != nil {
@@ -35,16 +35,16 @@ func sourceRepo(t *testing.T) string {
 	os.MkdirAll(dir, 0o755)
 	run("init", "-q", "-b", "main")
 	write(".gitignore", ".tools/\nrelease/\nfrontend/node_modules/\n")
-	write("scripts/build.ps1", "# main")
-	write("wails.json", `{"info": {"productVersion": "0.7.17"}}`)
-	run("add", "-A")
-	run("commit", "-q", "-m", "电商版 0.7.17")
-	run("checkout", "-q", "-b", "creative-concepts")
 	write("scripts/build.ps1", "# creative")
 	write("wails.json", `{"info": {"productVersion": "0.7.33"}}`)
 	write("docs/CHANGELOG.md", "# 更新记录\n\n## 0.7.33 · 打磨\n\n主路径更顺了。\n")
 	run("add", "-A")
 	run("commit", "-q", "-m", "大众版 0.7.33")
+	run("checkout", "-q", "-b", "work")
+	write("scripts/build.ps1", "# work")
+	write("wails.json", `{"info": {"productVersion": "0.7.40"}}`)
+	run("add", "-A")
+	run("commit", "-q", "-m", "进行中的功能")
 	write(".tools/node.ps1", "tool chain")
 	write("frontend/node_modules/vite/package.json", "{}")
 	write("release/customers/abc/0.7.17/data/app.db", "customer test data")
@@ -62,32 +62,28 @@ func read(t *testing.T, path string) string {
 
 func TestBuildFolderHoldsTheLinesCommitAndLeavesTheSourceFolderAlone(t *testing.T) {
 	repo := sourceRepo(t)
-	// Work in progress in the source folder, on the mass-market branch.
+	// Work in progress in the source folder, on a work branch.
 	os.WriteFile(filepath.Join(repo, "wails.json"), []byte(`{"info": {"productVersion": "9.9.9"}}`), 0o644)
 	os.WriteFile(filepath.Join(repo, "scratch.txt"), []byte("not committed"), 0o644)
 
-	main, e := gitLineHead(repo, EcommerceBranch)
-	if e != nil || main.Version != "0.7.17" || main.Subject != "电商版 0.7.17" || main.Current != CreativeBranch || len(main.Changed) != 2 {
-		t.Fatalf("%+v %v", main, e)
-	}
 	creative, e := gitLineHead(repo, CreativeBranch)
-	// The version is the committed one, not the edited file in the source folder.
-	if e != nil || creative.Version != "0.7.33" || creative.Commit == main.Commit {
+	// The version is the committed one of main, not the work branch's or the edited file's.
+	if e != nil || creative.Version != "0.7.33" || creative.Subject != "大众版 0.7.33" || creative.Current != "work" || len(creative.Changed) != 2 {
 		t.Fatalf("%+v %v", creative, e)
 	}
 	if _, e = gitLineHead(repo, "no-such-branch"); e == nil {
 		t.Fatal("a missing branch has a newest commit")
 	}
 
-	dir, e := prepareBuildFolder(repo, EcommerceLine, main.Commit)
+	dir, e := prepareBuildFolder(repo, CreativeLine, creative.Commit)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if dir != repo+`-build\ecommerce` {
+	if dir != repo+`-build\creative` {
 		t.Fatal(dir)
 	}
-	if read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# main" || !strings.Contains(read(t, filepath.Join(dir, "wails.json")), "0.7.17") {
-		t.Fatal("the build folder does not hold the e-commerce commit")
+	if read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# creative" || !strings.Contains(read(t, filepath.Join(dir, "wails.json")), "0.7.33") {
+		t.Fatal("the build folder does not hold the commit of main")
 	}
 	// The tool chain, the frontend packages and release\ are the source folder's own.
 	if read(t, filepath.Join(dir, ".tools", "node.ps1")) != "tool chain" || read(t, filepath.Join(dir, "frontend", "node_modules", "vite", "package.json")) != "{}" {
@@ -101,35 +97,29 @@ func TestBuildFolderHoldsTheLinesCommitAndLeavesTheSourceFolderAlone(t *testing.
 		t.Fatal("no notice in the build folders")
 	}
 
-	// The other line gets a folder of its own.
-	other, e := prepareBuildFolder(repo, CreativeLine, creative.Commit)
-	if e != nil || read(t, filepath.Join(other, "scripts", "build.ps1")) != "# creative" || read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# main" {
-		t.Fatal("the mass-market build folder", e)
-	}
-
 	// Changes made in a build folder are discarded by the next build: edited,
 	// deleted and added files alike.
 	os.WriteFile(filepath.Join(dir, "scripts", "build.ps1"), []byte("# tampered"), 0o644)
 	os.Remove(filepath.Join(dir, "wails.json"))
 	os.WriteFile(filepath.Join(dir, "extra.go"), []byte("package x"), 0o644)
-	if _, e = prepareBuildFolder(repo, EcommerceLine, main.Commit); e != nil {
+	if _, e = prepareBuildFolder(repo, CreativeLine, creative.Commit); e != nil {
 		t.Fatal(e)
 	}
-	if read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# main" || !fileExists(filepath.Join(dir, "wails.json")) || fileExists(filepath.Join(dir, "extra.go")) {
+	if read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# creative" || !fileExists(filepath.Join(dir, "wails.json")) || fileExists(filepath.Join(dir, "extra.go")) {
 		t.Fatal("a tampered build folder was built from")
 	}
 
 	// A build folder that is no longer a working folder of the repository (deleted
 	// by hand, or left over from another source folder) is made again.
 	os.Remove(filepath.Join(dir, ".git"))
-	if _, e = prepareBuildFolder(repo, EcommerceLine, main.Commit); e != nil || read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# main" {
+	if _, e = prepareBuildFolder(repo, CreativeLine, creative.Commit); e != nil || read(t, filepath.Join(dir, "scripts", "build.ps1")) != "# creative" {
 		t.Fatal("a broken build folder was not made again:", e)
 	}
 
 	// Through all of this the source folder kept its branch, its uncommitted work
 	// and everything under the linked folders.
 	branch, changed, e := gitRepoState(repo)
-	if e != nil || branch != CreativeBranch || strings.Join(changed, " ") != "wails.json scratch.txt" {
+	if e != nil || branch != "work" || strings.Join(changed, " ") != "wails.json scratch.txt" {
 		t.Fatal("the source folder changed:", branch, changed, e)
 	}
 	if !strings.Contains(read(t, filepath.Join(repo, "wails.json")), "9.9.9") || read(t, filepath.Join(repo, "scratch.txt")) != "not committed" {
@@ -146,15 +136,15 @@ func TestBuildFolderHoldsTheLinesCommitAndLeavesTheSourceFolderAlone(t *testing.
 // where a link belongs in the build folder, the build stops.
 func TestBuildFolderRefusesARealFolderInPlaceOfALink(t *testing.T) {
 	repo := sourceRepo(t)
-	h, _ := gitLineHead(repo, EcommerceBranch)
-	dir, e := prepareBuildFolder(repo, EcommerceLine, h.Commit)
+	h, _ := gitLineHead(repo, CreativeBranch)
+	dir, e := prepareBuildFolder(repo, CreativeLine, h.Commit)
 	if e != nil {
 		t.Fatal(e)
 	}
 	os.Remove(filepath.Join(dir, "release"))
 	os.MkdirAll(filepath.Join(dir, "release", "kept"), 0o755)
 	os.WriteFile(filepath.Join(dir, "release", "kept", "package.zip"), []byte("x"), 0o644)
-	if _, e = prepareBuildFolder(repo, EcommerceLine, h.Commit); e == nil || !strings.Contains(e.Error(), "不会删除") {
+	if _, e = prepareBuildFolder(repo, CreativeLine, h.Commit); e == nil || !strings.Contains(e.Error(), "不会删除") {
 		t.Fatal("built over a real release folder:", e)
 	}
 	if !fileExists(filepath.Join(dir, "release", "kept", "package.zip")) {

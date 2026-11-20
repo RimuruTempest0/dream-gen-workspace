@@ -19,7 +19,7 @@ export function useAdminState() {
 }
 
 const links = [
-  ["/", "客户", <TeamOutlined aria-hidden="true" />],
+  ["/", "顾客", <TeamOutlined aria-hidden="true" />],
   ["/keys", "Key 池", <KeyOutlined aria-hidden="true" />],
   ["/creative", "发布大众版", <CloudUploadOutlined aria-hidden="true" />],
   ["/settings", "设置与签名密钥", <SettingOutlined aria-hidden="true" />],
@@ -53,7 +53,7 @@ export default function AdminApp() {
         </nav>
         <div className="sidebar-bottom">
           <small>
-            {state.data?.customers.length ?? 0} 位客户 ·{" "}
+            {state.data?.customers.length ?? 0} 位顾客 ·{" "}
             {state.data?.keys.filter((k) => k.status === "available").length ??
               0}{" "}
             个可用 Key
@@ -67,7 +67,7 @@ export default function AdminApp() {
           <span>
             管理工具 /{" "}
             {loc.pathname.startsWith("/customer")
-              ? "客户详情"
+              ? "顾客详情"
               : links.find((l) => l[0] === loc.pathname)?.[1]}
           </span>
           <span className="privacy-note">

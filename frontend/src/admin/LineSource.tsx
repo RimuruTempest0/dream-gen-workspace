@@ -2,10 +2,10 @@ import { Alert } from "antd";
 import { time, useData } from "../ui";
 import type { LineSource } from "./types";
 
-// Which commit a build of a product line would take now. The admin tool builds
-// each line in its own build folder from the newest commit of the line's branch;
+// Which commit a build of the mass-market line would take now. The admin tool
+// builds it in its own build folder from the newest commit of main;
 // the source folder is only read.
-export function useLineSource(line: "ecommerce" | "creative") {
+export function useLineSource(line: "creative") {
   return useData<LineSource>(["line-source", line], "LineSource", [line], 5000);
 }
 

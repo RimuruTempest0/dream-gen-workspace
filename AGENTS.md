@@ -17,4 +17,4 @@ Issue 使用 GitHub Issues（`RimuruTempest0/dream-gen-workspace`），通过 `g
 
 ### Domain docs
 
-single-context：仓库根目录一份 `CONTEXT.md` + `docs/adr/`。详见 `docs/agents/domain.md`。
+single-context：仓库根目录一份 `GLOSSARY.md` + `docs/adr/`。详见 `docs/agents/domain.md`。

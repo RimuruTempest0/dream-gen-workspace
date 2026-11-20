@@ -80,14 +80,14 @@ export function KeyPool() {
     disable: {
       title: "停用",
       content:
-        "停用后不会再分配给任何客户，需要时可以逐个重新启用。已停用的 Key 保留原来的停用原因。",
+        "停用后不会再分配给任何顾客，需要时可以逐个重新启用。已停用的 Key 保留原来的停用原因。",
       ok: "停用",
       done: "已停用",
     },
     revoke: {
       title: "标记为已在上游注销",
       content:
-        "只在你已经在上游后台注销（删除）了这些 Key 时使用。它们会移到“已注销”分类，不再出现在其他列表里，不能再分配或重新启用；记录会保留，用来防止同一个 Key 再次导入、分给另一位客户。",
+        "只在你已经在上游后台注销（删除）了这些 Key 时使用。它们会移到“已注销”分类，不再出现在其他列表里，不能再分配或重新启用；记录会保留，用来防止同一个 Key 再次导入、分给另一位顾客。",
       ok: "标记为已注销",
       done: "已标记为已注销",
     },
@@ -133,7 +133,7 @@ export function KeyPool() {
     <>
       <Header
         title="Key 池"
-        sub="按上游导入 Key，标注主用或备用。试用和正式使用是同一套 Key；同一个 Key 只能导入一次、只能分给一位客户。"
+        sub="按上游导入 Key，标注主用或备用。试用和正式使用是同一套 Key；同一个 Key 只能导入一次、只能分给一位顾客。"
       />
       <section className="panel" aria-labelledby="up-title">
         <div className="panel-heading">
@@ -229,7 +229,7 @@ export function KeyPool() {
           </span>
         </div>
         <p className="hint">
-          每位客户需要：图片主用 3、备用 3；LLM 主用 1、备用
+          每位顾客需要：图片主用 3、备用 3；LLM 主用 1、备用
           1。交付前请在上游后台把这些 Key 的额度设为试用额度（图片线路 1 约 22
           张图的金额，其余设为最低），收款后再调高。
         </p>
@@ -371,7 +371,7 @@ export function KeyPool() {
           <p className="hint">
             已在上游注销的 Key
             只留记录：不会再分配或重新启用，但记录用来防止同一个 Key
-            再次导入、分给另一位客户，所以交付过的不能删除。
+            再次导入、分给另一位顾客，所以交付过的不能删除。
           </p>
         ) : (
           !!revokedCount && (
@@ -422,7 +422,7 @@ export function KeyPool() {
               <span className="muted">
                 {[
                   pickedAssigned > 0 &&
-                    `${pickedAssigned} 个已分配给客户，先在客户页撤下后才能停用、注销或删除`,
+                    `${pickedAssigned} 个已分配给顾客，先在顾客页撤下后才能停用、注销或删除`,
                   pickedDelivered > 0 &&
                     `${pickedDelivered} 个交付过，不能删除；已在上游注销的可以标记为已注销，移到单独的分类`,
                 ]
@@ -487,7 +487,7 @@ export function KeyPool() {
                     {k.deliveredBefore && (
                       <Tag
                         color="warning"
-                        title="这个 Key 曾随交付包发给客户，之后被重新启用"
+                        title="这个 Key 曾随交付包发给顾客，之后被重新启用"
                       >
                         曾交付
                       </Tag>
@@ -538,7 +538,7 @@ export function KeyPool() {
                         modal.confirm({
                           title: "验证这个 LLM Key 的能力？",
                           content:
-                            "会用这个 Key 发 4 个很短的 LLM 请求（文本、图片、工具、流式），产生少量费用。客户版的智能生图只使用验证通过的 LLM 线路。",
+                            "会用这个 Key 发 4 个很短的 LLM 请求（文本、图片、工具、流式），产生少量费用。托管版的智能生图只使用验证通过的 LLM 线路。",
                           okText: "验证（产生少量费用）",
                           cancelText: "取消",
                           onOk: () =>
@@ -618,7 +618,7 @@ export function KeyPool() {
                         onClick={() =>
                           modal.confirm({
                             title: "停用这个 Key？",
-                            content: "停用后不会再分配给任何客户。",
+                            content: "停用后不会再分配给任何顾客。",
                             okText: "停用",
                             cancelText: "取消",
                             onOk: () =>
@@ -640,9 +640,9 @@ export function KeyPool() {
                             content: k.delivered ? (
                               <>
                                 <p>
-                                  这个 Key 已随交付包发给客户（
+                                  这个 Key 已随交付包发给顾客（
                                   {k.disabledFor || "已停用"}
-                                  ）。拿到过那个交付包的人仍能从软件里取出并使用它；重新启用后再分给别的客户，双方会共用这个
+                                  ）。拿到过那个交付包的人仍能从软件里取出并使用它；重新启用后再分给别的顾客，双方会共用这个
                                   Key 的额度和账单。
                                 </p>
                                 <p>
@@ -653,7 +653,7 @@ export function KeyPool() {
                                 </p>
                               </>
                             ) : (
-                              "重新启用后可以再分配给客户。请先确认上游后台没有停用或删除这个 Key。"
+                              "重新启用后可以再分配给顾客。请先确认上游后台没有停用或删除这个 Key。"
                             ),
                             okText: "重新启用",
                             okButtonProps: { danger: k.delivered },
@@ -742,7 +742,7 @@ export function KeyPool() {
                 <Form.Item
                   name="protocol"
                   label="接口协议"
-                  extra="异步任务需要客户软件 0.7.14 起；交付包会写成新格式，旧软件打不开。"
+                  extra="异步任务需要顾客的软件 0.7.14 起；交付包会写成新格式，旧软件打不开。"
                 >
                   <Select
                     style={{ width: 260 }}

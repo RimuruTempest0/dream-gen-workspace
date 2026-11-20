@@ -214,7 +214,7 @@ func (a *Admin) DisableKeys(ids []string, reason string) error {
 	}
 	for _, k := range keys {
 		if k.Status == "assigned" {
-			return fmt.Errorf("…%s 正分配给客户，请先在客户页撤下或换 Key", k.Tail)
+			return fmt.Errorf("…%s 正分配给顾客，请先在顾客页撤下或换 Key", k.Tail)
 		}
 	}
 	for _, k := range keys {
@@ -239,7 +239,7 @@ func (a *Admin) RevokeKeys(ids []string) error {
 	}
 	for _, k := range keys {
 		if k.Status == "assigned" {
-			return fmt.Errorf("…%s 正分配给客户，请先在客户页撤下或换 Key", k.Tail)
+			return fmt.Errorf("…%s 正分配给顾客，请先在顾客页撤下或换 Key", k.Tail)
 		}
 	}
 	at := now()
@@ -287,7 +287,7 @@ func (a *Admin) DeleteKeys(ids []string) error {
 	drop, refs := map[string]bool{}, []string{}
 	for _, k := range keys {
 		if k.CustomerID != "" {
-			return fmt.Errorf("…%s 正分配给客户，请先在客户页撤下", k.Tail)
+			return fmt.Errorf("…%s 正分配给顾客，请先在顾客页撤下", k.Tail)
 		}
 		if k.Delivered || k.DeliveredBefore {
 			return fmt.Errorf("…%s 交付过，不能删除，只能停用", k.Tail)
@@ -341,20 +341,11 @@ func (a *Admin) EnableKey(id string) error {
 
 // ---- customers ---------------------------------------------------------------
 
+// CreateCustomer creates a hosted user of the mass-market line (托管版顾客).
+// Since the e-commerce line was retired (admin 1.12.0) it is the only kind of
+// person the admin tool keeps.
 func (a *Admin) CreateCustomer(name string, trialImages int) (Customer, error) {
-	return a.CreateCustomerOn(EcommerceLine, name, trialImages)
-}
-
-// CreateCustomerOn creates a person on a product line: a customer of the
-// e-commerce line, or a hosted user of the mass-market line. The line cannot be
-// changed afterwards: it decides which program their packages carry.
-func (a *Admin) CreateCustomerOn(line, name string, trialImages int) (Customer, error) {
-	if line != EcommerceLine && line != CreativeLine {
-		return Customer{}, errors.New("请选择产品线")
-	}
-	if line == EcommerceLine {
-		line = ""
-	}
+	line := CreativeLine
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	name = strings.TrimSpace(name)
@@ -363,7 +354,7 @@ func (a *Admin) CreateCustomerOn(line, name string, trialImages int) (Customer, 
 	}
 	for _, c := range a.d.Customers {
 		if c.Name == name {
-			return Customer{}, errors.New("已有同名的客户或顾客")
+			return Customer{}, errors.New("已有同名的顾客")
 		}
 	}
 	if trialImages <= 0 {
@@ -382,11 +373,7 @@ func (a *Admin) CreateCustomerOn(line, name string, trialImages int) (Customer, 
 		return Customer{}, e
 	}
 	c := Customer{ID: newID(), Name: name, Line: line, SoftwareID: id, CodeRef: ref, CreatedAt: now(), TrialImages: trialImages, Slots: map[string]string{}, ImageBackups: slices.Clone(defaultOrder), Deliveries: []Delivery{}, Events: []Event{}, Changed: true}
-	if line == CreativeLine {
-		c.log("created", "创建大众版托管顾客，软件标识 "+id)
-	} else {
-		c.log("created", "创建客户，软件标识 "+id)
-	}
+	c.log("created", "创建托管版顾客，软件标识 "+id)
 	a.d.Customers = append(a.d.Customers, c)
 	return c, a.saveLocked()
 }
@@ -536,7 +523,7 @@ func (a *Admin) AssignKey(customerID, slot, keyID string) error {
 		return a.assignLocked(c, slot, k) // explains why
 	}
 	if old != "" {
-		a.releaseLocked(c, slot, "已为客户“"+c.Name+"”更换")
+		a.releaseLocked(c, slot, "已为顾客“"+c.Name+"”更换")
 		c.log("rekeyed", fmt.Sprintf("%s 更换为 Key …%s", SlotName(slot), k.Tail))
 	} else {
 		c.log("assigned", fmt.Sprintf("%s 分配 Key …%s", SlotName(slot), k.Tail))
@@ -557,7 +544,7 @@ func (a *Admin) UnassignKey(customerID, slot string) error {
 	if c.Slots[slot] == "" {
 		return nil
 	}
-	a.releaseLocked(c, slot, "已从客户“"+c.Name+"”撤下")
+	a.releaseLocked(c, slot, "已从顾客“"+c.Name+"”撤下")
 	c.log("assigned", SlotName(slot)+" 撤下 Key")
 	return a.saveLocked()
 }
@@ -575,7 +562,7 @@ func (a *Admin) DeleteCustomer(customerID string) error {
 	}
 	for _, slot := range AllSlots {
 		if c.Slots[slot] != "" {
-			a.releaseLocked(c, slot, "客户“"+c.Name+"”已删除")
+			a.releaseLocked(c, slot, "顾客“"+c.Name+"”已删除")
 		}
 	}
 	ref := c.CodeRef
@@ -615,7 +602,6 @@ func kindLabel(kind string) string {
 type State struct {
 	SigningPublicKey string `json:"signingPublicKey"`
 	RepoRoot         string `json:"repoRoot"`
-	UpdateURL        string `json:"updateURL"`
 	// Creative: built versions of the mass-market line, newest last.
 	Creative []CreativeRelease `json:"creative"`
 	// BuiltinSkills are the app's shipped skills, for the per-customer selection.
@@ -661,7 +647,7 @@ func (a *Admin) State() State {
 	if upstreams == nil {
 		upstreams = []Upstream{}
 	}
-	return State{SigningPublicKey: a.d.SigningPublicKey, RepoRoot: a.d.RepoRoot, UpdateURL: a.d.UpdateURL, Creative: append([]CreativeRelease{}, a.d.Creative...), BuiltinSkills: core.BuiltinSkills(), DataDir: a.root, Upstreams: upstreams, Keys: keys, Customers: customers}
+	return State{SigningPublicKey: a.d.SigningPublicKey, RepoRoot: a.d.RepoRoot, Creative: append([]CreativeRelease{}, a.d.Creative...), BuiltinSkills: core.BuiltinSkills(), DataDir: a.root, Upstreams: upstreams, Keys: keys, Customers: customers}
 }
 
 // MarkPaid records that the customer paid and that the provider raised every

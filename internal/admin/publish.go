@@ -159,10 +159,10 @@ func (a *Admin) UploadCreative(ctx context.Context, version string, host Release
 		return r, e
 	}
 	if !rel.Prerelease {
-		return r, errors.New("creative Release 现在不是 Pre-release。请先在网页上把它改回 Pre-release：否则 GitHub 可能把它当作 Latest，电商版客户的软件会读到它")
+		return r, errors.New("creative Release 现在不是 Pre-release。请先在网页上把它改回 Pre-release：否则 GitHub 可能把它当作 Latest，已交付的电商版旧程序会去读它")
 	}
 	if rel.Latest {
-		return r, errors.New("creative Release 现在是 Latest。电商版客户的软件每天读 Latest，请先在网页上取消，再上传")
+		return r, errors.New("creative Release 现在是 Latest。已交付的电商版旧程序每天读 Latest，请先在网页上取消，再上传")
 	}
 	published, e := a.publishedVersion(ctx, host)
 	if e != nil {

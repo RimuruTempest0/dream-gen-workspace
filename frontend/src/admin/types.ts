@@ -43,8 +43,8 @@ export type AdminEvent = { at: string; kind: string; text: string };
 export type Customer = {
   id: string;
   name: string;
-  /** Product line, fixed when created: none = e-commerce, "creative" = a hosted
-   * user of the mass-market line. */
+  /** "creative": a hosted user of the mass-market line. None marks a record of
+   * the e-commerce line, retired in admin 1.12.0. */
   line?: string;
   softwareID: string;
   createdAt: string;
@@ -100,7 +100,6 @@ export type LineSource = {
 export type AdminState = {
   signingPublicKey: string;
   repoRoot: string;
-  updateURL?: string;
   creative: CreativeRelease[];
   builtinSkills: { id: string; name: string; description: string }[];
   dataDir: string;
@@ -158,5 +157,5 @@ export type ImportResult = {
 // Shown wherever a key sits on an upstream that cannot cap a single key: every
 // key ships in the package before payment, so only its quota guards it.
 export function quotaWarning(u?: Upstream) {
-  return `“${u?.name || "此上游"}”不支持给单个 Key 设额度：Key 随软件包交付，收款前被取出也可能用光整个账户的余额。可二选一：每位客户单独开一个只充小额的账户、收款后再充值，或把这条线路放到支持单 Key 额度的中转（如 Sub2API）后面。`;
+  return `“${u?.name || "此上游"}”不支持给单个 Key 设额度：Key 随软件包交付，收款前被取出也可能用光整个账户的余额。可二选一：每位顾客单独开一个只充小额的账户、收款后再充值，或把这条线路放到支持单 Key 额度的中转（如 Sub2API）后面。`;
 }

@@ -52,7 +52,7 @@ export function Creative() {
     modal.confirm({
       title: "把更新说明翻译成英文？",
       content:
-        "会用 Key 池里一个通过能力验证、没有分给客户的 LLM Key 发 1 个请求，产生少量费用。翻译结果会填进下面的英文更新说明，请看一遍再构建。",
+        "会用 Key 池里一个通过能力验证、没有分给顾客的 LLM Key 发 1 个请求，产生少量费用。翻译结果会填进下面的英文更新说明，请看一遍再构建。",
       okText: "翻译（产生少量费用）",
       cancelText: "取消",
       onOk: async () => {

@@ -38,20 +38,15 @@ func TestHostedPackageIsTheBuiltMassMarketProgramPlusALicenceFile(t *testing.T) 
 	a := open(t)
 	dir := creativeRepo(t, a, "0.7.33")
 	stock(t, a, 2, "http://127.0.0.1:1/v1")
-	if _, e := a.CreateCustomerOn("other", "某人", 0); e == nil {
-		t.Fatal("created a person on an unknown product line")
-	}
-	c, e := a.CreateCustomerOn(CreativeLine, "顾客 甲", 5)
+	c, e := a.CreateCustomer("顾客 甲", 5)
 	if e != nil || c.Line != CreativeLine {
 		t.Fatal(c, e)
 	}
 	if missing, e := a.AutoAssign(c.ID); e != nil || len(missing) != 0 {
 		t.Fatal(missing, e)
 	}
-	built := false
-	never := builderFunc(func() { built = true })
 	pack := func(version string) (Delivery, error) {
-		return a.BuildPackage(context.Background(), c.ID, version, never, "", func(string) {})
+		return a.BuildPackage(context.Background(), c.ID, version, "", func(string) {})
 	}
 
 	// Nothing built yet for the line: there is no program to put in the package.
@@ -84,10 +79,7 @@ func TestHostedPackageIsTheBuiltMassMarketProgramPlusALicenceFile(t *testing.T) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	if built {
-		t.Fatal("a hosted package was built instead of put together")
-	}
-	if d.Zip != filepath.Join(dir, "release", "customers", c.SoftwareID, "ImageWorkbench-顾客 甲-0.7.34.zip") || d.UpdateZip != "" {
+	if d.Zip != filepath.Join(dir, "release", "customers", c.SoftwareID, "ImageWorkbench-顾客 甲-0.7.34.zip") {
 		t.Fatalf("%+v", d)
 	}
 	names := strings.Join(zipNames(t, d.Zip), " ")
@@ -117,7 +109,7 @@ func TestHostedPackageIsTheBuiltMassMarketProgramPlusALicenceFile(t *testing.T) 
 	}
 
 	// Someone who already has the program gets the licence file alone.
-	other, _ := a.CreateCustomerOn(CreativeLine, "顾客 乙", 0)
+	other, _ := a.CreateCustomer("顾客 乙", 0)
 	a.AutoAssign(other.ID)
 	dest := filepath.Join(t.TempDir(), "customer.dat")
 	if e = a.WriteCustomerFile(other.ID, dest); e != nil {
@@ -129,23 +121,26 @@ func TestHostedPackageIsTheBuiltMassMarketProgramPlusALicenceFile(t *testing.T) 
 	}
 }
 
-// Customers of the e-commerce line are as before: their package is built, and a
-// renewal file needs a package first.
-func TestEcommerceCustomersAreNotHostedUsers(t *testing.T) {
+// A record left from the retired e-commerce line (no line marker) gets neither a
+// package nor a licence file.
+func TestRetiredEcommerceRecordsAreRefused(t *testing.T) {
 	isolate(t)
 	a := open(t)
 	repo(t, a)
 	stock(t, a, 1, "http://127.0.0.1:1/v1")
-	c, _ := a.CreateCustomer("客户 丙", 0)
+	c, _ := a.CreateCustomer("顾客 丙", 0)
 	a.AutoAssign(c.ID)
-	if c.Line != "" {
-		t.Fatal("an e-commerce customer has a line marker:", c.Line)
+	if c.Line != CreativeLine {
+		t.Fatal("a new person is not a hosted user:", c.Line)
 	}
-	if e := a.WriteCustomerFile(c.ID, filepath.Join(t.TempDir(), "customer.dat")); e == nil {
-		t.Fatal("renewal file before any package")
+	a.mu.Lock()
+	old, _ := a.customerLocked(c.ID)
+	old.Line = ""
+	a.mu.Unlock()
+	if e := a.WriteCustomerFile(c.ID, filepath.Join(t.TempDir(), "customer.dat")); e == nil || !strings.Contains(e.Error(), "电商版") {
+		t.Fatal("licence file for a retired e-commerce record:", e)
 	}
-	var req BuildRequest
-	if _, e := buildPackage(a, c.ID, "0.7.17", fakeBuilder{seen: &req}, func(string) {}); e != nil || req.Version != "0.7.17" || req.ProductLine != "" {
-		t.Fatal("e-commerce package was not built:", req, e)
+	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.34", "", func(string) {}); e == nil || !strings.Contains(e.Error(), "电商版") {
+		t.Fatal("package for a retired e-commerce record:", e)
 	}
 }

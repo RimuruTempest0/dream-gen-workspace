@@ -16,29 +16,21 @@ import (
 // admin tool never switches its branch, commits, fetches or pushes there. See
 // docs/adr/0002-build-folders-per-product-line.md.
 const (
-	EcommerceLine   = "ecommerce"
-	CreativeLine    = "creative"
-	EcommerceBranch = "main"
-	CreativeBranch  = "creative-concepts"
+	CreativeLine   = "creative"
+	CreativeBranch = "main"
 )
 
-// lineBranch is the branch a product line is built from.
+// lineBranch is the branch a product line is built from. The e-commerce line
+// was retired in admin 1.12.0 (docs/adr/0005-retire-ecommerce-line.md): the
+// mass-market line is the only one left.
 func lineBranch(line string) (string, error) {
-	switch line {
-	case EcommerceLine:
-		return EcommerceBranch, nil
-	case CreativeLine:
+	if line == CreativeLine {
 		return CreativeBranch, nil
 	}
 	return "", fmt.Errorf("没有 %q 这条产品线", line)
 }
 
-func lineName(line string) string {
-	if line == CreativeLine {
-		return "大众版"
-	}
-	return "电商版"
-}
+func lineName(string) string { return "大众版" }
 
 // Folders of the source folder that Git does not track and a build needs: the
 // tool chain, the installed frontend packages, and where everything built goes.

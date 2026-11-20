@@ -193,7 +193,12 @@ async function importKeys(
   await expect(page.getByText(`已导入 ${keys.length} 个`).last()).toBeVisible();
 }
 
-test("管理工具：上游与 Key 池、客户、自动分配、能力验证、交付包与换 Key", async () => {
+test("管理工具：上游与 Key 池、顾客、自动分配、能力验证、交付包与换 Key", async () => {
+  const app = <T>(name: string, ...args: unknown[]) =>
+    page.evaluate(
+      ([n, a]) => (window as any).go.main.App[n as string](...(a as [])),
+      [name, args] as const,
+    ) as Promise<T>;
   // The tool has its own version, separate from the app's.
   await expect(page.locator(".sidebar-bottom")).toContainText(
     /管理工具 \d+\.\d+\.\d+/,
@@ -248,15 +253,15 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   }
   await expect(page.getByRole("button", { name: "验证能力" })).toHaveCount(0);
 
-  await page.getByRole("link", { name: "客户" }).click();
+  await page.getByRole("link", { name: "顾客" }).click();
   await page.getByRole("button", { name: "新建", exact: true }).click();
-  const create = page.getByRole("dialog", { name: "新建客户或顾客" });
-  // The e-commerce line is the default.
-  await expect(create.getByRole("radio", { name: "电商版" })).toBeChecked();
-  await create.getByLabel("名称").fill("QA 客户");
+  const create = page.getByRole("dialog", { name: "新建托管版顾客" });
+  // Only hosted users of the mass-market line: no product line to choose.
+  await expect(create.getByRole("radio")).toHaveCount(0);
+  await create.getByLabel("名称").fill("QA 顾客 甲");
   await create.getByRole("button", { name: "创建" }).click();
   await expect(
-    page.getByRole("heading", { name: "QA 客户", level: 1 }),
+    page.getByRole("heading", { name: "QA 顾客 甲", level: 1 }),
   ).toBeVisible();
   // Only image line 1 and LLM line 1 are required for a package.
   await expect(page.getByText("图片 · 主线路 · 必需")).toHaveCount(1);
@@ -308,7 +313,7 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await expect
     .poll(async () => {
       const st = await page.evaluate(() => (window as any).go.main.App.State());
-      return st.customers.find((x: { name: string }) => x.name === "QA 客户")
+      return st.customers.find((x: { name: string }) => x.name === "QA 顾客 甲")
         .skills;
     })
     .toHaveLength(4);
@@ -317,15 +322,16 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await expect
     .poll(async () => {
       const st = await page.evaluate(() => (window as any).go.main.App.State());
-      return st.customers.find((x: { name: string }) => x.name === "QA 客户")
+      return st.customers.find((x: { name: string }) => x.name === "QA 顾客 甲")
         .skills;
     })
     .toBeUndefined();
 
-  // Expiry: a real field, signed into the package; renewal needs a package first.
+  // Expiry: a real field, signed into the package. A hosted user may get the
+  // licence file alone, before any package.
   await expect(
-    page.getByRole("button", { name: "生成续费授权文件" }),
-  ).toBeDisabled();
+    page.getByRole("button", { name: "只生成授权文件" }),
+  ).toBeEnabled();
   await page.getByLabel(/有效期至/).fill("2030-06-30");
   await page
     .locator("section")
@@ -335,17 +341,28 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   await expect(page.getByText("当前有效期至 2030")).toBeVisible();
   const saved = await page.evaluate(() => (window as any).go.main.App.State());
   expect(
-    saved.customers.find((x: { name: string }) => x.name === "QA 客户")
+    saved.customers.find((x: { name: string }) => x.name === "QA 顾客 甲")
       .expiresAt,
   ).toMatch(/^2030-06-30T|^2030-06-29T/);
 
-  await page.getByRole("button", { name: "生成交付包" }).click();
+  // A hosted package is put together from a built mass-market version: build
+  // 0.7.34 first (fake builder), as the 发布大众版 page would.
+  await app("BuildCreative", "0.7.34", "QA 说明", "QA notes");
+  await expect
+    .poll(
+      async () =>
+        (await app<{ creative: { version: string }[] }>("State")).creative.map(
+          (r) => r.version,
+        ),
+      { timeout: 60000 },
+    )
+    .toContain("0.7.34");
+  const pack = page.getByRole("button", { name: /^生成交付包/ });
+  await expect(pack).toHaveText(/0\.7\.34/, { timeout: 15000 });
+  await pack.click();
   await expect(page.getByText("交付包已生成。")).toBeVisible({
     timeout: 60000,
   });
-  await expect(
-    page.getByRole("button", { name: "生成续费授权文件" }),
-  ).toBeEnabled();
   const softwareID = (await page.locator(".page-header p").innerText()).match(
     /IW-[0-9A-Z-]+/,
   )![0];
@@ -354,36 +371,18 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
     "release",
     "customers",
     softwareID,
-    "ImageWorkbench-QA 客户-0.6.2.zip",
+    "ImageWorkbench-QA 顾客 甲-0.7.34.zip",
   );
   expect(fs.existsSync(zip)).toBe(true);
-  // The package is the e-commerce line: built in its own build folder from main
-  // (0.6.2), while the source folder stays on the mass-market branch (0.7.34).
-  await expect(page.getByText(/构建电商版：main 分支的提交/)).toBeVisible();
-  expect(
-    fs.readFileSync(
-      path.join(repo + "-build", "ecommerce", "wails.json"),
-      "utf8",
-    ),
-  ).toContain("0.6.2");
-  expect(fs.readFileSync(path.join(repo, "wails.json"), "utf8")).toContain(
-    "0.7.34",
-  );
-  const dat = fs.readFileSync(
-    path.join(
-      repo,
-      "release",
-      "customers",
-      softwareID,
-      "0.6.2",
-      "customer.dat",
-    ),
-    "utf8",
-  );
-  expect(dat).not.toContain("sk-qa-");
-  expect(dat).not.toContain(code);
+  // Put together, not built: the licence file is in the package (stored names
+  // are plain in a ZIP), no key or activation code in plain text.
+  const bytes = fs.readFileSync(zip);
+  expect(bytes.includes(Buffer.from("customer.dat"))).toBe(true);
+  expect(bytes.includes(Buffer.from("sk-qa-"))).toBe(false);
+  expect(bytes.includes(Buffer.from(code))).toBe(false);
+  expect(fs.existsSync(path.join(repo + "-build", "ecommerce"))).toBe(false);
   await expect(
-    page.locator(".ant-table-row").filter({ hasText: "0.6.2" }),
+    page.locator(".ant-table-row").filter({ hasText: "0.7.34" }),
   ).toBeVisible();
 
   // Replace a key after delivery: the old one is retired and a new package is due.
@@ -437,15 +436,15 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
     .analyze();
   expect(a11yKeys.violations).toEqual([]);
 
-  // Deleting the customer: its delivered keys stay retired, none stays assigned.
-  await page.getByRole("link", { name: "客户", exact: true }).click();
-  await page.getByRole("link", { name: "QA 客户" }).click();
-  await page.getByRole("button", { name: "删除客户" }).click();
+  // Deleting the person: their delivered keys stay retired, none stays assigned.
+  await page.getByRole("link", { name: "顾客", exact: true }).click();
+  await page.getByRole("link", { name: "QA 顾客 甲" }).click();
+  await page.getByRole("button", { name: "删除顾客" }).click();
   await page
-    .getByRole("dialog", { name: "删除客户“QA 客户”？" })
-    .getByRole("button", { name: "删除客户" })
+    .getByRole("dialog", { name: "删除顾客“QA 顾客 甲”？" })
+    .getByRole("button", { name: "删除顾客" })
     .click();
-  await expect(page.getByText("还没有客户")).toBeVisible();
+  await expect(page.getByText("还没有顾客")).toBeVisible();
   await page.getByRole("link", { name: "Key 池" }).click();
   await expect(
     page.locator(".ant-table-row").filter({ hasText: "已分配" }),
@@ -457,7 +456,7 @@ test("管理工具：上游与 Key 池、客户、自动分配、能力验证、
   const disabledCount = await disabled.count();
   await disabled.first().getByRole("button", { name: "重新启用" }).click();
   const confirm = page.getByRole("dialog", { name: "重新启用这个 Key？" });
-  await expect(confirm).toContainText("已随交付包发给客户");
+  await expect(confirm).toContainText("已随交付包发给顾客");
   await confirm.getByRole("button", { name: "重新启用" }).click();
   await expect(disabled).toHaveCount(disabledCount - 1);
   await expect(
@@ -589,9 +588,7 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
     await expect(page.getByText("QA creative source")).toBeVisible({
       timeout: 15000,
     });
-    await expect(
-      page.getByText("creative-concepts", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("main", { exact: true })).toBeVisible();
     await expect(build).toHaveText(/0\.7\.34/);
 
     // The notes come from the changelog of that commit, without its verification part.
@@ -637,7 +634,7 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
         "utf8",
       ),
     ).not.toContain("edited");
-    expect(git("rev-parse", "--abbrev-ref", "HEAD")).toBe("creative-concepts");
+    expect(git("rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     expect(fs.readFileSync(path.join(repo, "wails.json"), "utf8")).toBe(edited);
 
     const out = path.join(repo, "release", "creative", "0.7.34");
@@ -717,7 +714,7 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
 });
 
 test("大众版托管版：新建顾客，用已构建的大众版程序加授权文件出包，不重新构建", async () => {
-  // More keys for a second person (the first customer took the pool), through
+  // More keys for a second person (the first one took the pool), through
   // the same calls the Key 池 page makes; the LLM keys are verified on the mock.
   type Key = { id: string; upstreamID: string; verified: boolean };
   type St = {
@@ -739,16 +736,15 @@ test("大众版托管版：新建顾客，用已构建的大众版程序加授�
   for (const k of (await app<St>("State")).keys)
     if (k.upstreamID === llm && !k.verified) await app("VerifyLLM", k.id);
 
-  await page.getByRole("link", { name: "客户" }).click();
+  await page.getByRole("link", { name: "顾客" }).click();
   await page.getByRole("button", { name: "新建", exact: true }).click();
-  const create = page.getByRole("dialog", { name: "新建客户或顾客" });
-  await create.getByRole("radio", { name: "大众版 · 托管版" }).check();
+  const create = page.getByRole("dialog", { name: "新建托管版顾客" });
   await create.getByLabel("名称").fill("QA 顾客");
   await create.getByRole("button", { name: "创建" }).click();
   await expect(
     page.getByRole("heading", { name: "QA 顾客", level: 1 }),
   ).toBeVisible();
-  await expect(page.locator(".page-header p")).toContainText("大众版 · 托管版");
+  await expect(page.locator(".page-header p")).toContainText("托管版");
   // The package is made of the version built on the 发布大众版 page.
   const build = page.getByRole("button", { name: /^生成交付包/ });
   await expect(build).toBeDisabled();
@@ -789,14 +785,12 @@ test("大众版托管版：新建顾客，用已构建的大众版程序加授�
     ),
   ).toBe(false);
 
-  // The list tells the two product lines apart (the first test deleted its
-  // customer, so an e-commerce one is created here).
-  await app("CreateCustomer", "QA 客户 乙", 0, "ecommerce");
-  await page.getByRole("link", { name: "客户", exact: true }).click();
-  const row = (name: string) =>
-    page.locator(".ant-table-row").filter({ hasText: name });
-  await expect(row("QA 顾客")).toContainText("大众版 · 托管版");
-  await expect(row("QA 客户 乙")).toContainText("电商版");
+  // The list holds hosted users only: no product line column.
+  await page.getByRole("link", { name: "顾客", exact: true }).click();
+  await expect(
+    page.locator(".ant-table-row").filter({ hasText: "QA 顾客" }),
+  ).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "产品线" })).toHaveCount(0);
   await settle();
   const a11y = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])

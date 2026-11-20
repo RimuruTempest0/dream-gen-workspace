@@ -133,10 +133,9 @@ func (x *App) UnrevokeKeys(ids []string) error               { return x.a.Unrevo
 func (x *App) SetKeyUse(id, use string) error                { return x.a.SetKeyUse(id, use) }
 func (x *App) RevealCode(customerID string) (string, error)  { return x.a.RevealCode(customerID) }
 
-// CreateCustomer creates a person on a product line: "ecommerce" (a customer) or
-// "creative" (a hosted user of the mass-market line).
-func (x *App) CreateCustomer(name string, trial int, line string) (admin.Customer, error) {
-	return x.a.CreateCustomerOn(line, name, trial)
+// CreateCustomer creates a hosted user of the mass-market line.
+func (x *App) CreateCustomer(name string, trial int) (admin.Customer, error) {
+	return x.a.CreateCustomer(name, trial)
 }
 
 // HostedSource is the built mass-market version a hosted package would be made of.
@@ -164,11 +163,11 @@ func (x *App) ChooseRepoRoot() (string, error) {
 	return dir, x.a.SetRepoRoot(dir)
 }
 
-// LineSource is the commit and version a build of a product line ("ecommerce"
-// or "creative") would take now, for the two build pages.
+// LineSource is the commit and version a build of the mass-market line
+// ("creative") would take now.
 func (x *App) LineSource(line string) admin.LineSource { return x.a.LineSource(line) }
 
-// BuildPackage starts a customer package build in the background; progress and
+// BuildPackage assembles a hosted package in the background; progress and
 // the result arrive as "build:log" and "build:done" events.
 func (x *App) BuildPackage(customerID, version string) error {
 	if !x.building.TryLock() {
@@ -177,7 +176,7 @@ func (x *App) BuildPackage(customerID, version string) error {
 	go func() {
 		defer x.building.Unlock()
 		log := func(s string) { runtime.EventsEmit(x.ctx, "build:log", s) }
-		d, e := x.a.BuildPackage(context.Background(), customerID, version, x.builder, admin.LocalDataDir(x.a.State().RepoRoot), log)
+		d, e := x.a.BuildPackage(context.Background(), customerID, version, admin.LocalDataDir(x.a.State().RepoRoot), log)
 		result := map[string]any{"ok": e == nil}
 		if e != nil {
 			result["error"] = e.Error()
@@ -267,24 +266,6 @@ func (x *App) SaveCustomerFile(customerID string) (bool, error) {
 		return false, e
 	}
 	return true, x.a.WriteCustomerFile(customerID, path)
-}
-
-func (x *App) SetUpdateURL(url string) error { return x.a.SetUpdateURL(url) }
-
-// ChooseUpdatePackage picks a program update package (ImageWorkbench-update-….zip).
-func (x *App) ChooseUpdatePackage() (string, error) {
-	return runtime.OpenFileDialog(x.ctx, runtime.OpenDialogOptions{Title: "选择程序更新包", Filters: []runtime.FileFilter{{DisplayName: "程序更新包", Pattern: "*.zip"}}})
-}
-
-// PublishUpdate signs update.json for the package and saves it where the
-// provider chooses; both files are then uploaded by the provider.
-func (x *App) PublishUpdate(r admin.UpdateRelease) (bool, error) {
-	path, e := runtime.SaveFileDialog(x.ctx, runtime.SaveDialogOptions{Title: "保存更新清单", DefaultFilename: "update.json", Filters: []runtime.FileFilter{{DisplayName: "更新清单", Pattern: "*.json"}}})
-	if e != nil || path == "" {
-		return false, e
-	}
-	_, e = x.a.PublishUpdate(r, path)
-	return e == nil, e
 }
 
 func (x *App) ExportSigningBackup(password string) (bool, error) {

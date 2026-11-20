@@ -21,7 +21,6 @@ import (
 
 	"imageworkbench/internal/core"
 	"imageworkbench/internal/license"
-	"imageworkbench/internal/update"
 )
 
 func open(t *testing.T) *Admin {
@@ -217,7 +216,7 @@ func repo(t *testing.T, a *Admin) string {
 	// No Git in these tests: the source folder stands in for the build folder of
 	// both product lines.
 	a.prepare = func(repo, line, commit string) (string, error) { return repo, nil }
-	sourceAt(a, "0.6.2")
+	sourceAt(a, "0.8.2")
 	return dir
 }
 
@@ -229,17 +228,23 @@ func sourceAt(a *Admin, version string, changed ...string) {
 	}
 }
 
-// buildPackage builds a customer package of version from a source at that version.
-func buildPackage(a *Admin, customerID, version string, b Builder, log func(string)) (Delivery, error) {
-	sourceAt(a, version)
-	return a.BuildPackage(context.Background(), customerID, version, b, "", log)
+// buildPackage assembles a hosted package of version, first building that
+// version of the mass-market line from a source at that version if needed.
+func buildPackage(a *Admin, customerID, version string, log func(string)) (Delivery, error) {
+	if !slices.ContainsFunc(a.State().Creative, func(r CreativeRelease) bool { return r.Version == version }) {
+		sourceAt(a, version)
+		if _, e := a.BuildCreative(context.Background(), version, "说明", "Notes", fakeBuilder{update: true}, "", log); e != nil {
+			return Delivery{}, e
+		}
+	}
+	return a.BuildPackage(context.Background(), customerID, version, "", log)
 }
 
 func TestPackageRefusesIncompleteOrUnverifiedLines(t *testing.T) {
 	a := open(t)
 	c, _ := a.CreateCustomer("客户 A", 0)
 	repo(t, a)
-	if _, e := buildPackage(a, c.ID, "0.6.2", fakeBuilder{}, func(string) {}); e == nil || !strings.Contains(e.Error(), "还没有分配 Key") {
+	if _, e := buildPackage(a, c.ID, "0.8.2", func(string) {}); e == nil || !strings.Contains(e.Error(), "还没有分配 Key") {
 		t.Fatal(e)
 	}
 	stock(t, a, 1, "")
@@ -301,7 +306,7 @@ func TestPackageNeedsOnlyMainLines(t *testing.T) {
 	if got := a.State().Customers[0].ImageBackups; len(got) != len(defaultOrder) {
 		t.Fatal("saved backup order lost its empty lines", got)
 	}
-	if _, e = buildPackage(a, c.ID, "0.6.6", fakeBuilder{}, func(string) {}); e != nil {
+	if _, e = buildPackage(a, c.ID, "0.8.6", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -314,7 +319,7 @@ func TestDeleteCustomerFreesUndeliveredAndDisablesDeliveredKeys(t *testing.T) {
 	repo(t, a)
 	c, _ := a.CreateCustomer("客户 C", 0)
 	a.AutoAssign(c.ID)
-	if _, e := buildPackage(a, c.ID, "0.6.15", fakeBuilder{}, func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.8.15", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	r, _ := a.ImportKeys(a.State().Upstreams[0].ID, "primary", "sk-late-key-0001", "")
@@ -392,7 +397,7 @@ func TestBulkDeleteAndDisableKeys(t *testing.T) {
 	repo(t, a)
 	c, _ := a.CreateCustomer("客户 E", 0)
 	a.AutoAssign(c.ID)
-	if _, e := buildPackage(a, c.ID, "0.6.17", fakeBuilder{}, func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.8.17", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	u := a.State().Upstreams[0].ID
@@ -463,11 +468,11 @@ func TestBuildPackageZipsChecksAndRecords(t *testing.T) {
 	a.AutoAssign(c.ID)
 	dir := repo(t, a)
 	var logs []string
-	d, e := buildPackage(a, c.ID, "0.6.2", fakeBuilder{}, func(s string) { logs = append(logs, s) })
+	d, e := buildPackage(a, c.ID, "0.8.2", func(s string) { logs = append(logs, s) })
 	if e != nil {
 		t.Fatal(e, logs)
 	}
-	if filepath.Base(d.Zip) != "ImageWorkbench-客户_A-0.6.2.zip" || d.VaultRevision != 1 || len(d.SHA256) != 64 {
+	if filepath.Base(d.Zip) != "ImageWorkbench-客户_A-0.8.2.zip" || d.VaultRevision != 1 || len(d.SHA256) != 64 {
 		t.Fatalf("delivery: %+v", d)
 	}
 	z, e := zip.OpenReader(d.Zip)
@@ -483,9 +488,6 @@ func TestBuildPackageZipsChecksAndRecords(t *testing.T) {
 		if !names[want] {
 			t.Fatal("missing", want, names)
 		}
-	}
-	if _, e = os.Stat(filepath.Join(dir, "release", "customers", c.SoftwareID, "0.6.2", "customer.dat")); e != nil {
-		t.Fatal("release folder lacks customer.dat")
 	}
 	st := a.State().Customers[0]
 	if st.Changed || st.VaultRevision != 1 || len(st.Deliveries) != 1 {
@@ -526,11 +528,17 @@ func TestBuildPackageZipsChecksAndRecords(t *testing.T) {
 	k, _ := a.keyLocked(cust.Slots["llm-1"])
 	leak, _ := a.secret(k.SecretRef)
 	a.mu.Unlock()
-	_, e = buildPackage(a, c.ID, "0.6.3", fakeBuilder{leak: string(leak)}, func(string) {})
+	// The leak sits in the built program the package is assembled from.
+	sourceAt(a, "0.8.3")
+	if _, e = a.BuildCreative(context.Background(), "0.8.3", "说明", "Notes", fakeBuilder{update: true}, "", func(string) {}); e != nil {
+		t.Fatal(e)
+	}
+	os.WriteFile(filepath.Join(dir, "release", "creative", "build", "0.8.3", "使用说明.txt"), []byte("help "+string(leak)), 0o644)
+	_, e = a.BuildPackage(context.Background(), c.ID, "0.8.3", "", func(string) {})
 	if e == nil || !strings.Contains(e.Error(), "LLM 线路 1 Key found in 使用说明.txt") || strings.Contains(e.Error(), string(leak)) {
 		t.Fatal(e)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "release", "customers", c.SoftwareID, zipName(c.Name, "0.6.3"))); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "release", "customers", c.SoftwareID, zipName(c.Name, "0.8.3"))); err == nil {
 		t.Fatal("failed package left behind")
 	}
 }
@@ -798,17 +806,14 @@ func TestExpiryAndRenewalFile(t *testing.T) {
 		t.Fatal(e)
 	}
 	renewal := filepath.Join(t.TempDir(), "customer.dat")
-	if e := a.WriteCustomerFile(c.ID, renewal); e == nil {
-		t.Fatal("renewal file before any package")
-	}
-	if _, e := buildPackage(a, c.ID, "0.7.12", fakeBuilder{}, func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.8.12", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	defer core.TrustLicenseKeyForTest(a.State().SigningPublicKey)()
-	var pkg string
+	pkg := t.TempDir()
 	for _, cu := range a.State().Customers {
 		if cu.ID == c.ID {
-			pkg = filepath.Join(filepath.Dir(cu.Deliveries[0].Zip), "0.7.12")
+			os.WriteFile(filepath.Join(pkg, license.FileName), zipFile(t, cu.Deliveries[0].Zip, license.FileName), 0o600)
 		}
 	}
 	s, e := core.NewService(filepath.Join(t.TempDir(), "data"))
@@ -844,41 +849,6 @@ func TestExpiryAndRenewalFile(t *testing.T) {
 	}
 	if last := events[len(events)-1]; last.Kind != "renewed" || !strings.Contains(last.Text, future) {
 		t.Fatalf("renewal not recorded: %+v", last)
-	}
-}
-
-func TestUpdateAddressAndPublishedManifest(t *testing.T) {
-	isolate(t)
-	a := open(t)
-	repo(t, a)
-	stock(t, a, 1, "http://127.0.0.1:1/v1")
-	if e := a.SetUpdateURL("ftp://x/update.json"); e == nil {
-		t.Fatal("bad update address saved")
-	}
-	if e := a.SetUpdateURL("https://dl.example.test/iw/update.json"); e != nil {
-		t.Fatal(e)
-	}
-	c, _ := a.CreateCustomer("客户 C", 3)
-	a.AutoAssign(c.ID)
-	d, e := buildPackage(a, c.ID, "0.7.13", fakeBuilder{update: true}, func(string) {})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if d.UpdateZip == "" || !fileExists(d.UpdateZip) {
-		t.Fatal("update package not kept", d.UpdateZip)
-	}
-	dest := filepath.Join(t.TempDir(), "update.json")
-	m, e := a.PublishUpdate(UpdateRelease{Zip: d.UpdateZip, URL: "https://dl.example.test/iw/ImageWorkbench-update-0.7.13.zip", MinVersion: "0.7.12", Notes: "修复"}, dest)
-	if e != nil || m.Version != "0.7.13" || m.MinVersion != "0.7.12" {
-		t.Fatal(m, e)
-	}
-	data, _ := os.ReadFile(dest)
-	if _, e = update.Verify(data, []string{a.State().SigningPublicKey}, ""); e != nil {
-		t.Fatal("published manifest does not verify", e)
-	}
-	// A customer package (with customer.dat) is not an update package.
-	if _, e = a.PublishUpdate(UpdateRelease{Zip: d.Zip, URL: "https://x/u.zip"}, dest); e == nil {
-		t.Fatal("customer package published as an update")
 	}
 }
 

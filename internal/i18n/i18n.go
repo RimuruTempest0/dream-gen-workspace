@@ -1,6 +1,6 @@
 // Package i18n holds the 界面语言 (interface language) codes shared by the
 // program and its tests, maps a Windows UI language onto them, and keeps the
-// fixed-term glossary (CONTEXT.md is the source of the terms).
+// fixed-term glossary (GLOSSARY.md is the source of the terms).
 //
 // The interface text itself lives in the frontend text tables
 // (frontend/src/i18n/messages/*.json); messages_test.go checks them.

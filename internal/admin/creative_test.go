@@ -47,7 +47,7 @@ func TestCreativeReleaseIsBuiltSignedAndLaidOutForUpload(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if req.ProductLine != "creative" || req.UpdateKey != a.State().SigningPublicKey || req.PublicKey != "" || req.UpdateURL != CreativeReleaseURL+"update.json" {
+	if req.ProductLine != "creative" || req.UpdateKey != a.State().SigningPublicKey || req.UpdateURL != CreativeReleaseURL+"update.json" {
 		t.Fatalf("build request %+v", req)
 	}
 	// The full package stays on this computer; only the upload folder is public.
@@ -88,20 +88,21 @@ func TestCreativeReleaseRefusesOtherVersionAndMissingNotes(t *testing.T) {
 	}
 }
 
-// Each product line is built in its own build folder at the newest commit of its
-// own branch, whatever the source folder has checked out or left uncommitted.
+// The mass-market line is built in its own build folder at the newest commit of
+// main, whatever the source folder has checked out or left uncommitted.
 func TestBuildsTakeTheirLinesCommitAndIgnoreTheSourceFolder(t *testing.T) {
 	isolate(t)
 	a := open(t)
 	dir := creativeRepo(t, a, "0.7.32")
-	stock(t, a, 1, "http://127.0.0.1:1/v1")
-	c, _ := a.CreateCustomer("客户 D", 3)
-	a.AutoAssign(c.ID)
 	heads := map[string]LineHead{
-		EcommerceBranch: {Commit: "aaaa", Short: "aaaa", Subject: "电商版提交", Version: "0.7.17", Current: CreativeBranch, Changed: []string{"frontend/src/App.tsx"}},
-		CreativeBranch:  {Commit: "bbbb", Short: "bbbb", Subject: "大众版提交", Version: "0.7.32", Current: CreativeBranch, Changed: []string{"frontend/src/App.tsx"}},
+		CreativeBranch: {Commit: "bbbb", Short: "bbbb", Subject: "大众版提交", Version: "0.7.32", Current: CreativeBranch, Changed: []string{"frontend/src/App.tsx"}},
 	}
-	a.head = func(_, branch string) (LineHead, error) { return heads[branch], nil }
+	a.head = func(_, branch string) (LineHead, error) {
+		if h, ok := heads[branch]; ok {
+			return h, nil
+		}
+		return LineHead{}, errors.New("no such branch " + branch)
+	}
 	var prepared []string
 	a.prepare = func(repo, line, commit string) (string, error) {
 		prepared = append(prepared, line+"@"+commit)
@@ -110,41 +111,30 @@ func TestBuildsTakeTheirLinesCommitAndIgnoreTheSourceFolder(t *testing.T) {
 	var req BuildRequest
 	var logs []string
 	log := func(s string) { logs = append(logs, s) }
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", fakeBuilder{seen: &req}, "", log); e != nil {
-		t.Fatal(e)
-	}
-	if req.RepoRoot != dir || req.BuildDir != filepath.Join(dir, "build-ecommerce") {
-		t.Fatalf("customer package built in %+v", req)
-	}
-	// The uncommitted changes are the mass-market line's: nothing to say here.
-	if strings.Contains(strings.Join(logs, "\n"), "未提交") {
-		t.Fatal("warned about changes of the other line", logs)
-	}
-	logs = nil
 	if _, e := a.BuildCreative(context.Background(), "0.7.32", "说明", "Notes", fakeBuilder{update: true, seen: &req}, "", log); e != nil {
 		t.Fatal(e)
 	}
-	if req.BuildDir != filepath.Join(dir, "build-creative") || strings.Join(prepared, " ") != "ecommerce@aaaa creative@bbbb" {
+	if req.RepoRoot != dir || req.BuildDir != filepath.Join(dir, "build-creative") || strings.Join(prepared, " ") != "creative@bbbb" {
 		t.Fatal(req.BuildDir, prepared)
 	}
 	if all := strings.Join(logs, "\n"); !strings.Contains(all, "1 个未提交的改动，不会进入这次构建") || !strings.Contains(all, "bbbb 大众版提交") {
 		t.Fatal("build log lacks the commit or the notice", logs)
 	}
-	// A customer package cannot be labelled with another version than its code.
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.32", fakeBuilder{}, "", log); e == nil || !strings.Contains(e.Error(), "0.7.17") {
-		t.Fatal("0.7.17 code labelled 0.7.32:", e)
+	// A build cannot be labelled with another version than its code.
+	if _, e := a.BuildCreative(context.Background(), "0.7.40", "说明", "Notes", fakeBuilder{update: true}, "", log); e == nil || !strings.Contains(e.Error(), "0.7.32") {
+		t.Fatal("0.7.32 code labelled 0.7.40:", e)
 	}
-	// What the pages show before building.
-	if s := a.LineSource(EcommerceLine); s.Version != "0.7.17" || s.Commit != "aaaa" || s.Uncommitted != 0 || s.Blocked != "" {
+	// What the page shows before building; the retired e-commerce line is gone.
+	if s := a.LineSource(CreativeLine); s.Version != "0.7.32" || s.Uncommitted != 1 || s.ReleasePage == "" || s.Branch != "main" {
 		t.Fatalf("%+v", s)
 	}
-	if s := a.LineSource(CreativeLine); s.Version != "0.7.32" || s.Uncommitted != 1 || s.ReleasePage == "" {
-		t.Fatalf("%+v", s)
+	if s := a.LineSource("ecommerce"); s.Blocked == "" {
+		t.Fatalf("the e-commerce line still builds: %+v", s)
 	}
 	// No fallback to building in the source folder when the build folder fails.
 	a.prepare = func(string, string, string) (string, error) { return "", errors.New("磁盘已满") }
 	built := false
-	if _, e := a.BuildPackage(context.Background(), c.ID, "0.7.17", builderFunc(func() { built = true }), "", log); e == nil || !strings.Contains(e.Error(), "磁盘已满") || built {
+	if _, e := a.BuildCreative(context.Background(), "0.7.32", "说明", "Notes", builderFunc(func() { built = true }), "", log); e == nil || !strings.Contains(e.Error(), "磁盘已满") || built {
 		t.Fatal("built without a build folder:", e, built)
 	}
 }

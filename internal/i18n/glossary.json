@@ -1,5 +1,5 @@
 {
-  "about": "Fixed-term glossary for the five interface languages. Source of the terms: CONTEXT.md. Any text-table string whose zh-CN text contains a term must use the listed translation in every other language (case-insensitive). Add a term here before using a new fixed term in the tables.",
+  "about": "Fixed-term glossary for the five interface languages. Source of the terms: GLOSSARY.md. Any text-table string whose zh-CN text contains a term must use the listed translation in every other language (case-insensitive). Add a term here before using a new fixed term in the tables.",
   "terms": [
     { "zh-CN": "生图工作台", "en": "Image Workbench", "vi": "Image Workbench", "ja": "Image Workbench", "ko": "Image Workbench", "note": "Program name; the brand name is never translated." },
     { "zh-CN": "界面语言", "en": "display language", "vi": "ngôn ngữ giao diện", "ja": "表示言語", "ko": "표시 언어", "note": "The language the customer picked for the program." },

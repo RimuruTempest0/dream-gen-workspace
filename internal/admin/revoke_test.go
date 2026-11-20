@@ -13,7 +13,7 @@ func TestRevokedKeysStayAsRecordsOnly(t *testing.T) {
 	repo(t, a)
 	c, _ := a.CreateCustomer("客户 F", 0)
 	a.AutoAssign(c.ID)
-	if _, e := buildPackage(a, c.ID, "0.6.17", fakeBuilder{}, func(string) {}); e != nil {
+	if _, e := buildPackage(a, c.ID, "0.8.17", func(string) {}); e != nil {
 		t.Fatal(e)
 	}
 	u := a.State().Upstreams[0].ID
@@ -46,7 +46,7 @@ func TestRevokedKeysStayAsRecordsOnly(t *testing.T) {
 	}
 
 	// An assigned key cannot be revoked, and the whole selection stays as it was.
-	if e := a.RevokeKeys([]string{delivered, assigned}); e == nil || !strings.Contains(e.Error(), "正分配给客户") {
+	if e := a.RevokeKeys([]string{delivered, assigned}); e == nil || !strings.Contains(e.Error(), "正分配给顾客") {
 		t.Fatal("revoked an assigned key:", e)
 	}
 	if status(delivered).Status != "disabled" {
