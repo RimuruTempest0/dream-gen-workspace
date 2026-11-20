@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, App as AntApp, Button, Input, Space, Table } from "antd";
-import { FolderOpenOutlined, LinkOutlined } from "@ant-design/icons";
+import {
+  CloudUploadOutlined,
+  FolderOpenOutlined,
+  LinkOutlined,
+} from "@ant-design/icons";
 import { call, errorText } from "../api";
 import { Header, time, useActions } from "../ui";
 import { useAdminState } from "./AdminApp";
 import { LineFacts, useLineSource } from "./LineSource";
-import type { CreativeRelease } from "./types";
+import type { CreativeRelease, UploadPlan } from "./types";
 
 // 发布大众版: build the mass-market line from the newest commit of its branch,
-// check both packages, sign update.json. Uploading the two public files stays manual.
+// check both packages, sign update.json, and on request put the two public
+// files on the creative release through the GitHub CLI.
 export function Creative() {
   const state = useAdminState();
   const source = useLineSource("creative");
@@ -22,6 +27,11 @@ export function Creative() {
   const [building, setBuilding] = useState(false);
   const [done, setDone] = useState<CreativeRelease | undefined>();
   const logRef = useRef<HTMLDivElement>(null);
+  // Uploading: the version under way, its log and the outcome.
+  const [uploading, setUploading] = useState<string>();
+  const [upLog, setUpLog] = useState<string[]>([]);
+  const [upResult, setUpResult] = useState<{ ok: boolean; text: string }>();
+  const upLogRef = useRef<HTMLDivElement>(null);
   const src = source.data;
   const version = src?.version || "";
 
@@ -87,21 +97,98 @@ export function Creative() {
         source.refetch();
       },
     );
+    const offUpLog = window.runtime?.EventsOn(
+      "creative-upload:log",
+      (line: string) => setUpLog((l) => [...l, line].slice(-200)),
+    );
+    const offUpDone = window.runtime?.EventsOn(
+      "creative-upload:done",
+      (r: { ok: boolean; error?: string; release?: CreativeRelease }) => {
+        setUploading(undefined);
+        setUpResult(
+          r.ok
+            ? {
+                ok: true,
+                text: `${r.release?.version} 已上传并从公开地址核对过，顾客的软件下次检查更新时会看到它`,
+              }
+            : { ok: false, text: r.error || "上传失败" },
+        );
+        state.refetch();
+      },
+    );
     return () => {
       offLog?.();
       offDone?.();
+      offUpLog?.();
+      offUpDone?.();
     };
   }, []);
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [log]);
+  useEffect(() => {
+    upLogRef.current?.scrollTo({ top: upLogRef.current.scrollHeight });
+  }, [upLog]);
+
+  const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
+  // Ask with the exact files and destination, then upload in the background.
+  const upload = (version: string) =>
+    actions.run(async () => {
+      const plan = await call<UploadPlan>("CreativeUploadPlan", version);
+      const replacing = plan.published
+        ? plan.published === version
+          ? `Release 上现在已经是 ${version}，会重新上传一次。`
+          : `Release 上现在是 ${plan.published}，上传后顾客会看到 ${version}。`
+        : "Release 上现在还没有 update.json，上传后顾客会第一次看到更新。";
+      modal.confirm({
+        title: `把大众版 ${version} 上传到 GitHub？`,
+        width: 560,
+        content: (
+          <div className="admin-upload-plan">
+            <p>
+              传到标签为 <code>{plan.tag}</code> 的 Release，按这个顺序：
+            </p>
+            <ol>
+              {plan.files.map((f) => (
+                <li key={f.name}>
+                  <code>{f.name}</code>（{mb(f.size)}）
+                </li>
+              ))}
+            </ol>
+            <p>{replacing}</p>
+            <p className="hint">
+              Release 保持 Pre-release，不会被设为
+              Latest。完整包不上传。用的是这台电脑上已登录的 GitHub
+              CLI（gh），管理工具不保存 GitHub 的登录信息。
+            </p>
+          </div>
+        ),
+        okText: "上传",
+        cancelText: "取消",
+        onOk: async () => {
+          setUpLog([]);
+          setUpResult(undefined);
+          try {
+            setUploading(version);
+            await call("UploadCreative", version);
+          } catch (e) {
+            setUploading(undefined);
+            setUpResult({ ok: false, text: errorText(e) });
+          }
+        },
+      });
+    });
 
   const releases = [...(state.data?.creative ?? [])].reverse();
+  // The ledger, not the build result, knows whether it has been uploaded since.
+  const doneUploaded = releases.some(
+    (r) => r.version === done?.version && !!r.uploadedAt,
+  );
   return (
     <>
       <Header
         title="发布大众版"
-        sub="大众版没有授权，顾客自己配置服务。这里构建、检查并签名；上传由你在 GitHub 网页上完成。"
+        sub="大众版没有授权，顾客自己配置服务。这里构建、检查、签名，再上传到 GitHub。"
       />
       <section className="panel" aria-labelledby="creative-source-title">
         <div className="panel-heading">
@@ -206,29 +293,48 @@ export function Creative() {
         <div className="panel-heading">
           <h2 id="creative-upload-title">上传到 GitHub</h2>
         </div>
-        {done && (
+        {done && !doneUploaded && uploading !== done.version && (
           <Alert
-            type="success"
+            type="info"
             showIcon
             message={`${done.version} 已准备好，还没有上传`}
+            action={
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => upload(done.version)}
+              >
+                上传 {done.version}
+              </Button>
+            }
           />
         )}
-        <ol className="admin-steps">
-          <li>
-            打开标签为 <code>creative</code> 的 Release，点编辑。它必须保持
-            Pre-release，不要勾选 “Set as the latest
-            release”：电商版客户的软件每天读 Latest。
-          </li>
-          <li>
-            先上传 upload 文件夹里的更新包
-            <code>ImageWorkbench-update-版本号.zip</code>。
-          </li>
-          <li>
-            再删除 Release 里原来的 <code>update.json</code>，上传新的
-            <code>update.json</code>，保存。顺序不要反：先有包，再换清单。
-          </li>
-          <li>upload 文件夹以外的文件都不要上传，完整包只私下发。</li>
-        </ol>
+        <p className="hint">
+          上传会先传更新包、再替换
+          update.json，然后从公开地址读回来核对。只能上传比 Release
+          上现在的版本更新或相同的版本；完整包不上传，只私下发。
+        </p>
+        {upResult && (
+          <Alert
+            type={upResult.ok ? "success" : "error"}
+            showIcon
+            message={upResult.text}
+          />
+        )}
+        {upLog.length > 0 && (
+          <div
+            className="admin-log"
+            ref={upLogRef}
+            role="log"
+            aria-live="polite"
+            tabIndex={0}
+            aria-label="上传记录"
+          >
+            {upLog.map((l, i) => (
+              <div key={i}>{l}</div>
+            ))}
+          </div>
+        )}
         <Space wrap>
           <Button
             icon={<LinkOutlined aria-hidden="true" />}
@@ -245,11 +351,26 @@ export function Creative() {
           locale={{ emptyText: "还没有构建过大众版" }}
           columns={[
             { title: "版本", dataIndex: "version", width: 90 },
-            { title: "构建时间", render: (_, r) => time(r.at), width: 170 },
+            { title: "构建时间", render: (_, r) => time(r.at), width: 150 },
+            {
+              title: "上传",
+              width: 150,
+              render: (_, r) =>
+                r.uploadedAt ? `已上传 ${time(r.uploadedAt)}` : "—",
+            },
             {
               title: "文件",
               render: (_, r) => (
                 <Space wrap>
+                  <Button
+                    size="small"
+                    icon={<CloudUploadOutlined aria-hidden="true" />}
+                    loading={uploading === r.version}
+                    disabled={!!uploading || building}
+                    onClick={() => upload(r.version)}
+                  >
+                    上传到 GitHub
+                  </Button>
                   <Button
                     size="small"
                     icon={<FolderOpenOutlined aria-hidden="true" />}

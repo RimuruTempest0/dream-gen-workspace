@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"imageworkbench/internal/admin"
 )
@@ -51,3 +52,42 @@ func (qaBuilder) Build(_ context.Context, b admin.BuildRequest, log func(string)
 }
 
 func builder() admin.Builder { return qaBuilder{} }
+
+// qaHost stands in for the creative release on GitHub in desktop QA: uploads
+// stay in memory and are served back from there. Nothing reaches GitHub.
+type qaHost struct {
+	mu    sync.Mutex
+	files map[string][]byte
+}
+
+func (h *qaHost) Release(context.Context) (admin.HostRelease, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := admin.HostRelease{Prerelease: true}
+	for name := range h.files {
+		r.Assets = append(r.Assets, name)
+	}
+	return r, nil
+}
+
+func (h *qaHost) Upload(_ context.Context, path string) error {
+	b, e := os.ReadFile(path)
+	if e != nil {
+		return e
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.files[filepath.Base(path)] = b
+	return nil
+}
+
+func (h *qaHost) Fetch(_ context.Context, name string) ([]byte, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if b, ok := h.files[name]; ok {
+		return b, nil
+	}
+	return nil, admin.ErrNotPublished
+}
+
+func releaseHost() admin.ReleaseHost { return &qaHost{files: map[string][]byte{}} }

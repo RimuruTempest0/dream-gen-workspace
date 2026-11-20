@@ -73,6 +73,16 @@ export type CreativeRelease = {
   manifest: string;
   notes: string;
   notesEn?: string;
+  /** When the tool put this version on the creative release (admin 1.11.0). */
+  uploadedAt?: string;
+};
+export type UploadPlan = {
+  version: string;
+  files: { name: string; path: string; size: number }[];
+  page: string;
+  tag: string;
+  /** The version update.json on the release announces now; "" = none. */
+  published: string;
 };
 export type HostedSource = { version: string; at: string; blocked: string };
 export type LineSource = {

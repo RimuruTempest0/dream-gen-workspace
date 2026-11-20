@@ -62,6 +62,7 @@ type App struct {
 	a        *admin.Admin
 	building sync.Mutex
 	builder  admin.Builder
+	host     admin.ReleaseHost
 }
 
 func main() {
@@ -74,7 +75,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, e)
 		os.Exit(1)
 	}
-	app := &App{a: a, builder: builder()}
+	app := &App{a: a, builder: builder(), host: releaseHost()}
 	app.detectRepo()
 	e = wails.Run(&options.App{
 		Title: "ImageWorkbench 管理工具", Width: 1360, Height: 900, MinWidth: 800, MinHeight: 600,
@@ -193,7 +194,7 @@ func (x *App) CreativeNotes(version string) string { return x.a.CreativeNotes(ve
 
 // BuildCreative builds, checks and signs a version of the mass-market line in
 // the background; progress and the result arrive as "creative:log" and
-// "creative:done". Nothing is uploaded.
+// "creative:done". Uploading is a separate step (UploadCreative).
 // TranslateNotes translates the Chinese update notes into English with an LLM
 // key of the pool: one short, billable call; the UI asks first.
 func (x *App) TranslateNotes(zh string) (string, error) { return x.a.TranslateNotes(zh) }
@@ -213,6 +214,34 @@ func (x *App) BuildCreative(version, notes, notesEn string) error {
 			result["release"] = r
 		}
 		runtime.EventsEmit(x.ctx, "creative:done", result)
+	}()
+	return nil
+}
+
+// CreativeUploadPlan lists the two files an upload of version would send and
+// the version the creative release announces now, for the confirmation.
+func (x *App) CreativeUploadPlan(version string) (admin.UploadPlan, error) {
+	return x.a.CreativeUploadPlan(context.Background(), version, x.host)
+}
+
+// UploadCreative puts a built version on the creative release through the
+// GitHub CLI in the background; progress and the result arrive as
+// "creative-upload:log" and "creative-upload:done".
+func (x *App) UploadCreative(version string) error {
+	if !x.building.TryLock() {
+		return errors.New("正在进行另一次构建或上传，请等它完成")
+	}
+	go func() {
+		defer x.building.Unlock()
+		log := func(s string) { runtime.EventsEmit(x.ctx, "creative-upload:log", s) }
+		r, e := x.a.UploadCreative(context.Background(), version, x.host, log)
+		result := map[string]any{"ok": e == nil}
+		if e != nil {
+			result["error"] = e.Error()
+		} else {
+			result["release"] = r
+		}
+		runtime.EventsEmit(x.ctx, "creative-upload:done", result)
 	}()
 	return nil
 }

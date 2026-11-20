@@ -664,9 +664,42 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
       notesEn: "QA English notes, translated and checked.",
       url: "https://github.com/RimuruTempest0/dream-gen-workspace/releases/download/creative/ImageWorkbench-update-0.7.34.zip",
     });
+    const row = page.locator(".ant-table-row").filter({ hasText: "0.7.34" });
+    await expect(row).toBeVisible();
+
+    // Upload (QA: a stand-in release, nothing reaches GitHub). The confirmation
+    // names both files in order and the release; one click sends them.
+    await settle();
+    await row.getByRole("button", { name: "上传到 GitHub" }).click();
+    const confirm = page.getByRole("dialog", {
+      name: "把大众版 0.7.34 上传到 GitHub？",
+    });
+    await expect(confirm).toContainText(
+      /ImageWorkbench-update-0\.7\.34\.zip[\s\S]*update\.json/,
+    );
+    await expect(confirm).toContainText("还没有 update.json");
+    await expect(confirm).toContainText("Pre-release");
+    await page.waitForFunction(() => document.getAnimations().length === 0);
+    const a11yConfirm = await new AxeBuilder({ page })
+      .include(".ant-modal")
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+      .analyze();
+    expect(a11yConfirm.violations).toEqual([]);
+    await confirm.getByRole("button", { name: "上传" }).click();
     await expect(
-      page.locator(".ant-table-row").filter({ hasText: "0.7.34" }),
-    ).toBeVisible();
+      page.getByText(/0\.7\.34 已上传并从公开地址核对过/),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(row).toContainText("已上传");
+    await expect(page.getByText("0.7.34 已准备好，还没有上传")).toHaveCount(0);
+    // Uploading again names the version already there.
+    await row.getByRole("button", { name: "上传到 GitHub" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "把大众版 0.7.34 上传到 GitHub？" }),
+    ).toContainText("Release 上现在已经是 0.7.34");
+    await page
+      .getByRole("dialog", { name: "把大众版 0.7.34 上传到 GitHub？" })
+      .getByRole("button", { name: "取消" })
+      .click();
 
     await settle();
     const a11y = await new AxeBuilder({ page })
@@ -674,7 +707,7 @@ test("发布大众版：显示将要构建的提交，未提交的改动不进�
       .analyze();
     expect(a11y.violations).toEqual([]);
     await page.screenshot({
-      path: "../docs/admin-creative-1.7.0.png",
+      path: "../docs/admin-creative-1.11.0.png",
       fullPage: true,
     });
   } finally {

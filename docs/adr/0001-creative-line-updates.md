@@ -13,6 +13,7 @@
 3. **大众版的更新发布位是一个固定的 Release**：标签 `creative`，标记为 Pre-release。每次发布在这个 Release 里上传新的更新包并替换 `update.json`。大众版软件读 `releases/download/creative/update.json`。
 4. **大众版的更新包不带内置 Claude Code。** 它变了的那一版，软件拒绝这次更新并提示向提供方获取完整包。完整包不公开，由提供方私下发。
 5. **管理工具不上传。** 它构建、检查、签名，把要上传的两个文件放进一个文件夹，由提供方在 GitHub 网页上传。
+   *2026-11-20 修订（管理工具 1.11.0）*：提供方要求管理工具也负责上传。它借用本机已登录的 GitHub CLI（`gh`）把这两个文件传到 `creative` Release，不保存 GitHub 的登录信息。上传前确认 Release 仍是 Pre-release、不是 Latest，旧版本不能替换新版本；先传更新包、再替换 `update.json`；传完从公开地址读回核对。手工在网页上传仍然可以。
 
 ## 为什么
 

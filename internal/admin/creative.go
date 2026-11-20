@@ -38,6 +38,9 @@ type CreativeRelease struct {
 	// NotesEn are the English update notes (admin 1.10.0), shown in every
 	// interface language but Chinese from app 0.8.0 on.
 	NotesEn string `json:"notesEn,omitempty"`
+	// UploadedAt is when the tool last put this version on the creative release
+	// and read it back (admin 1.11.0); "" = not uploaded by the tool.
+	UploadedAt string `json:"uploadedAt,omitempty"`
 }
 
 // gitRepoState reports the checked-out branch of repo and the paths with

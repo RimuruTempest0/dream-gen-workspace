@@ -54,11 +54,14 @@ GitHub 会把这两个地址跳转到它的文件服务器（另一个域名）�
 
 1. 要发布的改动全部提交到 `creative-concepts` 分支，`wails.json` 里是要发布的版本号。源码目录当时在哪个分支都可以（管理工具 1.7.0 起在自己的构建目录里构建，见 `docs/adr/0002-build-folders-per-product-line.md`）。
 2. 管理工具 → 发布大众版：核对“将要构建的代码”里的版本号和提交，改好更新说明，点“构建大众版”。页面提示有未提交的改动时，那些改动不会进这次的包。
-3. 构建完成后点“要上传的两个文件”，打开 `release/creative/<版本>/upload/`。里面正好两个文件。
-4. 点“打开 creative Release”，在 GitHub 上编辑这个 Release：
-   - 先上传 `ImageWorkbench-update-<版本>.zip`；
-   - 再删除原来的 `update.json`，上传新的 `update.json`；
-   - 保存。**保持 Pre-release，不要勾选 “Set as the latest release”。**
+3. 构建完成后，在同一页的表格里点这一版的“上传到 GitHub”（管理工具 1.11.0 起）。确认框列出要传的两个文件、目标 Release 和 Release 上现在的版本，点“上传”。管理工具会：
+   - 先确认 `creative` Release 仍是 Pre-release、不是 Latest，否则拒绝；
+   - 拒绝用旧版本替换 Release 上更新的版本；
+   - 确认两个文件和构建时签名的一致（被改动过就拒绝，请重新构建）；
+   - 先传更新包，再替换 `update.json`；
+   - 从公开地址把两个文件读回来，和本机的逐字节比较，一致才记为“已上传”。
+   这一步用的是本机已登录的 GitHub CLI（`gh`）。没有安装或没有登录时，管理工具会说明；在命令行运行 `gh auth login` 登录一次即可。
+4. 也可以照旧手工上传：点“要上传的两个文件”打开 `release/creative/<版本>/upload/`，点“打开 creative Release”，在网页上编辑这个 Release，先上传 `ImageWorkbench-update-<版本>.zip`，再删除原来的 `update.json`、上传新的，保存。**保持 Pre-release，不要勾选 “Set as the latest release”。**
 5. 在一台装着旧版大众版的电脑上点“检查更新”，确认能看到新版本并更新成功。
 6. 旧版本的更新包可以留着，也可以删掉；软件只读 `update.json` 指向的那一个。
 
