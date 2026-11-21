@@ -25,9 +25,13 @@ async function reload() {
   await page.reload();
   await page.waitForFunction(() => !!window.go?.main?.App);
 }
-// The error shown on a form field (Ant Design Form).
+// The error shown on a form field (Ant Design Form). A cleared error stays in
+// the DOM while its leave animation runs (it can hang in the hidden QA window),
+// so only the errors that are not leaving count.
 const fieldError = (dialog: Locator) =>
-  dialog.locator(".ant-form-item-explain-error");
+  dialog.locator(
+    ".ant-form-item-explain-error:not(.ant-form-show-help-item-leave)",
+  );
 // Opens the seeded suite from the history list.
 async function openSuite(open: string) {
   const row = page
@@ -139,10 +143,13 @@ test("closing the panel with unsaved changes asks first", async () => {
   await expect(ask).toBeVisible();
   // Kept open: the text is still there.
   await ask.getByRole("button", { name: "取消" }).click();
+  await expect(ask).toHaveCount(0);
   await expect(dialog.getByLabel("整套说明", { exact: true })).toHaveValue(
     "还没保存的说明",
   );
+  // Escape asks the same way.
   await page.keyboard.press("Escape");
+  await expect(ask).toBeVisible();
   await ask.getByRole("button", { name: "继续" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect((await go<{ note: string }>("GetSuiteFeedback", runID)).note).toBe("");

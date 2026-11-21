@@ -147,6 +147,10 @@ export function SuiteFeedbackImages({
               )}
               <div className="feedback-image-verdict">
                 <Radio.Group
+                  // Inside Form.Item "items" every group would default to the
+                  // name "items" and the browser would let one radio be
+                  // checked across all images: one name per image.
+                  name={`feedback-item-${image.taskID}`}
                   aria-label={t("feedbackImages.verdict", { image: name })}
                   value={item?.verdict}
                   onChange={(e) => set(image, { verdict: e.target.value })}
