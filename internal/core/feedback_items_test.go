@@ -210,3 +210,37 @@ func TestFeedbackPackageCarriesThePerImageVerdicts(t *testing.T) {
 		}
 	}
 }
+
+func TestFeedbackImageVersionsFollowTimeNotTheTimestampText(t *testing.T) {
+	s := testService(t)
+	run := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "submitted", BatchID: NewID(), SubmittedRevision: 1,
+		Plans: []SuitePlan{{Revision: 1, Items: []SuiteItem{{ID: "p-worn", Purpose: "上身主图"}, {ID: "p-box", Purpose: "礼盒"}}}}}
+	if e := s.store.Put("agent_run", run.ID, run); e != nil {
+		t.Fatal(e)
+	}
+	for _, task := range []Task{
+		// RFC3339Nano drops trailing zeros: as text ".5Z" sorts after ".55Z".
+		{ID: "task-worn", PlanItemID: "p-worn", CreatedAt: "2026-11-21T08:00:00.5Z", Status: "succeeded"},
+		{ID: "task-worn-2", PlanItemID: "p-worn", CreatedAt: "2026-11-21T08:00:00.55Z", Status: "blocked", RefinedFrom: "task-worn"},
+		// Saved at the same instant: the refinement is still the later version.
+		{ID: "task-z-box", PlanItemID: "p-box", CreatedAt: "2026-11-21T08:00:01Z", Status: "succeeded"},
+		{ID: "task-a-box", PlanItemID: "p-box", CreatedAt: "2026-11-21T08:00:01Z", Status: "blocked", RefinedFrom: "task-z-box"},
+	} {
+		task.AgentRunID, task.BatchID, task.AssetIDs = run.ID, run.BatchID, []string{}
+		if e := s.store.Put("task", task.ID, task); e != nil {
+			t.Fatal(e)
+		}
+	}
+	images, e := s.GetFeedbackImages(run.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	got := []string{}
+	for _, v := range images {
+		got = append(got, fmt.Sprintf("%s v%d current=%v", v.TaskID, v.Version, v.Current))
+	}
+	want := "task-worn-2 v2 current=true\ntask-worn v1 current=false\ntask-a-box v2 current=true\ntask-z-box v1 current=false"
+	if strings.Join(got, "\n") != want {
+		t.Fatalf("versions:\n%s\nwant:\n%s", strings.Join(got, "\n"), want)
+	}
+}
