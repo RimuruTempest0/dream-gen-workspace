@@ -34,6 +34,8 @@ export function ChooseDiagnosticsPath():Promise<string>;
 
 export function ChooseExportPath(arg1:string):Promise<string>;
 
+export function ChooseFeedbackPath():Promise<string>;
+
 export function ChooseSkillSource(arg1:boolean):Promise<string>;
 
 export function ClearProductBrowserData():Promise<void>;
@@ -70,6 +72,8 @@ export function ExportBatchToPath(arg1:string,arg2:string):Promise<number>;
 
 export function ExportDiagnosticsToPath(arg1:string):Promise<void>;
 
+export function ExportFeedbackPackageToPath(arg1:string,arg2:string):Promise<void>;
+
 export function ExportGatewayCallsToPath(arg1:core.MonitorQuery,arg2:string):Promise<number>;
 
 export function ExportLLMCallsToPath(arg1:core.MonitorQuery,arg2:string):Promise<number>;
@@ -90,9 +94,13 @@ export function GetDraft():Promise<core.GenerateInput>;
 
 export function GetExportAsset(arg1:string):Promise<core.Asset>;
 
+export function GetFeedbackImages(arg1:string):Promise<Array<core.FeedbackImage>>;
+
 export function GetGatewaySettings():Promise<core.GatewaySettings>;
 
 export function GetGuideMode():Promise<boolean>;
+
+export function GetSuiteFeedback(arg1:string):Promise<core.SuiteFeedback>;
 
 export function GetTask(arg1:string):Promise<core.Task>;
 
@@ -146,6 +154,8 @@ export function NudgeMoodImage(arg1:core.NudgeInput):Promise<string>;
 
 export function OpenDataDirectory():Promise<void>;
 
+export function PreviewFeedbackPackage(arg1:string):Promise<core.FeedbackPackagePreview>;
+
 export function QuitNow():Promise<void>;
 
 export function ReadAsset(arg1:string,arg2:boolean):Promise<string>;
@@ -171,6 +181,8 @@ export function SaveProject(arg1:core.Project):Promise<core.Project>;
 export function SaveShopRule(arg1:core.ShopRule):Promise<core.ShopRule>;
 
 export function SaveSkill(arg1:core.SkillRecord):Promise<core.SkillRecord>;
+
+export function SaveSuiteFeedback(arg1:core.SuiteFeedback):Promise<core.SuiteFeedback>;
 
 export function SaveSuitePlan(arg1:string,arg2:core.SuitePlan):Promise<core.SuitePlan>;
 
