@@ -8,6 +8,7 @@ import (
 	stdDraw "image/draw"
 	"image/jpeg"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,7 +33,7 @@ const (
 // sets it, so the progress can be seen.
 var feedbackPackDelay time.Duration
 
-type feedbackImage struct {
+type feedbackPackedImage struct {
 	// File is the entry under images/; empty when the image is Missing.
 	File    string `json:"file,omitempty"`
 	AssetID string `json:"assetID"`
@@ -65,17 +66,6 @@ type FeedbackPackageProgress struct {
 	Done   bool   `json:"done"`
 }
 
-// submittedPlan is the plan the suite was generated from (the newest if none was submitted).
-func submittedPlan(r AgentRun) (SuitePlan, bool) {
-	if len(r.Plans) == 0 {
-		return SuitePlan{}, false
-	}
-	if r.SubmittedRevision > 0 && r.SubmittedRevision <= len(r.Plans) {
-		return r.Plans[r.SubmittedRevision-1], true
-	}
-	return r.Plans[len(r.Plans)-1], true
-}
-
 func packedSize(w, h int) (int, int) {
 	if long := max(w, h); long > feedbackImageSide {
 		if w >= h {
@@ -86,18 +76,12 @@ func packedSize(w, h int) (int, int) {
 	return w, h
 }
 
-// feedbackImagesLocked lists the suite's images: generated ones in task order
-// (tasks sorted by creation), then references. Each image appears once.
-func (s *Service) feedbackImagesLocked(run AgentRun, tasks []Task) []feedbackImage {
-	slots := map[string]int{}
-	if plan, ok := submittedPlan(run); ok {
-		for i, item := range plan.Items {
-			slots[item.ID] = i + 1
-		}
-	}
-	out := []feedbackImage{}
+// feedbackImagesLocked lists the suite's images: generated ones by slot and
+// version (numbered as for 逐张核验), then references. Each image appears once.
+func (s *Service) feedbackImagesLocked(run AgentRun, tasks []Task) []feedbackPackedImage {
+	out := []feedbackPackedImage{}
 	seen := map[string]bool{}
-	add := func(id string, v feedbackImage) {
+	add := func(id string, v feedbackPackedImage) {
 		if id == "" || seen[id] {
 			return
 		}
@@ -116,36 +100,34 @@ func (s *Service) feedbackImagesLocked(run AgentRun, tasks []Task) []feedbackIma
 		}
 		out = append(out, v)
 	}
-	versions := map[string]int{}
-	for _, t := range tasks {
-		version := 0
-		if t.PlanItemID != "" && len(t.AssetIDs) > 0 {
-			versions[t.PlanItemID]++
-			version = versions[t.PlanItemID]
-		}
-		for _, id := range t.AssetIDs {
-			add(id, feedbackImage{Kind: "generated", TaskID: t.ID, PlanItemID: t.PlanItemID, Slot: slots[t.PlanItemID], Version: version, Sample: t.Sample, SampleArea: t.SampleArea})
+	cards := feedbackImagesOf(run, tasks)
+	sort.SliceStable(cards, func(i, j int) bool {
+		return cards[i].Slot < cards[j].Slot || cards[i].Slot == cards[j].Slot && cards[i].Version < cards[j].Version
+	})
+	for _, c := range cards {
+		for _, id := range c.AssetIDs {
+			add(id, feedbackPackedImage{Kind: "generated", TaskID: c.TaskID, PlanItemID: c.PlanItemID, Slot: c.Slot, Version: c.Version, Sample: c.Sample, SampleArea: c.SampleArea})
 		}
 	}
 	for _, id := range run.Input.References {
-		add(id, feedbackImage{Kind: "reference", Source: "upload"})
+		add(id, feedbackPackedImage{Kind: "reference", Source: "upload"})
 	}
 	for _, id := range run.Product.ReferenceIDs {
-		add(id, feedbackImage{Kind: "reference", Source: "product"})
+		add(id, feedbackPackedImage{Kind: "reference", Source: "product"})
 	}
 	for _, id := range run.Crops {
-		add(id, feedbackImage{Kind: "reference", Source: "crop"})
+		add(id, feedbackPackedImage{Kind: "reference", Source: "crop"})
 	}
 	for _, plan := range run.Plans {
 		for _, item := range plan.Items {
 			for _, id := range item.References {
-				add(id, feedbackImage{Kind: "reference", Source: "other"})
+				add(id, feedbackPackedImage{Kind: "reference", Source: "other"})
 			}
 		}
 	}
 	for _, t := range tasks {
 		for _, id := range t.References {
-			add(id, feedbackImage{Kind: "reference", Source: "other"})
+			add(id, feedbackPackedImage{Kind: "reference", Source: "other"})
 		}
 	}
 	generated, references := 0, 0
@@ -165,7 +147,7 @@ func (s *Service) feedbackImagesLocked(run AgentRun, tasks []Task) []feedbackIma
 }
 
 // packFeedbackImage reads the image and returns it as a JPEG of the packed size.
-func packFeedbackImage(v feedbackImage) ([]byte, error) {
+func packFeedbackImage(v feedbackPackedImage) ([]byte, error) {
 	data, e := os.ReadFile(v.path)
 	if e != nil {
 		return nil, e
@@ -190,8 +172,8 @@ func packFeedbackImage(v feedbackImage) ([]byte, error) {
 
 // packFeedbackImages encodes the images outside the service lock, so the image
 // queue keeps running, and reports each one before it is packed.
-func (s *Service) packFeedbackImages(runID string, images []feedbackImage, progress func(FeedbackPackageProgress)) ([]zipEntry, error) {
-	todo := []feedbackImage{}
+func (s *Service) packFeedbackImages(runID string, images []feedbackPackedImage, progress func(FeedbackPackageProgress)) ([]zipEntry, error) {
+	todo := []feedbackPackedImage{}
 	for _, v := range images {
 		if !v.Missing {
 			todo = append(todo, v)

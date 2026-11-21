@@ -559,7 +559,7 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 		}
 		target = normalizeConnection(live)
 	}
-	next, e := s.queueAttemptLocked(*t, target, t.ID)
+	next, e := s.queueAttemptLocked(*t, target, t.ID, triggerAutoResend)
 	if e != nil {
 		return s.taskMsg(*t, "generation.retry.notQueued", "error", e.Error())
 	}

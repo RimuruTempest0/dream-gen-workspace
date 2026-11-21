@@ -13,8 +13,8 @@ import (
 // Verdicts and problem types are stored as fixed codes and shown in the
 // interface language; the tester's own words are kept as written (ADR 0004).
 
-// SuiteFeedback is the tester's verdict on one 套图. Items is for per-image
-// verdicts (one per plan slot or version); only the suite level is asked for yet.
+// SuiteFeedback is the tester's verdict on one 套图. Items are the optional
+// per-image verdicts (逐张核验, one per plan slot or version; feedback_items.go).
 type SuiteFeedback struct {
 	RunID     string         `json:"runID"`
 	Verdict   string         `json:"verdict"` // feedbackVerdicts
@@ -89,6 +89,11 @@ func (s *Service) SaveSuiteFeedback(v SuiteFeedback) (SuiteFeedback, error) {
 	if v.Verdict != "usable" && len(v.Problems) == 0 && v.Note == "" {
 		return v, s.fail("feedback.detailRequired")
 	}
+	items, e := s.cleanFeedbackItemsLocked(v.RunID, v.Items)
+	if e != nil {
+		return v, e
+	}
+	v.Items = items
 	v.UpdatedAt = Now()
 	return v, s.store.Put("suite_feedback", v.RunID, v)
 }

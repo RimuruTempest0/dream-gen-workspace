@@ -163,6 +163,76 @@ test("the package preview counts the images and packing shows image x of y", asy
   fs.rmSync(path.dirname(target), { recursive: true, force: true });
 });
 
+// 逐张核验 (#20): optional per-image verdicts, kept with the suite.
+test("single images can be marked, failed and unknown cards and each version are listed, and the marks are kept", async () => {
+  const runID = await go<string>("SeedTestSuite", false);
+  await reload();
+  await openSuite("打开记录");
+  await page.getByRole("button", { name: "问题反馈", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("逐张核验（选填）")).toBeVisible();
+  const image = (name: string) =>
+    dialog.getByRole("region", { name, exact: true });
+  // Failed, 结果未知 and paused cards are in the list, and both versions of the
+  // edited image with the change asked for then.
+  await expect(image("第 1 张")).toContainText("生成失败");
+  await expect(image("第 2 张")).toContainText("结果未知");
+  await expect(image("第 4 张 · 第 2 版")).toContainText("已暂停");
+  await expect(image("第 4 张 · 第 2 版")).toContainText("QA: brighter cuff");
+  await expect(image("第 4 张 · 第 2 版")).toContainText("当前版本，共 2 版");
+  await expect(image("第 4 张 · 第 1 版")).toContainText("较早的版本，共 2 版");
+
+  // Per-image marks are optional: the suite verdict is still required.
+  await image("第 2 张").getByLabel("有问题", { exact: true }).check();
+  await image("第 2 张").getByLabel("没出图或报错", { exact: true }).check();
+  const note = "重新生成全部失败图片后还是结果未知";
+  await image("第 2 张")
+    .getByLabel("第 2 张的说明", { exact: true })
+    .fill(note);
+  await image("第 4 张 · 第 1 版").getByLabel("合格", { exact: true }).check();
+  await dialog.getByRole("button", { name: "保存反馈", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("请先选择整套判断");
+  await dialog.getByLabel("部分可用", { exact: true }).check();
+  await dialog.getByLabel("几张图太像", { exact: true }).check();
+  await dialog.getByRole("button", { name: "保存反馈", exact: true }).click();
+  await expect(dialog.getByText(/上次保存/)).toBeVisible();
+  const saved = await go<{
+    items: { taskID: string; planItemID: string; verdict: string }[];
+  }>("GetSuiteFeedback", runID);
+  expect(saved.items.map((v) => [v.planItemID, v.verdict])).toEqual([
+    ["qa-2", "problem"],
+    ["qa-4", "ok"],
+  ]);
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+
+  // Closed and opened again: the marks are still there.
+  await reload();
+  await openSuite("打开记录");
+  await page.getByRole("button", { name: "问题反馈", exact: true }).click();
+  await expect(
+    image("第 2 张").getByLabel("有问题", { exact: true }),
+  ).toBeChecked();
+  await expect(
+    image("第 2 张").getByLabel("没出图或报错", { exact: true }),
+  ).toBeChecked();
+  await expect(
+    image("第 2 张").getByLabel("第 2 张的说明", { exact: true }),
+  ).toHaveValue(note);
+  await expect(
+    image("第 4 张 · 第 1 版").getByLabel("合格", { exact: true }),
+  ).toBeChecked();
+  await expect(
+    image("第 4 张 · 第 2 版").getByLabel("合格", { exact: true }),
+  ).not.toBeChecked();
+  // A mark can be cleared again.
+  await image("第 4 张 · 第 1 版")
+    .getByRole("button", { name: "清除第 4 张 · 第 1 版的标注", exact: true })
+    .click();
+  await expect(
+    image("第 4 张 · 第 1 版").getByLabel("合格", { exact: true }),
+  ).not.toBeChecked();
+});
+
 test("the panel follows the display language", async () => {
   await go<string>("SeedTestSuite", false);
   await go("SetInterfaceLanguage", "en");
@@ -181,6 +251,10 @@ test("the panel follows the display language", async () => {
   await expect(
     dialog.getByLabel("Some images are too similar", { exact: true }),
   ).toBeVisible();
+  await expect(dialog.getByText("Image by image (optional)")).toBeVisible();
+  await expect(
+    dialog.getByRole("region", { name: "Image 4 · version 2", exact: true }),
+  ).toContainText("Change asked for then: QA: brighter cuff");
   await expect(dialog).not.toContainText("整套判断");
   await go("SetInterfaceLanguage", "ja");
   await reload();

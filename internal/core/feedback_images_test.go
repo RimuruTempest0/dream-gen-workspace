@@ -177,7 +177,7 @@ func TestFeedbackPackageHoldsSamplesVersionsAndCrops(t *testing.T) {
 		v.sample.ID: {Kind: "generated", PlanItemID: "s1", Slot: 1, Version: 1, Sample: true},
 		v.first.ID:  {Kind: "generated", PlanItemID: "p1", Slot: 2, Version: 1},
 		v.second.ID: {Kind: "generated", PlanItemID: "p1", Slot: 2, Version: 2},
-		v.other.ID:  {Kind: "generated", PlanItemID: "p2", Slot: 3, Version: 1},
+		v.other.ID:  {Kind: "generated", PlanItemID: "p2", Slot: 3, Version: 2}, // after a failed attempt
 		v.upload.ID: {Kind: "reference", Source: "upload"},
 		v.page.ID:   {Kind: "reference", Source: "product"},
 		v.crop.ID:   {Kind: "reference", Source: "crop"},

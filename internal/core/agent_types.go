@@ -105,6 +105,11 @@ type SuiteItem struct {
 	// NoProduct marks an image without the product (a thread-colour card, fabric
 	// swatches); it is sent without the locked product spec.
 	NoProduct bool `json:"noProduct,omitempty"`
+	// Request is the 序号 of the customer's request (SuitePlan.Requests) this
+	// image carries out, 0 for a supplementary image; Presentation is its 展示方式.
+	// Both are empty on older plans.
+	Request      int    `json:"request,omitempty"`
+	Presentation string `json:"presentation,omitempty"`
 }
 type SuitePlan struct {
 	Revision  int         `json:"revision"`
@@ -119,6 +124,11 @@ type SuitePlan struct {
 	// KeepPerson says the customer asked to keep a person from an earlier suite
 	// image; only then may an item take such an image whole as a reference.
 	KeepPerson bool `json:"keepPerson,omitempty"`
+	// Requests are the customer's requests, one per requested image in their
+	// order and words, as the Agent listed them when it saved the plan; an
+	// item's Request is the 序号 (from 1) of the one it carries out. Empty on
+	// older plans.
+	Requests []string `json:"requests,omitempty"`
 }
 type AgentEvent struct {
 	At   string `json:"at"`

@@ -42,7 +42,7 @@ func (s *Service) policyRetryLocked(t *Task) string {
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
 		return s.taskMsg(*t, "generation.retry.serviceDeleted")
 	}
-	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
+	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "", triggerAutoResend)
 	if e != nil {
 		return s.taskMsg(*t, "generation.policy.notQueued", "error", e.Error())
 	}
