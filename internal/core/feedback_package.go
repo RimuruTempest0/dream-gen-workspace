@@ -342,6 +342,7 @@ func feedbackMarkdown(p feedbackPackage) string {
 		quote(f.Note)
 	}
 	line("")
+	b.WriteString(feedbackItemsMarkdown(p))
 	line("## 这套图")
 	line("")
 	line("- 程序版本：%s", p.AppVersion)

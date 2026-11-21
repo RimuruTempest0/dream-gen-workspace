@@ -1,0 +1,32 @@
+{
+  "zh-CN": {
+    "feedbackItem.imageUnknown": "逐张标注里有一张图不属于这套图，请重新打开问题反馈",
+    "feedbackItem.verdictRequired": "逐张标注的每张图都要选合格或有问题",
+    "feedbackItem.problemUnknown": "逐张标注的问题类型无法识别，请重新选择",
+    "feedbackItem.noteTooLong": "每张图的说明最多 {max} 个字符"
+  },
+  "en": {
+    "feedbackItem.imageUnknown": "One of the marked images is not part of this image set. Open the problem report again",
+    "feedbackItem.verdictRequired": "Mark each marked image as fine or as having a problem",
+    "feedbackItem.problemUnknown": "A problem type on an image was not recognised. Choose it again",
+    "feedbackItem.noteTooLong": "The note on an image can be at most {max} characters"
+  },
+  "vi": {
+    "feedbackItem.imageUnknown": "Có một ảnh được đánh dấu không thuộc bộ ảnh này. Hãy mở lại phần báo lỗi",
+    "feedbackItem.verdictRequired": "Mỗi ảnh được đánh dấu cần chọn Đạt hoặc Có vấn đề",
+    "feedbackItem.problemUnknown": "Không nhận ra một loại vấn đề của ảnh. Hãy chọn lại",
+    "feedbackItem.noteTooLong": "Ghi chú cho mỗi ảnh tối đa {max} ký tự"
+  },
+  "ja": {
+    "feedbackItem.imageUnknown": "マークした画像の中に、この画像セットに含まれないものがあります。問題の報告を開き直してください",
+    "feedbackItem.verdictRequired": "マークする画像には「問題なし」か「問題あり」を選んでください",
+    "feedbackItem.problemUnknown": "画像の問題の種類を認識できません。もう一度選んでください",
+    "feedbackItem.noteTooLong": "画像ごとの説明は {max} 文字までです"
+  },
+  "ko": {
+    "feedbackItem.imageUnknown": "표시한 이미지 중 이 이미지 세트에 속하지 않는 것이 있습니다. 문제 보고를 다시 여세요",
+    "feedbackItem.verdictRequired": "표시하는 이미지마다 '문제 없음' 또는 '문제 있음'을 고르세요",
+    "feedbackItem.problemUnknown": "이미지의 문제 유형을 인식할 수 없습니다. 다시 고르세요",
+    "feedbackItem.noteTooLong": "이미지별 설명은 최대 {max}자입니다"
+  }
+}

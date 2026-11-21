@@ -14,6 +14,7 @@ import { MessageOutlined } from "@ant-design/icons";
 import { call, errorText } from "./api";
 import { formatNumber, t, type MessageKey } from "./i18n";
 import { time, useActions } from "./ui";
+import { SuiteFeedbackImages, type FeedbackItem } from "./SuiteFeedbackImages";
 
 // 问题反馈 on one 套图 (a smart run): the tester's verdict on the whole set, kept
 // with it, and the 反馈包 saved on this computer for the provider.
@@ -23,6 +24,7 @@ export type SuiteFeedback = {
   verdict: "" | Verdict;
   problems: string[];
   note: string;
+  items?: FeedbackItem[];
   updatedAt: string;
 };
 type FeedbackPackagePreview = {
@@ -190,6 +192,7 @@ function SuiteFeedbackDialog({
       open={open}
       onCancel={onClose}
       footer={footer}
+      width={720}
       destroyOnHidden
     >
       {saved.error && (
@@ -261,6 +264,11 @@ function SuiteFeedbackDialog({
               maxLength={8000}
               autoSize={{ minRows: 3, maxRows: 8 }}
               placeholder={t("feedback.note.placeholder")}
+            />
+            <SuiteFeedbackImages
+              runID={runID}
+              items={form.items || []}
+              onChange={(items) => change({ items })}
             />
             {problem && (
               <Alert type="error" showIcon role="alert" message={t(problem)} />
