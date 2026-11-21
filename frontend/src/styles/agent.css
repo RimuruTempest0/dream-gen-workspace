@@ -244,6 +244,26 @@
   max-width: 220px;
   margin-bottom: 12px;
 }
+/* 问题反馈: the suite-level verdict, problem types and note. */
+.feedback-form fieldset {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.feedback-form .ant-checkbox-group {
+  display: grid;
+  gap: 6px;
+}
+.feedback-form .ant-alert {
+  margin-top: 12px;
+}
+.feedback-preview ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+.feedback-preview li + li {
+  margin-top: 8px;
+}
 .agent-history-row {
   display: flex;
   align-items: center;

@@ -22,6 +22,7 @@ import concept from "./concept.json";
 import workbench from "./workbench.json";
 import tasks from "./tasks.json";
 import assets from "./assets.json";
+import feedback from "./feedback.json";
 
 // prettier-ignore
 export const areas = [
@@ -43,6 +44,7 @@ export const areas = [
   workbench,
   tasks,
   assets,
+  feedback,
 ] as const;
 
 type Area = (typeof areas)[number];
