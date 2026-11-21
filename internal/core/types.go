@@ -75,6 +75,12 @@ type Task struct {
 	// RefinedFrom is the task whose image this attempt adjusts; RefineInstruction is the user's request.
 	RefinedFrom       string `json:"refinedFrom,omitempty"`
 	RefineInstruction string `json:"refineInstruction,omitempty"`
+	// RefineMode is how a refinement is made: "regenerate" draws the image
+	// again from its plan with the change (people, pose, scene or presentation),
+	// "edit" changes the old image. Empty while the LLM is still deciding.
+	// RefineUnjudged marks an edit chosen because the LLM could not decide.
+	RefineMode     string `json:"refineMode,omitempty"`
+	RefineUnjudged bool   `json:"refineUnjudged,omitempty"`
 	// RoutedFrom is the gateway an unsent image was moved away from (no extra cost).
 	RoutedFrom     string `json:"routedFrom,omitempty"`
 	RoutedFromName string `json:"routedFromName,omitempty"`

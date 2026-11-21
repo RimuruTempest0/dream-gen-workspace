@@ -223,6 +223,7 @@ func previousBuiltinContents() map[string][]string {
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.6.20.md")),
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.6.25.md")),
 			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.7.7.md")),
+			builtinSkillContent("product-analysis", builtinSkills[0].description, embeddedSkillText("builtin_skills/history/product-analysis-0.8.0.md")),
 		},
 		"etsy-suite": {
 			builtinSkillContent("etsy-suite", etsySuiteDescriptionV1, etsySuiteBodyV1),
@@ -243,6 +244,7 @@ func previousBuiltinContents() map[string][]string {
 			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.6.25.md")),
 			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.7.7.md")),
 			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.7.8.md")),
+			builtinSkillContent(builtinSkills[1].slug, builtinSkills[1].description, embeddedSkillText("builtin_skills/history/listing-suite-0.8.0.md")),
 		},
 		"embroidery-rules": {
 			builtinSkillContent("embroidery-rules", embroideryDescriptionV1, embroideryBodyV1),
@@ -252,6 +254,7 @@ func previousBuiltinContents() map[string][]string {
 			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.3.6.md")),
 			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.6.20.md")),
 			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.6.25.md")),
+			builtinSkillContent("embroidery-rules", builtinSkills[2].description, embeddedSkillText("builtin_skills/history/embroidery-rules-0.8.0.md")),
 		},
 		p004SkillID: {
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.3.6.md")),
@@ -260,6 +263,7 @@ func previousBuiltinContents() map[string][]string {
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.12.md")),
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.20.md")),
 			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.25.md")),
+			builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.8.0.md")),
 		},
 		"image-prompting": {
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.5.4.md")),
@@ -273,6 +277,7 @@ func previousBuiltinContents() map[string][]string {
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.6.27.md")),
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.7.7.md")),
 			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.7.8.md")),
+			builtinSkillContent("image-prompting", builtinSkills[4].description, embeddedSkillText("builtin_skills/history/image-prompting-0.8.0.md")),
 		},
 	}
 }

@@ -82,6 +82,7 @@ import {
   SampleCheckNote,
   type RefineTarget,
   RefineDialog,
+  RefineModeNote,
   type SmartMode,
   ModeSwitch,
   SuiteEstimateHint,
@@ -296,10 +297,13 @@ export function SmartImages() {
     const at = viewerItems.findIndex((item) => item.assetID === assetID);
     if (at >= 0) setViewerIndex(at);
   }
-  // Failed and paused images can be sent again in one confirmed action; unknown ones cannot.
-  const retryable = tasks.filter(
-    (t) => t.status === "failed" || t.status === "blocked",
+  // Failed, paused and 结果未知 images are sent again in one confirmed action,
+  // so the whole set can be completed. The confirmation names the 结果未知 ones:
+  // they may already have been generated and billed.
+  const retryable = tasks.filter((t) =>
+    ["failed", "blocked", "unknown"].includes(t.status),
   ).length;
+  const retryableUnknown = tasks.filter((t) => t.status === "unknown").length;
   const pendingDownloads = tasks.filter((t) => t.status === "download_failed");
   const sizeOptions = withCurrent(presetSizes, input.size);
   const analyzing = run?.status === "analyzing",
@@ -1113,7 +1117,12 @@ export function SmartImages() {
                       onClick={() =>
                         actions.confirm(
                           t("smart.retry.allTitle", { count: retryable }),
-                          t("smart.retry.allContent", { count: retryable }),
+                          retryableUnknown > 0
+                            ? t("smart.retry.allContentUnknown", {
+                                count: retryable,
+                                unknown: retryableUnknown,
+                              })
+                            : t("smart.retry.allContent", { count: retryable }),
                           () => call("RetryFailedAgentImages", run!.id),
                           false,
                           t("smart.retry.ok"),
@@ -1188,6 +1197,7 @@ export function SmartImages() {
                         })}
                       </p>
                     )}
+                    <RefineModeNote task={task} />
                     <SampleNote task={task} tasks={tasks} />
                     {task.sample && (
                       <p className="hint">

@@ -104,8 +104,10 @@ async function go<T>(name: string, ...args: any[]): Promise<T> {
 // "passes" after 12 s (cookie + reload), so the verification window is shown.
 const shopTitle = "QA 浏览器商品";
 let rejectImageKey = false;
-// The image relay refuses with 403 because the account has no balance (1route-style).
+// The image relay refuses with 403 because the token's quota is used up (new-api style).
 let emptyImageAccount = false;
+// The next image requests end in a relay timeout (HTTP 524): 结果未知.
+let cutImages = 0;
 // Cut the next answered analysis stream after its first frame, like a proxy
 // dropping the LLM connection; Claude Code should retry and finish.
 let cutStreamOnce = false;
@@ -183,7 +185,21 @@ test.beforeAll(async () => {
     if (req.url?.includes("/images/") && emptyImageAccount) {
       req.resume();
       res.writeHead(403, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: { message: "insufficient balance" } }));
+      res.end(
+        JSON.stringify({
+          error: {
+            message:
+              "该令牌额度已用尽 !token.UnlimitedQuota && token.RemainQuota = 0",
+          },
+        }),
+      );
+      return;
+    }
+    if (req.url?.includes("/images/") && cutImages > 0) {
+      cutImages--;
+      req.resume();
+      res.writeHead(524, { "content-type": "text/plain; charset=UTF-8" });
+      res.end("error code: 524");
       return;
     }
     if (req.url?.includes("/images/") && refuseImages > 0) {
@@ -266,10 +282,18 @@ test.beforeAll(async () => {
         first.includes("下面是一张电商图片原来的制作要求")
       ) {
         refineRewrites++;
+        // The same reply says how the change is made: a new person is drawn again.
+        const change = first.split("用户的修改：")[1]?.split("\n")[0] || "";
+        const mode = /换.*模特|换人/.test(change) ? "[regenerate]" : "[edit]";
         res.setHeader("content-type", "application/json");
         res.end(
           JSON.stringify({
-            content: [{ type: "text", text: first.split("原制作要求：\n")[1] }],
+            content: [
+              {
+                type: "text",
+                text: mode + "\n" + first.split("原制作要求：\n")[1],
+              },
+            ],
             usage: { input_tokens: 300, output_tokens: 150 },
           }),
         );
@@ -938,6 +962,10 @@ test("refine a finished image keeps the previous version and stays off the workb
   const dialog = page.getByRole("dialog", { name: "优化这张图片" });
   await expect(dialog.getByText("可能产生费用")).toBeVisible();
   await expect(dialog.getByText(/右侧女性脱掉米白色针织衫/)).toBeVisible();
+  // The dialog says which changes are drawn again and which edit this image.
+  await expect(dialog.getByTestId("refine-modes")).toContainText(
+    "会按这张图的方案重新生成，不在原图上改",
+  );
   // Let the dialog's opening animation finish so the picture is usable.
   await page.waitForTimeout(500);
   await page.screenshot({
@@ -958,6 +986,8 @@ test("refine a finished image keeps the previous version and stays off the workb
   await expect(
     first.getByRole("button", { name: "优化第 1 张图片" }),
   ).toBeVisible({ timeout: 20000 });
+  // A local change is made on the original image, and the card says so.
+  await expect(first.getByTestId("refine-mode")).toHaveText("做法：在原图上改");
   expect(imageRequests).toBe(before + 1);
   // The original requirements were first brought in line with the change.
   expect(refineRewrites).toBe(1);
@@ -1002,6 +1032,31 @@ test("set images open in a large viewer with keyboard and button navigation", as
   await expect(second.locator(".image-viewer.actual")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(second).toHaveCount(0);
+});
+
+test("asking for another model regenerates the image in its slot and the card says so", async () => {
+  const before = imageRequests;
+  const first = page.locator(".agent-result").first();
+  await first.getByRole("button", { name: "优化第 1 张图片" }).click();
+  const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+  await dialog.getByLabel("想怎么调整？").fill("换个男模特，坐在室内");
+  await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(first.getByText("优化：换个男模特，坐在室内")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(first.getByTestId("refine-mode")).toHaveText(
+    "做法：按方案重新生成，没有在原图上改",
+    { timeout: 20000 },
+  );
+  // Same slot: the earlier versions are kept.
+  await expect(first.getByText("之前的版本（2）")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(
+    first.getByRole("button", { name: "优化第 1 张图片" }),
+  ).toBeVisible({ timeout: 20000 });
+  expect(imageRequests).toBe(before + 1);
 });
 
 test("failed result downloads are retried automatically, then bulk retry never regenerates", async () => {
@@ -1123,23 +1178,22 @@ test("rejected API key is explained and failed images regenerate in one action",
   });
 });
 
-test("an empty relay account is reported as low balance, not as a bad key", async () => {
+test("a used-up relay quota reads 线路额度已用完, not a bad key", async () => {
   emptyImageAccount = true;
   const fourth = page.locator(".agent-result").nth(3);
   await fourth.getByRole("button", { name: "优化第 4 张图片" }).click();
   const dialog = page.getByRole("dialog", { name: "优化这张图片" });
   await dialog.getByLabel("想怎么调整？").fill("颜色更暖一些");
   await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
-  await expect(
-    page.getByText("图片服务账户余额不足", { exact: true }),
-  ).toBeVisible({
+  await expect(page.getByText("线路额度已用完", { exact: true })).toBeVisible({
     timeout: 20000,
   });
   await expect(
     fourth.getByText(
-      "图片服务账户余额不足，图片服务拒绝了请求，未生成也不计费。请到图片服务后台充值后重新生成。",
+      "线路额度已用完：图片服务拒绝了请求，未生成也不计费。额度恢复后重新生成即可。",
     ),
   ).toBeVisible();
+  await expect(page.getByText(/账户余额不足/)).toHaveCount(0);
   await expect(page.getByText("图片服务拒绝了 API Key")).toHaveCount(0);
   await expect(page.getByText(/API Key 无效/)).toHaveCount(0);
   emptyImageAccount = false;
@@ -1151,12 +1205,48 @@ test("an empty relay account is reported as low balance, not as a bad key", asyn
     .getByRole("dialog", { name: "重新生成 1 张图片？" })
     .getByRole("button", { name: "重新生成", exact: true })
     .click();
-  await expect(
-    page.getByText("图片服务账户余额不足", { exact: true }),
-  ).toHaveCount(0, {
+  await expect(page.getByText("线路额度已用完", { exact: true })).toHaveCount(
+    0,
+    { timeout: 20000 },
+  );
+  expect(imageRequests).toBe(before + 1);
+  await expect(page.locator(".rail-progress")).toHaveCount(0, {
     timeout: 20000,
   });
+});
+
+test("one-click completion includes a 结果未知 image and names it in the confirmation", async () => {
+  // The image and its one automatic resend both end in a relay timeout.
+  cutImages = 2;
+  const fourth = page.locator(".agent-result").nth(3);
+  await fourth.getByRole("button", { name: "优化第 4 张图片" }).click();
+  const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+  await dialog.getByLabel("想怎么调整？").fill("袖口更清楚一些");
+  await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
+  await expect(
+    fourth.getByText(
+      "自动重新生成的结果仍未知，不会再次自动重发。请先核对图片服务记录。",
+    ),
+  ).toBeVisible({ timeout: 30000 });
+  expect(cutImages).toBe(0);
+  const before = imageRequests;
+  await page
+    .getByRole("button", { name: "重新生成全部失败图片（1 张）" })
+    .click();
+  const confirm = page.getByRole("dialog", { name: "重新生成 1 张图片？" });
+  await expect(
+    confirm.getByText(
+      "将为 1 张图片重新发起生图请求，可能产生费用。其中 1 张结果未知：原请求可能已生成并计费，重新生成可能重复计费。",
+    ),
+  ).toBeVisible();
+  await confirm.getByRole("button", { name: "重新生成", exact: true }).click();
+  await expect(
+    fourth.getByRole("button", { name: "优化第 4 张图片" }),
+  ).toBeVisible({ timeout: 20000 });
   expect(imageRequests).toBe(before + 1);
+  await expect(
+    page.getByRole("button", { name: /重新生成全部失败图片/ }),
+  ).toHaveCount(0);
   await expect(page.locator(".rail-progress")).toHaveCount(0, {
     timeout: 20000,
   });

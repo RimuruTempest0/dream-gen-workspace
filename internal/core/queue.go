@@ -218,6 +218,11 @@ func (s *Service) step(claimed Task) bool {
 	// A refusal by the image model's content check concerns this image only: it
 	// is sent again automatically and never marks the gateway as failing.
 	rejected := ""
+	// Some relays wrap a used-up quota in a 5xx. The reply says the request was
+	// refused before anything was generated, so it is a refusal, not 结果未知.
+	if e != nil && unknown && quotaRefusedIn5xx(t.Diagnostic.HTTPStatus, e.Error()) {
+		unknown = false
+	}
 	policy := e != nil && !unknown && policyRejected(t.Diagnostic.HTTPStatus, e.Error())
 	if e != nil && !unknown && !policy {
 		rejected = rejectionKind(t.Diagnostic.HTTPStatus, e.Error())

@@ -33,7 +33,7 @@ const (
 // The P004 fixed rules in English, split like the Chinese ones.
 const (
 	enP004RulesPrefix  = "Project fixed rules (P004): every human model in the picture (adults, children and babies) is European or American; every embroidered design is at most 25 cm on its long and short side, and the same design keeps the same real size and the same proportion to the garment in every image; the main chest embroidery of a sweatshirt is centred left to right on the vertical centre line of the garment itself, not of the picture; "
-	enP004CuffRules    = "cuff embroidery is only on the cuff of the sleeve on the right side of the final picture; that sleeve hangs straight down with its cuff seam horizontal, the text baseline is parallel to the cuff seam, the icon and text sit level in the picture without tilting, and the group is centred across the sleeve on the flat part above the seam, not on ribbing or folds; the sleeve on the left side of the picture has no embroidery; the left-to-right order of the small cuff icon and the name is the same in every image; "
+	enP004CuffRules    = "cuff embroidery is only on the cuff of the sleeve on the right side of the final picture; the text baseline is parallel to the cuff seam and the group is centred across the sleeve on the flat part above the seam, not on ribbing or folds; wherever the cuff shows, its design is clearly visible; in the cuff sample and cuff close-up that sleeve hangs straight down with its cuff seam horizontal and the icon and text sit level in the picture without tilting; the sleeve on the left side of the picture has no embroidery; the left-to-right order of the small cuff icon and the name is the same in every image; "
 	enP004NoCuffRules  = "neither cuff has any embroidery, text or design; "
 	enP004ClarityRules = "the whole picture is sharp, the background too, with no blur, soft focus, depth of field or motion blur."
 )
@@ -99,8 +99,16 @@ const (
 	enRefineSampleLine   = "Image 2 is this set's detail sample (a close-up such as the cuff), not the image to edit; use it only to see how these details should look: draw the layout of icon and text, the left-to-right order, text direction, font, colour and relative size like the sample, not its garment colour, composition or background."
 )
 
-// refineMarkers are the refinement markers of saved prompts, newest first.
-var refineMarkers = []string{refinePromptMarker, enRefinePromptMarker, refinePromptMarkerV1}
+// The wrapper of a regenerated refinement in English (see regeneratePrompt).
+const (
+	enRegenerateHead     = "Generate this image again from the requirements below; do not edit the earlier image.\nThis change (must be done, and clearly visible): "
+	enRegenerateHeadRest = "\nThis change comes before the requirements below; where they conflict, follow this change. The product itself (style, colour, fabric) and the design of every design area stay the same."
+	enRegenerateMarker   = "\n\nRequirements of this image (anything that conflicts with this change no longer applies):\n"
+)
+
+// refineMarkers are the refinement markers of saved prompts, newest first; a
+// regenerated refinement has its own (refine.go).
+var refineMarkers = []string{refinePromptMarker, enRefinePromptMarker, regenerateMarker, enRegenerateMarker, refinePromptMarkerV1}
 
 // enSampleFixMarker starts the corrections added to a redrawn sample's prompt.
 const enSampleFixMarker = "\n\nThe previous sample failed its check; correct this time: "

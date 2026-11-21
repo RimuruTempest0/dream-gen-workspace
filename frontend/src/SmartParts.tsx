@@ -249,6 +249,26 @@ export function SampleCheckNote({ task }: { task: Task }) {
   return null;
 }
 
+// How a refinement is being made: drawn again from the plan or changed on the
+// old image; decided by the AI after the request is submitted.
+export function RefineModeNote({ task }: { task: Task }) {
+  if (!task.refinedFrom) return null;
+  let key: MessageKey | null = null;
+  if (task.refineMode === "regenerate") key = "smart.refine.mode.regenerate";
+  else if (task.refineMode === "edit")
+    key = task.refineUnjudged
+      ? "smart.refine.mode.unjudged"
+      : "smart.refine.mode.edit";
+  else if (task.status === "queued" && task.rewording)
+    key = "smart.refine.mode.deciding";
+  if (!key) return null;
+  return (
+    <p className="hint refine-mode" data-testid="refine-mode">
+      {t(key)}
+    </p>
+  );
+}
+
 export type RefineTarget = { task: Task; assetID: string };
 
 // Refinement is a new, possibly billable edit request based on one finished
@@ -314,6 +334,9 @@ export function RefineDialog({
       />
       <p className="hint" style={{ marginTop: 28 }}>
         {t("smart.refine.tip")}
+      </p>
+      <p className="hint" data-testid="refine-modes">
+        {t("smart.refine.modes")}
       </p>
       <p className="hint">{t("smart.refine.cost")}</p>
     </Modal>

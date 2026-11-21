@@ -388,9 +388,11 @@ func (s *Service) resumeBlockedLocked(t Task) error {
 	return s.store.Put("task", t.ID, t)
 }
 
-// RetryFailedAgentImages regenerates every failed image and resumes every paused
-// image of a smart-generation set in one confirmed action. Images whose result is
-// unknown are skipped: they may already have been generated and billed.
+// RetryFailedAgentImages regenerates every failed and 结果未知 image and resumes
+// every paused image of a 套图 in one confirmed action, so the whole set can be
+// completed. The customer confirmed once, knowing that a 结果未知 image may
+// already have been generated and billed. It is an explicit action, so it is
+// not bound by the one automatic resend per image.
 func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -406,7 +408,7 @@ func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 		}
 		seen[t.PlanItemID] = true
 		switch t.Status {
-		case "failed":
+		case "failed", "unknown":
 			e = s.retryAgentLocked(t)
 		case "blocked":
 			e = s.resumeBlockedLocked(t)
