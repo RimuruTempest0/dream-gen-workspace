@@ -266,10 +266,18 @@ test.beforeAll(async () => {
         first.includes("下面是一张电商图片原来的制作要求")
       ) {
         refineRewrites++;
+        // The same reply says how the change is made: a new person is drawn again.
+        const change = first.split("用户的修改：")[1]?.split("\n")[0] || "";
+        const mode = /换.*模特|换人/.test(change) ? "[regenerate]" : "[edit]";
         res.setHeader("content-type", "application/json");
         res.end(
           JSON.stringify({
-            content: [{ type: "text", text: first.split("原制作要求：\n")[1] }],
+            content: [
+              {
+                type: "text",
+                text: mode + "\n" + first.split("原制作要求：\n")[1],
+              },
+            ],
             usage: { input_tokens: 300, output_tokens: 150 },
           }),
         );
@@ -938,6 +946,10 @@ test("refine a finished image keeps the previous version and stays off the workb
   const dialog = page.getByRole("dialog", { name: "优化这张图片" });
   await expect(dialog.getByText("可能产生费用")).toBeVisible();
   await expect(dialog.getByText(/右侧女性脱掉米白色针织衫/)).toBeVisible();
+  // The dialog says which changes are drawn again and which edit this image.
+  await expect(dialog.getByTestId("refine-modes")).toContainText(
+    "会按这张图的方案重新生成，不在原图上改",
+  );
   // Let the dialog's opening animation finish so the picture is usable.
   await page.waitForTimeout(500);
   await page.screenshot({
@@ -958,6 +970,8 @@ test("refine a finished image keeps the previous version and stays off the workb
   await expect(
     first.getByRole("button", { name: "优化第 1 张图片" }),
   ).toBeVisible({ timeout: 20000 });
+  // A local change is made on the original image, and the card says so.
+  await expect(first.getByTestId("refine-mode")).toHaveText("做法：在原图上改");
   expect(imageRequests).toBe(before + 1);
   // The original requirements were first brought in line with the change.
   expect(refineRewrites).toBe(1);
@@ -1002,6 +1016,31 @@ test("set images open in a large viewer with keyboard and button navigation", as
   await expect(second.locator(".image-viewer.actual")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(second).toHaveCount(0);
+});
+
+test("asking for another model regenerates the image in its slot and the card says so", async () => {
+  const before = imageRequests;
+  const first = page.locator(".agent-result").first();
+  await first.getByRole("button", { name: "优化第 1 张图片" }).click();
+  const dialog = page.getByRole("dialog", { name: "优化这张图片" });
+  await dialog.getByLabel("想怎么调整？").fill("换个男模特，坐在室内");
+  await dialog.getByRole("button", { name: "开始优化", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(first.getByText("优化：换个男模特，坐在室内")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(first.getByTestId("refine-mode")).toHaveText(
+    "做法：按方案重新生成，没有在原图上改",
+    { timeout: 20000 },
+  );
+  // Same slot: the earlier versions are kept.
+  await expect(first.getByText("之前的版本（2）")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(
+    first.getByRole("button", { name: "优化第 1 张图片" }),
+  ).toBeVisible({ timeout: 20000 });
+  expect(imageRequests).toBe(before + 1);
 });
 
 test("failed result downloads are retried automatically, then bulk retry never regenerates", async () => {
