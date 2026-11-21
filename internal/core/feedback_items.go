@@ -89,7 +89,12 @@ func feedbackImagesOf(run AgentRun, all []Task) []FeedbackImage {
 	out := []FeedbackImage{}
 	for i, slot := range slots {
 		list := versions[slot]
-		sort.SliceStable(list, func(a, b int) bool { return list[a].CreatedAt < list[b].CreatedAt })
+		// By time, not by string: RFC3339Nano drops trailing zeros. At the same
+		// instant, a refinement comes after the image it was refined from.
+		sort.SliceStable(list, func(a, b int) bool {
+			x, y := list[a], list[b]
+			return earlier(x.CreatedAt, y.CreatedAt) || (!earlier(y.CreatedAt, x.CreatedAt) && y.RefinedFrom == x.ID)
+		})
 		for v := len(list) - 1; v >= 0; v-- {
 			t := list[v]
 			assets := t.AssetIDs
