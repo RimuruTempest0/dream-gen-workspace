@@ -11,7 +11,7 @@ import (
 // makes it invent some even when the plan says the cuffs are plain.
 const (
 	p004RulesPrefix  = "项目固定规则（P004）：画面中的人物模特（含成人、儿童和婴儿）均为欧美人；所有刺绣图案实际尺寸长边和短边均不超过 25 cm，同一图案在每张图中的实际尺寸和相对衣服的比例保持一致；卫衣胸前主刺绣整体以卫衣本体的垂直中轴线左右居中，以服装本体中心为准，不以图片中心为准；"
-	p004CuffRules    = "袖口刺绣只在最终画面右侧那只袖子的袖口，这只袖子在画面里竖直向下、袖口接缝水平，文字基线与袖口接缝线平行，图标和文字在画面中水平摆正、不倾斜，整组位于袖筒宽度中心、接缝上方的平整处，不压罗纹或褶皱，画面左侧的袖子没有刺绣；袖口小图标与名字的左右顺序在每张图中完全相同；"
+	p004CuffRules    = "袖口刺绣只在最终画面右侧那只袖子的袖口，文字基线与袖口接缝线平行，整组位于袖筒宽度中心、接缝上方的平整处，不压罗纹或褶皱，看得见袖口时袖口设计清楚可见；袖口样板和袖口近景里这只袖子竖直向下、袖口接缝水平，图标和文字在画面中水平摆正、不倾斜；画面左侧的袖子没有刺绣；袖口小图标与名字的左右顺序在每张图中完全相同；"
 	p004NoCuffRules  = "两只袖子的袖口都没有任何刺绣、文字或图案；"
 	p004ClarityRules = "整张图片清晰，背景同样清晰，不使用任何虚化、柔焦、景深或运动模糊。"
 )
@@ -77,6 +77,7 @@ func shippedP004Contents() []string {
 		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.12.md")),
 		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.20.md")),
 		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.6.25.md")),
+		builtinSkillContent(b.id, b.description, embeddedSkillText("builtin_skills/history/p004-rules-0.8.0.md")),
 	}
 }
 
@@ -138,7 +139,8 @@ func samplesUsed(p SuitePlan, item SuiteItem) []string {
 }
 
 // sampleLead opens a sample's own prompt. A cuff-like detail sample keeps the
-// close-up rule; the master of a main design area shows its placement and size.
+// close-up rule; any other area's sample fixes only that area's design, framed
+// as its prompt says.
 func sampleLead(area, lang string) string {
 	lower := strings.ToLower(area)
 	if area == "" || strings.Contains(area, "袖") || strings.Contains(lower, "cuff") || strings.Contains(lower, "sleeve") {
@@ -148,9 +150,9 @@ func sampleLead(area, lang string) string {
 		return sampleSelfLine
 	}
 	if !zhPrompt(lang) {
-		return fmt.Sprintf(enSampleMasterLine, area)
+		return fmt.Sprintf(enSampleAreaLine, area)
 	}
-	return fmt.Sprintf("设计母版（本套其他图片会照这张画「%[1]s」的设计，必须画准）：按提示词的取景画；画面里「%[1]s」设计的图案、朝向、位置和相对大小就是全套的标准，必须清楚、完整、端正。\n", area)
+	return fmt.Sprintf("设计区样板（本套其他图片只照这张画「%[1]s」的设计，必须画准）：按提示词的取景画；画面里「%[1]s」设计的图案、朝向、字形和颜色就是全套的标准，必须清楚、完整、端正。\n", area)
 }
 
 // sampleSelfLine leads the sample's own prompt. With a whole-garment reference and

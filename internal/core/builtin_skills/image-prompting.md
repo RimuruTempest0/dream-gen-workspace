@@ -1,7 +1,7 @@
 Use this skill to write or revise per-image prompts for save_suite_plan. Product identity comes from the run's effective requirements and fixed design references; this skill controls phrasing, not a new design. Keep prompts and user communication in Chinese; preserve in-image text in its original language.
 
 ## What the image model actually receives
-It receives the item's prompt and reference images in references order. For product images the backend appends locked, editable, ratio and applicable fixed project rules. It does not receive purpose, scene, notes, the product page, other items or the user's chat. Images with noProduct: true do not receive the product spec. Each image is a separate request: shared words and references reduce ambiguity but do not enforce exact artwork identity.
+It receives the item's prompt and reference images in references order. For product images the backend appends locked, editable, ratio and applicable fixed project rules. It does not receive purpose, scene, notes, the product page, other items or the user's chat. Images with noProduct: true do not receive the product spec. Each image is a separate request.
 
 ## 1. Short labeled lines with complete requirements
 Use only helpful lines:
@@ -11,13 +11,13 @@ Use only helpful lines:
 主体：<商品、机位、可见的固定设计组合与定位>
 构图：<景别、裁切、姿势与信息板块>
 材质：<已有依据的面料与工艺>
-参考图：图1=<身份或设计依据、取用部位>；图2=<其他实际角色>
+参考图：图1=<商品本身或设计区依据>；图2=<其他实际角色>；只照商品本身，不照人物、姿势、场景和构图
 画面文字（逐字）："<确切文字>"（<位置、字形、颜色>）
 本张变化：<editable 中本张选定的具体值>
 约束：<关键设计关系、必须保留、画面外的部位>
 避免：<本张易误加或明确去掉的内容>
 ```
-Add style or lighting only when it changes the outcome. Use one use case: product photo, lifestyle, detail close-up or infographic. The purpose line is needed because purpose is not passed to the model. No internal codes, ambiguous sides or invented facts.
+Add style or lighting only when it changes the outcome. Use one use case: product photo, lifestyle, detail close-up or infographic. No internal codes, ambiguous sides or invented facts.
 
 Completeness comes before length: do not target 250 characters at the expense of exact text, numbers, reference roles, positioning or grouped relationships. Remove repeated prose and irrelevant decoration first. locked is appended, so do not recopy it in full.
 
@@ -26,7 +26,7 @@ Completeness comes before length: do not target 250 characters at the expense of
 - Write 图案只包含 for the actual complete design and 图案里没有 for explicitly removed or forbidden features. A local edit preserves unrequested features. A full replacement follows the user's replacement scope.
 - Name a kept element by its actual shape in the reference, with a short visual spec (shape, colors, attachments and their position). Never swap in a similar common object from the user's wording: a mini Christmas-stocking headpiece is not a Santa hat.
 - Locate units on garment landmarks, not canvas coordinates. Keep scale relative to the garment; normal perspective can alter apparent screen size.
-- Generic terms such as “手写体” cannot substitute for visible letterforms. Do not label an unreviewed generated sample as an approved master.
+- Generic terms such as “手写体” cannot substitute for visible letterforms. Do not call a generated sample approved before its check.
 - New design decisions without visual evidence must be made once and fixed in locked, only within the user's authorized design freedom. Exact replication of an unreadable design needs better source material, not invented typography.
 
 ## 3. Reference images: fixed identity, explicit roles
@@ -34,7 +34,6 @@ Keep the identity/design references for each visible unit in the same order with
 - Label each input by its actual index and role. Say whether it supplies garment shape, chest design, cuff design, color only or scene only. An existing image being modified is the edit target; supporting images are not replacement compositions.
 - An old-design reference contributes only the unchanged parts; name the removed or changed features and exclude them. Do not call the old design the exact reference for the new one.
 - Sample mechanics (sample, sampleArea, useSamples) are in listing-suite. The backend puts the samples first with their own index and role line and shifts your numbering; do not number them in your manual reference line.
-- If the only clear design source is a whole-garment photo, retain it and say which local design to copy and which composition to ignore.
 - Data-only sources such as size tables supply verified values written in the prompt, not a second product for the model to copy.
 
 ## 4. Exact text, letterforms and relationships
@@ -47,7 +46,7 @@ Quote each visible string verbatim, including punctuation and case; spell names 
 
 ## 5. One fixed sentence for small grouped details
 Copy the one cuff sentence from listing-suite into every cuff-visible prompt, only when cuffEmbroidery is true. Same-line and stacked are mutually exclusive. Do not rotate text separately from the fabric or switch the physical sleeve to meet a screen-side phrase.
-- Keep the embroidered forearm outside the torso; keep mugs and gifts in the other hand. Enabled project rules give the exact poses.
+- Keep the embroidered forearm and cuff design visible, not covered by the torso, hands or props; otherwise each item sets its own pose.
 - Do not hide what the frame shows: a visible cuff cannot be excused as “no embroidery shown”, and a detail the item must demonstrate cannot be obscured.
 
 ## 6. Scenes and themes

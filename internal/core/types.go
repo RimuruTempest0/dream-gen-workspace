@@ -69,12 +69,18 @@ type Task struct {
 	Nudge         string         `json:"nudge,omitempty"`
 	// Language is the interface language when the image was requested (0.8.0):
 	// its AI rewrites keep it after a switch. Empty before 0.8.0 (Chinese).
-	Language string `json:"language,omitempty"`
-	AgentRunID    string         `json:"agentRunID,omitempty"`
-	PlanItemID    string         `json:"planItemID,omitempty"`
+	Language   string `json:"language,omitempty"`
+	AgentRunID string `json:"agentRunID,omitempty"`
+	PlanItemID string `json:"planItemID,omitempty"`
 	// RefinedFrom is the task whose image this attempt adjusts; RefineInstruction is the user's request.
 	RefinedFrom       string `json:"refinedFrom,omitempty"`
 	RefineInstruction string `json:"refineInstruction,omitempty"`
+	// RefineMode is how a refinement is made: "regenerate" draws the image
+	// again from its plan with the change (people, pose, scene or presentation),
+	// "edit" changes the old image. Empty while the LLM is still deciding.
+	// RefineUnjudged marks an edit chosen because the LLM could not decide.
+	RefineMode     string `json:"refineMode,omitempty"`
+	RefineUnjudged bool   `json:"refineUnjudged,omitempty"`
 	// RoutedFrom is the gateway an unsent image was moved away from (no extra cost).
 	RoutedFrom     string `json:"routedFrom,omitempty"`
 	RoutedFromName string `json:"routedFromName,omitempty"`
@@ -83,6 +89,12 @@ type Task struct {
 	// timeout; AutoRetriedAs is set on that original image.
 	AutoRetryOf   string `json:"autoRetryOf,omitempty"`
 	AutoRetriedAs string `json:"autoRetriedAs,omitempty"`
+	// Trigger says who started this attempt again (see the trigger* codes);
+	// empty on a first attempt and on tasks stored before it was recorded.
+	Trigger string `json:"trigger,omitempty"`
+	// Pauses records each time this unsent image paused and was resumed, so the
+	// 反馈包 can still tell it after the image went ahead.
+	Pauses []TaskPause `json:"pauses,omitempty"`
 	// AutoDownloads counts automatic re-downloads of a returned result; while one
 	// waits, the task stays "downloading" until DownloadRetryAt.
 	AutoDownloads   int    `json:"autoDownloads,omitempty"`
@@ -142,6 +154,17 @@ type Task struct {
 	AssetIDs         []string             `json:"assetIDs"`
 	Diagnostic       GenerationDiagnostic `json:"diagnostic,omitempty"`
 }
+
+// TaskPause is one pause of an unsent image: when and why it paused, and when it
+// was resumed and by whom (resume: the customer resumed this image; retry-all:
+// the one-click completion of the set). An open pause has no ResumedAt.
+type TaskPause struct {
+	At        string `json:"at,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	ResumedAt string `json:"resumedAt,omitempty"`
+	ResumedBy string `json:"resumedBy,omitempty"`
+}
+
 type GenerationDiagnostic struct {
 	Stage             string `json:"stage"`
 	StartedAt         string `json:"startedAt"`

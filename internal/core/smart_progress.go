@@ -38,6 +38,7 @@ func (s *Service) CurrentSmartProgress() (SmartProgress, error) {
 	if e != nil {
 		return SmartProgress{}, e
 	}
+	sortNewestFirst(tasks)
 	p := SmartProgress{RunID: r.ID}
 	seen := map[string]bool{}
 	running, paused := false, false

@@ -30,6 +30,8 @@ import {
 } from "./api";
 import {
   blankAgentDraft,
+  normalizeAgentRun,
+  normalizeTask,
   type AgentInput,
   type AgentPage,
   type AgentRun,
@@ -66,6 +68,7 @@ import {
 import { gatewayLabel, useGateways } from "./Gateways";
 import { t, type MessageKey } from "./i18n";
 import { LicenseNotice } from "./License";
+import { SuiteFeedbackButton } from "./SuiteFeedback";
 import {
   ReferenceStrip,
   AgentTiming,
@@ -81,6 +84,7 @@ import {
   SampleCheckNote,
   type RefineTarget,
   RefineDialog,
+  RefineModeNote,
   type SmartMode,
   ModeSwitch,
   SuiteEstimateHint,
@@ -150,13 +154,17 @@ export function SmartImages() {
   );
   const runQuery = useQuery({
     queryKey: ["agent-run", runID],
-    queryFn: () => call<AgentRun>("GetAgentRun", runID),
+    queryFn: () =>
+      call<AgentRun>("GetAgentRun", runID).then(normalizeAgentRun),
     enabled: !!runID,
     refetchInterval: 2000,
   });
   const taskQuery = useQuery({
     queryKey: ["agent-tasks", runID],
-    queryFn: () => call<Task[]>("GetAgentTasks", runID),
+    queryFn: () =>
+      call<Task[]>("GetAgentTasks", runID).then((tasks) =>
+        (tasks || []).map(normalizeTask),
+      ),
     enabled: !!runID,
     refetchInterval: 2500,
   });
@@ -205,8 +213,14 @@ export function SmartImages() {
     const opened = initialized.current !== run.id;
     if (opened) {
       initialized.current = run.id;
-      setInput(run.input);
-      setProductText(run.input.productText);
+      // Like the draft: a stored input may lack lists.
+      setInput({
+        ...blankAgentDraft,
+        ...run.input,
+        references: run.input.references || [],
+        skillIDs: run.input.skillIDs || [],
+      });
+      setProductText(run.input.productText || "");
     }
     // Each new stop shows the saved answers, so a question asked again starts empty
     // instead of showing the answer that did not settle it.
@@ -295,10 +309,13 @@ export function SmartImages() {
     const at = viewerItems.findIndex((item) => item.assetID === assetID);
     if (at >= 0) setViewerIndex(at);
   }
-  // Failed and paused images can be sent again in one confirmed action; unknown ones cannot.
-  const retryable = tasks.filter(
-    (t) => t.status === "failed" || t.status === "blocked",
+  // Failed, paused and 结果未知 images are sent again in one confirmed action,
+  // so the whole set can be completed. The confirmation names the 结果未知 ones:
+  // they may already have been generated and billed.
+  const retryable = tasks.filter((t) =>
+    ["failed", "blocked", "unknown"].includes(t.status),
   ).length;
+  const retryableUnknown = tasks.filter((t) => t.status === "unknown").length;
   const pendingDownloads = tasks.filter((t) => t.status === "download_failed");
   const sizeOptions = withCurrent(presetSizes, input.size);
   const analyzing = run?.status === "analyzing",
@@ -938,6 +955,11 @@ export function SmartImages() {
                   </Tag>
                 )}
                 {run && <AgentTiming run={run} tasks={tasks} />}
+                {run &&
+                  !submitted &&
+                  (run.status === "failed" || run.status === "interrupted") && (
+                    <SuiteFeedbackButton runID={run.id} />
+                  )}
               </Space>
             </div>
             {runQuery.error && (
@@ -1107,7 +1129,12 @@ export function SmartImages() {
                       onClick={() =>
                         actions.confirm(
                           t("smart.retry.allTitle", { count: retryable }),
-                          t("smart.retry.allContent", { count: retryable }),
+                          retryableUnknown > 0
+                            ? t("smart.retry.allContentUnknown", {
+                                count: retryable,
+                                unknown: retryableUnknown,
+                              })
+                            : t("smart.retry.allContent", { count: retryable }),
                           () => call("RetryFailedAgentImages", run!.id),
                           false,
                           t("smart.retry.ok"),
@@ -1125,6 +1152,7 @@ export function SmartImages() {
                   >
                     {t(done ? "smart.download.set" : "smart.download.done")}
                   </Button>
+                  <SuiteFeedbackButton runID={run!.id} />
                 </Space>
               </div>
               {tasks.some(isBalanceRejected) && (
@@ -1181,6 +1209,7 @@ export function SmartImages() {
                         })}
                       </p>
                     )}
+                    <RefineModeNote task={task} />
                     <SampleNote task={task} tasks={tasks} />
                     {task.sample && (
                       <p className="hint">

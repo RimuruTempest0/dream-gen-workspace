@@ -1,8 +1,8 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"encoding/json"
+	"imageworkbench/internal/i18n"
 	"strings"
 )
 
@@ -105,6 +105,11 @@ type SuiteItem struct {
 	// NoProduct marks an image without the product (a thread-colour card, fabric
 	// swatches); it is sent without the locked product spec.
 	NoProduct bool `json:"noProduct,omitempty"`
+	// Request is the 序号 of the customer's request (SuitePlan.Requests) this
+	// image carries out, 0 for a supplementary image; Presentation is its 展示方式.
+	// Both are empty on older plans.
+	Request      int    `json:"request,omitempty"`
+	Presentation string `json:"presentation,omitempty"`
 }
 type SuitePlan struct {
 	Revision  int         `json:"revision"`
@@ -116,6 +121,14 @@ type SuitePlan struct {
 	// CuffEmbroidery says whether the product has cuff embroidery; nil on plans
 	// saved before 0.5.2. False drops the P004 cuff clauses from image prompts.
 	CuffEmbroidery *bool `json:"cuffEmbroidery,omitempty"`
+	// KeepPerson says the customer asked to keep a person from an earlier suite
+	// image; only then may an item take such an image whole as a reference.
+	KeepPerson bool `json:"keepPerson,omitempty"`
+	// Requests are the customer's requests, one per requested image in their
+	// order and words, as the Agent listed them when it saved the plan; an
+	// item's Request is the 序号 (from 1) of the one it carries out. Empty on
+	// older plans.
+	Requests []string `json:"requests,omitempty"`
 }
 type AgentEvent struct {
 	At   string `json:"at"`
@@ -130,21 +143,22 @@ const (
 	stageBrowserReading = "browser-reading"
 	stageBrowserVerify  = "browser-verify"
 )
+
 type SkillAttachment struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
 type SkillRecord struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Content     string            `json:"content"`
-	Version     int               `json:"version"`
-	Enabled     bool              `json:"enabled"`
-	Source      string            `json:"source"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Content     string `json:"content"`
+	Version     int    `json:"version"`
+	Enabled     bool   `json:"enabled"`
+	Source      string `json:"source"`
 	// Conflict is set on the record ImportSkill returns when a skill of that name
 	// exists and replacing was not asked for; nothing was imported.
-	Conflict bool `json:"conflict,omitempty"`
+	Conflict    bool              `json:"conflict,omitempty"`
 	Attachments []SkillAttachment `json:"attachments"`
 	// Sealed marks a built-in skill that 0.7.10–0.7.16 stored only by reference in
 	// customer packages; it is restored to its full text at start (skill_unseal.go).
@@ -164,16 +178,16 @@ type AgentRun struct {
 	Instructions         []string   `json:"instructions"`
 	// Language is the interface language the current round started in (0.8.0);
 	// the round, its plan's images and their checks keep it after a switch.
-	Language string `json:"language,omitempty"`
-	ID                  string     `json:"id"`
-	CreatedAt            string     `json:"createdAt"`
-	UpdatedAt            string     `json:"updatedAt"`
-	Status               string     `json:"status"`
-	Stage                string     `json:"stage"`
+	Language  string `json:"language,omitempty"`
+	ID        string `json:"id"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+	Status    string `json:"status"`
+	Stage     string `json:"stage"`
 	// StageCode names a stage the interface reacts to (stagePreparing,
 	// stageBrowserReading, stageBrowserVerify) in any language; "" for others.
 	StageCode string `json:"stageCode,omitempty"`
-	Error                string     `json:"error"`
+	Error     string `json:"error"`
 	// LLMReconnects counts LLM streams cut during this analysis; Claude Code
 	// retries them itself, so they are a note, not an error, unless it fails.
 	LLMReconnects int `json:"llmReconnects,omitempty"`
@@ -192,12 +206,12 @@ type AgentRun struct {
 	// Activity is the feed of what Claude Code and the LLM did. Never sent to the LLM.
 	Activity []ActivityEntry `json:"activity,omitempty"`
 	// StopReason says why the app ended this attempt itself.
-	StopReason        string          `json:"stopReason,omitempty"`
-	Input             AgentInput      `json:"input"`
-	LLMConnection     Connection      `json:"llmConnection"`
-	Skills            []SkillRecord   `json:"skills"`
+	StopReason    string        `json:"stopReason,omitempty"`
+	Input         AgentInput    `json:"input"`
+	LLMConnection Connection    `json:"llmConnection"`
+	Skills        []SkillRecord `json:"skills"`
 	// ShopRules are the shop rules enabled when the run started (frozen).
-	ShopRules []ShopRule `json:"shopRules,omitempty"`
+	ShopRules         []ShopRule      `json:"shopRules,omitempty"`
 	Product           ProductInfo     `json:"product"`
 	Questions         []AgentQuestion `json:"questions"`
 	Plans             []SuitePlan     `json:"plans"`

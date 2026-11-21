@@ -22,7 +22,11 @@ func TestRejectionKindTellsBalanceFromKey(t *testing.T) {
 		{429, "HTTP 429：API_KEY_QUOTA_EXHAUSTED", "balance"},
 		{429, "HTTP 429：api key quota exhausted", "balance"},
 		{429, "HTTP 429：rate limit exceeded, retry later", ""},
-		{500, "insufficient balance", ""},
+		// A server error is 结果未知, unless its reply says the quota is used up.
+		{500, "HTTP 500：upstream billing service error", ""},
+		{502, "HTTP 502：bad gateway", ""},
+		{500, "HTTP 500：该令牌额度已用尽", "balance"},
+		{503, "HTTP 503：insufficient_user_quota", "balance"},
 	}
 	for _, c := range cases {
 		if got := rejectionKind(c.status, c.message); got != c.want {
@@ -43,11 +47,11 @@ func TestEmptyAccountPausesTheBatchWithoutAskingForAKey(t *testing.T) {
 		t.Fatal("images were sent to an empty account", g.imageHits.Load())
 	}
 	failed := tasksWhere(s, func(t Task) bool { return t.Status == "failed" })[0]
-	if !strings.HasPrefix(failed.Error, "图片服务账户余额不足（HTTP 403）") || strings.Contains(failed.Error, "API Key 无效") || !strings.Contains(failed.Error, "insufficient balance") {
+	if !strings.HasPrefix(failed.Error, "线路额度已用完（HTTP 403）") || strings.Contains(failed.Error, "API Key 无效") || !strings.Contains(failed.Error, "insufficient balance") {
 		t.Fatal(failed.Error)
 	}
 	paused := tasksWhere(s, func(t Task) bool { return t.Status == "blocked" })[0]
-	if !strings.Contains(paused.Error, "余额不足") || !strings.Contains(paused.Error, "充值") || strings.Contains(paused.Error, "密钥") {
+	if !strings.Contains(paused.Error, "线路额度已用完") || !strings.Contains(paused.Error, "额度恢复后") || strings.Contains(paused.Error, "密钥") {
 		t.Fatal(paused.Error)
 	}
 	m, _ := s.GatewayMonitor(MonitorQuery{Days: 1})
@@ -73,7 +77,7 @@ func TestEmptyPrimaryMovesUnsentImagesToBackup(t *testing.T) {
 	}
 	health, _ := s.GatewayHealth()
 	for _, h := range health {
-		if h.ConnectionID == a.ID && (h.State != "down" || h.Reason != "账户余额不足") {
+		if h.ConnectionID == a.ID && (h.State != "down" || h.Reason != "线路额度已用完") {
 			t.Fatalf("empty gateway health: %+v", h)
 		}
 	}
@@ -93,7 +97,7 @@ func TestEmptyPrimaryWithoutBackupPausesAndSendsNoMore(t *testing.T) {
 		t.Fatal("more images sent to an empty account", empty.imageHits.Load())
 	}
 	paused := tasksWhere(s, func(t Task) bool { return t.Status == "blocked" })[0]
-	if !strings.Contains(paused.Error, "账户余额不足") || !strings.Contains(paused.Error, "未提交、未计费") {
+	if !strings.Contains(paused.Error, "线路额度已用完") || !strings.Contains(paused.Error, "未提交、未计费") {
 		t.Fatal(paused.Error)
 	}
 }

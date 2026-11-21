@@ -42,7 +42,7 @@ func (s *Service) policyRetryLocked(t *Task) string {
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
 		return s.taskMsg(*t, "generation.retry.serviceDeleted")
 	}
-	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
+	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "", triggerAutoResend)
 	if e != nil {
 		return s.taskMsg(*t, "generation.policy.notQueued", "error", e.Error())
 	}
@@ -126,13 +126,13 @@ func (s *Service) reword(id string) {
 		c, key, ok = s.moodLLMLocked(t)
 	}
 	s.mu.Unlock()
-	prompt, e := "", s.fail("generation.noLLM")
+	prompt, mode, e := "", "", s.fail("generation.noLLM")
 	if ok {
 		ctx, cancel := context.WithTimeout(s.ctx, rewordTimeout)
 		if t.RewordFor == rewordMood {
 			prompt, e = s.moodRewrite(ctx, c, key, t)
 		} else if t.RewordFor == rewordRefine {
-			prompt, e = s.refineRequirements(ctx, c, key, t)
+			prompt, mode, e = s.refineRequirements(ctx, c, key, t)
 		} else {
 			prompt, e = s.rewordPrompt(ctx, c, key, t.Language, t.Prompt)
 		}
@@ -167,7 +167,7 @@ func (s *Service) reword(id string) {
 			t.Error = s.msg("generation.refineRewriteFailed", "error", s.redact(e.Error(), key))
 			_ = s.store.appendLog("warn", "agent", t.AgentRunID, s.msg("generation.log.refineRewriteFailed", "error", s.redact(e.Error(), key)))
 		} else {
-			t.Prompt = prompt
+			s.applyRefineLocked(&t, prompt, mode)
 			_ = s.store.appendLog("info", "agent", t.AgentRunID, s.msg("generation.log.refineRewritten", "task", t.ID))
 		}
 		_ = s.store.Put("task", t.ID, t)
@@ -204,7 +204,7 @@ func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, lang, pro
 			head, body = line+"\n", rest
 		}
 	}
-	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body),s.msg("agent.llmStage.reword"), func(text string) error {
+	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body), s.msg("agent.llmStage.reword"), func(text string) error {
 		for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
 			if want := q[1] + q[2]; !strings.Contains(text, want) {
 				return s.fail("agent.rewrite.lostText", "text", want)

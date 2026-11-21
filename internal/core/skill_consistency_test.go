@@ -77,6 +77,52 @@ func TestConsistencySkillUpgradePreservesStoredState(t *testing.T) {
 	}
 }
 
+// The 0.8.0 skills were rewritten for display-first suites (#17): an unedited
+// 0.8.0 copy takes the new text, a copy the customer edited and the customer's
+// shop rules stay exactly as they were, and a run frozen with the 0.8.0 P004
+// copy keeps its fixed rules.
+func TestSkillUpgradeFrom080KeepsCustomerEdits(t *testing.T) {
+	s := testService(t)
+	rule, e := s.SaveShopRule(ShopRule{Name: "P004", Text: "我的店铺规则：袖子都竖直向下。", Enabled: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	edited := map[string]bool{"etsy-suite": true, p004SkillID: true}
+	for _, b := range builtinSkills {
+		var rec SkillRecord
+		s.store.Get("skill", b.id, &rec)
+		rec.Content = builtinSkillContent(b.slug, b.description, embeddedSkillText("builtin_skills/history/"+b.slug+"-0.8.0.md"))
+		if edited[b.id] {
+			rec.Content += "\n保留我自己的写法。\n"
+		}
+		rec.Version = 4
+		s.store.Put("skill", rec.ID, rec)
+	}
+	if e := s.initializeAgents(); e != nil {
+		t.Fatal(e)
+	}
+	for _, b := range builtinSkills {
+		var got SkillRecord
+		s.store.Get("skill", b.id, &got)
+		if edited[b.id] {
+			if got.Version != 4 || !strings.HasSuffix(got.Content, "保留我自己的写法。\n") {
+				t.Fatal("customer edit lost on upgrade", b.id)
+			}
+		} else if got.Version != 5 || got.Content != b.content() {
+			t.Fatal("unedited 0.8.0 copy not upgraded", b.id, got.Version)
+		}
+	}
+	var gotRule ShopRule
+	s.store.Get("shop_rule", rule.ID, &gotRule)
+	if !reflect.DeepEqual(gotRule, rule) {
+		t.Fatal("upgrade touched the shop rule")
+	}
+	old := SkillRecord{ID: p004SkillID, Content: builtinSkillContent(p004SkillID, builtinSkills[3].description, embeddedSkillText("builtin_skills/history/p004-rules-0.8.0.md"))}
+	if projectRulesSuffix(AgentRun{Skills: []SkillRecord{old}}, SuitePlan{}) == "" {
+		t.Fatal("run frozen with the 0.8.0 P004 copy lost its fixed rules")
+	}
+}
+
 func TestConsistencyPromptCarriesTheRunsActualSkillVersions(t *testing.T) {
 	s := testService(t)
 	llm := saveLLM(t, s, "https://example.invalid/anthropic")
@@ -181,7 +227,7 @@ func TestShippedSkillsStayConcise(t *testing.T) {
 	if total > 16000 {
 		t.Fatal("skills grew past the size the context budget assumes", total)
 	}
-	// The pose table saves the Agent working out P004's cuff pose for each image.
+	// The pose table fixes the cuff sample and close-up; the other poses only keep the cuff visible.
 	for _, want := range []string{"姿势表", "站姿", "坐姿", "多人同框", "平铺"} {
 		if !strings.Contains(builtinSkills[3].body, want) {
 			t.Fatal("P004 pose missing", want)

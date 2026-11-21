@@ -62,8 +62,20 @@ var chineseAllowed = map[string]map[string]string{
 		"cropReference":     "tool result note for the Agent",
 		"cropReferenceTool": "tool description for the Agent",
 	},
+	"feedback_package.go": {
+		"feedbackMarkdownName": "file name in the 反馈包",
+		"feedbackLabels":       "反馈.md is written for the provider, in Chinese",
+		"feedbackMarkdown":     "反馈.md is written for the provider, in Chinese",
+	},
+	"feedback_images.go": {
+		"feedbackImagesMarkdown": "反馈.md is written for the provider, in Chinese",
+	},
+	"feedback_items.go": {
+		"feedbackItemLabels":    "反馈.md is written for the provider, in Chinese",
+		"feedbackItemsMarkdown": "反馈.md is written for the provider, in Chinese",
+	},
 	"fixed_lists.go": {"moodSentenceZh": "zh-CN fixed text"},
-	"gateways.go":    {"balanceWords": "recognises upstream error text"},
+	"gateways.go":    {"balanceWords": "recognises upstream error text", "quotaUsedUp": "recognises upstream error text"},
 	"license_qa.go":  {"writeQACustomer": "desktop QA licence fixture (provider data)"},
 	"llm_monitor.go": {"legacyWaitingStages": "recognises stage names saved before 0.8.0"},
 	"moods.go": {
@@ -99,6 +111,7 @@ var chineseAllowed = map[string]map[string]string{
 		"refinePromptMarkerV1":   "recognises prompts saved before 0.6.11",
 		"refineSampleLine":       "Chinese image-prompt line",
 		"refineSamplesLine":      "Chinese image-prompt line",
+		"regenerateHead":         "Chinese image-prompt lines and marker (English: prompt_scaffold.go)",
 		"removalWords":           "recognises the customer's words",
 	},
 	"sample.go": {

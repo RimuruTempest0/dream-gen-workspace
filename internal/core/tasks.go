@@ -193,8 +193,7 @@ func (s *Service) ListTasks(status string, offset, limit int) (Page, error) {
 		return Page{}, e
 	}
 	for i := range page {
-		page[i].Connection = cleanConnection(page[i].Connection)
-		page[i].Results = nil
+		page[i] = cleanTask(page[i])
 	}
 	return Page{page, total}, nil
 }
@@ -203,9 +202,7 @@ func (s *Service) GetTask(id string) (Task, error) {
 	defer s.mu.Unlock()
 	var t Task
 	e := s.store.Get("task", id, &t)
-	t.Connection = cleanConnection(t.Connection)
-	t.Results = nil
-	return t, e
+	return cleanTask(t), e
 }
 func (s *Service) StopBatch(batch string) error {
 	s.mu.Lock()
@@ -271,7 +268,7 @@ func (s *Service) Retry(id string) (string, error) {
 		return "", s.fail("task.stillRunning")
 	}
 	if t.AgentRunID != "" {
-		if e := s.retryAgentLocked(t); e != nil {
+		if e := s.retryAgentLocked(t, triggerRetry); e != nil {
 			return "", e
 		}
 		s.signal()
@@ -311,16 +308,49 @@ func (s *Service) ResumeBlocked(id string) error {
 	if e := s.store.Get("task", id, &t); e != nil {
 		return e
 	}
-	if e := s.resumeBlockedLocked(t); e != nil {
+	if e := s.resumeBlockedLocked(t, triggerResume); e != nil {
 		return e
 	}
 	s.signal()
 	return nil
 }
 
+// pauseTask holds an unsent image back ("blocked") for reason and records the
+// pause; an image already paused keeps its pause, with the newer reason.
+func pauseTask(t *Task, reason string) {
+	t.Status, t.Error, t.UpdatedAt = "blocked", reason, Now()
+	if n := len(t.Pauses); n > 0 && t.Pauses[n-1].ResumedAt == "" {
+		t.Pauses[n-1].Reason = reason
+		return
+	}
+	t.Pauses = append(t.Pauses, TaskPause{At: t.UpdatedAt, Reason: reason})
+}
+
+// resumeTask records who resumed a paused image. An image paused before pauses
+// were recorded gets its pause from what it kept: its reason and last update.
+func resumeTask(t *Task, by string) {
+	n := len(t.Pauses)
+	if n == 0 || t.Pauses[n-1].ResumedAt != "" {
+		t.Pauses = append(t.Pauses, TaskPause{At: t.UpdatedAt, Reason: t.Error})
+		n++
+	}
+	t.Pauses[n-1].ResumedAt, t.Pauses[n-1].ResumedBy = Now(), by
+}
+
+// Who started an attempt again (Task.Trigger).
+const (
+	triggerAutoResend   = "auto-resend"   // the app resent it on its own (relay timeout, content check)
+	triggerSampleRedraw = "sample-redraw" // the sample check found it wrong and redrew it
+	triggerRetry        = "retry"         // the customer regenerated this one image
+	triggerRetryAll     = "retry-all"     // the customer's one-click completion of the set
+	triggerRefine       = "refine"        // the customer asked for a change
+	// Only a paused image's resume (TaskPause.ResumedBy): the customer resumed it.
+	triggerResume = "resume"
+)
+
 // retryAgentLocked queues a new attempt for a smart-generation slot with the
 // connection's current key. It is a new, possibly billable request.
-func (s *Service) retryAgentLocked(t Task) error {
+func (s *Service) retryAgentLocked(t Task, trigger string) error {
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
 		return missing(e, s.msg("task.serviceDeleted"))
@@ -328,13 +358,14 @@ func (s *Service) retryAgentLocked(t Task) error {
 	// A manual retry starts the automatic resends after a content refusal afresh.
 	t.PolicyStep = 0
 	t.Language = s.Language() // a new request: the language chosen now
-	_, e := s.queueAttemptLocked(t, c, "")
+	_, e := s.queueAttemptLocked(t, c, "", trigger)
 	return e
 }
 
 // queueAttemptLocked queues a new attempt of t in the same batch on connection c.
-// autoRetryOf marks an automatic re-generation after a relay timeout.
-func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (Task, error) {
+// autoRetryOf marks an automatic re-generation after a relay timeout; trigger
+// records who started the attempt.
+func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf, trigger string) (Task, error) {
 	if normalizeConnection(c).Kind != "image" {
 		return Task{}, s.fail("task.chooseImageService")
 	}
@@ -351,7 +382,8 @@ func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (
 	t.Diagnostic = GenerationDiagnostic{}
 	t.PreviousAssetIDs = nil
 	t.RoutedFrom, t.RoutedFromName, t.RouteReason = "", "", ""
-	t.AutoRetryOf, t.AutoRetriedAs = autoRetryOf, ""
+	t.AutoRetryOf, t.AutoRetriedAs, t.Trigger = autoRetryOf, "", trigger
+	t.Pauses = nil
 	t.PolicyRetryOf, t.PolicyRetriedAs, t.Rewording, t.RewordFor = "", "", false, ""
 	t.SampleCheck, t.SampleProblems = "", ""
 	t.Connection = c
@@ -363,8 +395,9 @@ func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (
 	return t, e
 }
 
-// resumeBlockedLocked puts an unsent, paused task back in the queue.
-func (s *Service) resumeBlockedLocked(t Task) error {
+// resumeBlockedLocked puts an unsent, paused task back in the queue; by is who
+// resumed it (triggerResume or triggerRetryAll).
+func (s *Service) resumeBlockedLocked(t Task, by string) error {
 	if t.Status != "blocked" {
 		return s.fail("task.resumeOnlyBlocked")
 	}
@@ -382,15 +415,18 @@ func (s *Service) resumeBlockedLocked(t Task) error {
 		return e
 	}
 	t.Connection.Credential = c.Credential
+	resumeTask(&t, by)
 	t.Status = "queued"
 	t.Error = ""
 	t.UpdatedAt = Now()
 	return s.store.Put("task", t.ID, t)
 }
 
-// RetryFailedAgentImages regenerates every failed image and resumes every paused
-// image of a smart-generation set in one confirmed action. Images whose result is
-// unknown are skipped: they may already have been generated and billed.
+// RetryFailedAgentImages regenerates every failed and 结果未知 image and resumes
+// every paused image of a 套图 in one confirmed action, so the whole set can be
+// completed. The customer confirmed once, knowing that a 结果未知 image may
+// already have been generated and billed. It is an explicit action, so it is
+// not bound by the one automatic resend per image.
 func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -398,6 +434,7 @@ func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
+	sortNewestFirst(all)
 	seen := map[string]bool{}
 	retried := 0
 	for _, t := range all { // newest first: the first task of a slot is its current attempt
@@ -406,10 +443,10 @@ func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 		}
 		seen[t.PlanItemID] = true
 		switch t.Status {
-		case "failed":
-			e = s.retryAgentLocked(t)
+		case "failed", "unknown":
+			e = s.retryAgentLocked(t, triggerRetryAll)
 		case "blocked":
-			e = s.resumeBlockedLocked(t)
+			e = s.resumeBlockedLocked(t, triggerRetryAll)
 		default:
 			continue
 		}

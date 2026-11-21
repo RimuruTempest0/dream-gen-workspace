@@ -40,17 +40,17 @@ type GatewayHealth struct {
 
 // Health thresholds; package variables so tests can shorten them.
 var (
-	slowGenerationMS   int64 = 90_000
-	healthWindow             = 15 * time.Minute
-	recoverQuiet             = 10 * time.Minute
-	probeInterval            = 3 * time.Minute
-	downProbeInterval        = 30 * time.Second
-	probeTimeout             = 30 * time.Second
+	slowGenerationMS  int64 = 90_000
+	healthWindow            = 15 * time.Minute
+	recoverQuiet            = 10 * time.Minute
+	probeInterval           = 3 * time.Minute
+	downProbeInterval       = 30 * time.Second
+	probeTimeout            = 30 * time.Second
 	// An automatic re-generation waits for a free check that passes: checked this
 	// often, given up (unsent) after this long.
 	retryProbeInterval = 10 * time.Second
 	retryWaitLimit     = 10 * time.Minute
-	modelListFreshness       = 30 * time.Minute
+	modelListFreshness = 30 * time.Minute
 )
 
 const (
@@ -489,9 +489,7 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 		return true
 	}
 	if h.State == "down" && !retry {
-		t.Status = "blocked"
-		t.Error = s.msg("generation.serviceDown", "name", t.Connection.Name, "reason", h.Reason)
-		t.UpdatedAt = Now()
+		pauseTask(t, s.msg("generation.serviceDown", "name", t.Connection.Name, "reason", h.Reason))
 		_ = s.store.Put("task", t.ID, *t)
 		_ = s.store.appendLog("warn", "image", t.BatchID, t.Error)
 	}
@@ -559,7 +557,7 @@ func (s *Service) autoRegenerateLocked(t *Task) string {
 		}
 		target = normalizeConnection(live)
 	}
-	next, e := s.queueAttemptLocked(*t, target, t.ID)
+	next, e := s.queueAttemptLocked(*t, target, t.ID, triggerAutoResend)
 	if e != nil {
 		return s.taskMsg(*t, "generation.retry.notQueued", "error", e.Error())
 	}
@@ -584,6 +582,9 @@ var rejectionLabels = map[string]string{"balance": "connection.rejected.balance"
 // for a request the relay refused before generating. Relays answer both with
 // 401/403 (sometimes 402 or 429), so the message decides.
 func rejectionKind(status int, message string) string {
+	if quotaRefusedIn5xx(status, message) {
+		return "balance"
+	}
 	switch status {
 	case 402:
 		return "balance"
@@ -596,6 +597,18 @@ func rejectionKind(status int, message string) string {
 		}
 	}
 	return ""
+}
+
+// quotaUsedUp is the narrow wording of a quota or balance that is used up. It
+// is stricter than balanceWords: on a 5xx it turns 结果未知 into a refusal, so a
+// passing mention of "quota" or "billing" must not match.
+var quotaUsedUp = regexp.MustCompile(`(?i)额度(已)?(用尽|用完|不足)|余额不足|insufficient[ _-]?(user[ _-]?)?(balance|quota|credits?|funds)|quota[ _-]?(is[ _-]?)?(exhausted|exceeded|not enough)|out of (balance|credits?|quota)`)
+
+// quotaRefusedIn5xx recognises a relay that answered a used-up quota with a
+// server error (for example "HTTP 500：该令牌额度已用尽"): a complete reply that
+// refuses the request, not a cut connection.
+func quotaRefusedIn5xx(status int, message string) bool {
+	return status >= 500 && quotaUsedUp.MatchString(message)
 }
 
 // gatewaySetupLocked reports whether a primary or backup gateway is set up, which

@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
+	"imageworkbench/internal/i18n"
 	"imageworkbench/internal/update"
 )
 
@@ -95,38 +97,9 @@ func (s *Service) ExportDiagnostics(destination, programDir string) error {
 	if e != nil {
 		return e
 	}
-	file, e := os.CreateTemp(filepath.Dir(destination), ".diagnostics-*.zip")
-	if e != nil {
-		return e
-	}
-	name := file.Name()
-	defer os.Remove(name)
-	w := zip.NewWriter(file)
 	summaryJSON, _ := json.MarshalIndent(summary, "", "  ")
 	failuresJSON, _ := json.MarshalIndent(failures, "", "  ")
-	for _, v := range []struct {
-		name string
-		data []byte
-	}{{"README.txt", []byte(strings.ReplaceAll(s.msg("data.diagnostics.readme"), "\n", "\r\n"))}, {"summary.json", summaryJSON}, {"logs.txt", []byte(logs)}, {"failures.json", failuresJSON}} {
-		var f interface{ Write([]byte) (int, error) }
-		if f, e = w.Create(v.name); e == nil {
-			_, e = f.Write(v.data)
-		}
-		if e != nil {
-			break
-		}
-	}
-	if closeErr := w.Close(); e == nil {
-		e = closeErr
-	}
-	if closeErr := file.Close(); e == nil {
-		e = closeErr
-	}
-	if e != nil {
-		return e
-	}
-	_ = os.Remove(destination)
-	if e = os.Rename(name, destination); e != nil {
+	if e = writeZipFile(destination, []zipEntry{{"README.txt", []byte(strings.ReplaceAll(s.msg("data.diagnostics.readme"), "\n", "\r\n"))}, {"summary.json", summaryJSON}, {"logs.txt", []byte(logs)}, {"failures.json", failuresJSON}}); e != nil {
 		return e
 	}
 	s.mu.Lock()
@@ -156,21 +129,8 @@ func (s *Service) collectDiagnosticsLocked(programDir string) (diagnosticSummary
 	for _, id := range g.BackupIDs {
 		role[id] = "backup"
 	}
-	// Lines' addresses stay out too: logs keep a URL's host and path.
-	hosts := []string{}
-	for _, c := range conns {
-		if u, e := url.Parse(c.BaseURL); e == nil && u.Host != "" {
-			hosts = append(hosts, u.Host)
-		}
-	}
-	secrets := s.store.savedSecrets()
-	redact := func(text string) string {
-		text = redactLogText(text, secrets, s.Language())
-		for _, h := range hosts {
-			text = strings.ReplaceAll(text, h, s.msg("data.diagnostics.lineAddress"))
-		}
-		return text
-	}
+	hide := s.redactorLocked(conns, s.Language())
+	redact := func(text string) string { return truncateLogText(hide(text)) }
 	names := map[string]string{}
 	for _, c := range conns {
 		names[c.ID] = c.Name
@@ -246,4 +206,64 @@ func (s *Service) collectDiagnosticsLocked(programDir string) (diagnosticSummary
 		lines[i], lines[j] = lines[j], lines[i]
 	}
 	return sum, strings.Join(lines, "\r\n") + "\r\n", failures, nil
+}
+
+// redactorLocked hides what no package sent to the provider may hold: saved
+// keys, credentials and query parameters in text (as the logs do) and the
+// address of every line in conns. It does not shorten text (the hidden parts
+// are replaced by markers); the diagnostic package cuts it like a log line.
+func (s *Service) redactorLocked(conns []Connection, lang string) func(string) string {
+	// Lines' addresses stay out too: logs keep a URL's host and path.
+	hosts := []string{}
+	for _, c := range conns {
+		if u, e := url.Parse(c.BaseURL); e == nil && u.Host != "" && !slices.Contains(hosts, u.Host) {
+			hosts = append(hosts, u.Host)
+		}
+	}
+	secrets := s.store.savedSecrets()
+	address := i18n.T(lang, "data.diagnostics.lineAddress")
+	return func(text string) string {
+		text = redactText(text, secrets, lang)
+		for _, h := range hosts {
+			text = strings.ReplaceAll(text, h, address)
+		}
+		return text
+	}
+}
+
+type zipEntry struct {
+	name string
+	data []byte
+}
+
+// writeZipFile writes the entries, in order, to a new ZIP at destination; a
+// failed write leaves destination as it was.
+func writeZipFile(destination string, entries []zipEntry) error {
+	file, e := os.CreateTemp(filepath.Dir(destination), ".package-*.zip")
+	if e != nil {
+		return e
+	}
+	name := file.Name()
+	defer os.Remove(name)
+	w := zip.NewWriter(file)
+	for _, v := range entries {
+		var f interface{ Write([]byte) (int, error) }
+		if f, e = w.Create(v.name); e == nil {
+			_, e = f.Write(v.data)
+		}
+		if e != nil {
+			break
+		}
+	}
+	if closeErr := w.Close(); e == nil {
+		e = closeErr
+	}
+	if closeErr := file.Close(); e == nil {
+		e = closeErr
+	}
+	if e != nil {
+		return e
+	}
+	_ = os.Remove(destination)
+	return os.Rename(name, destination)
 }

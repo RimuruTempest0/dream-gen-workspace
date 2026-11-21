@@ -244,6 +244,57 @@
   max-width: 220px;
   margin-bottom: 12px;
 }
+/* 问题反馈: the suite-level verdict, problem types and note. */
+.feedback-form fieldset {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.feedback-form .ant-checkbox-group {
+  display: grid;
+  gap: 6px;
+}
+.feedback-form .ant-alert {
+  margin-top: 12px;
+}
+/* 逐张核验: one row per card or version, thumbnail beside the marks. */
+.feedback-image {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.feedback-image-thumb img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.feedback-image-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.feedback-image-body > * + * {
+  margin-top: 6px;
+}
+.feedback-image-body p {
+  margin-bottom: 0;
+}
+.feedback-form .feedback-image .ant-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.feedback-preview ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+.feedback-preview li + li {
+  margin-top: 8px;
+}
 .agent-history-row {
   display: flex;
   align-items: center;

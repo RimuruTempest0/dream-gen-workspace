@@ -102,8 +102,7 @@ func (s *Service) StopAllQueued() {
 	}
 	for _, t := range tasks {
 		if t.Status == "queued" {
-			t.Status = "blocked"
-			t.Error = s.msg("task.pausedOnExit")
+			pauseTask(&t, s.msg("task.pausedOnExit"))
 			s.store.Put("task", t.ID, t)
 		}
 	}
@@ -132,8 +131,7 @@ func NewService(root string) (*Service, error) {
 		if t.Status == "queued" && t.AgentRunID != "" {
 			var run AgentRun
 			if st.Get("agent_run", t.AgentRunID, &run) == nil && run.AutoGeneration {
-				t.Status = "blocked"
-				t.Error = s.msg("task.interruptedUnsent")
+				pauseTask(&t, s.msg("task.interruptedUnsent"))
 				if e = st.Put("task", t.ID, t); e != nil {
 					st.Close()
 					cancel()

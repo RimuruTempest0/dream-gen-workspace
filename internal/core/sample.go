@@ -24,7 +24,8 @@ func attachSample(t *Task, tasks []Task) bool {
 		var sample *Task
 		for i := range tasks {
 			c := &tasks[i]
-			if c.AgentRunID == t.AgentRunID && c.PlanItemID == item && (sample == nil || c.CreatedAt > sample.CreatedAt) {
+			// The sample's current attempt: its newest (attemptBefore, not text order).
+			if c.AgentRunID == t.AgentRunID && c.PlanItemID == item && (sample == nil || attemptBefore(*sample, *c)) {
 				sample = c
 			}
 		}
@@ -74,9 +75,9 @@ func samplePromptLine(n int, lang string) string {
 		return enSamplePromptLine(n)
 	}
 	if n <= 1 {
-		return "样板图：参考图第 1 张（唯一一张）是本套已经生成好的细节样板，是样板里这组设计（图案、配饰、名字的字形、颜色和左右排列）的唯一依据。画面里每一处出现这组设计，都逐个照样板画，完全相同；只照样板画这部分细节，不照它的构图、背景、姿势或商品颜色。\n"
+		return "样板图：参考图第 1 张（唯一一张）是本套已经生成好的细节样板，是样板里这组设计（图案、配饰、名字的字形、颜色和左右排列）的唯一依据。只照设计区里的设计：画面里每一处出现这组设计，都逐个照样板画，完全相同；不照样板的构图、姿势、展示方式和场景，也不照它的商品颜色。\n"
 	}
-	return fmt.Sprintf("样板图：参考图第 1 张是本套已经生成好的细节样板，是样板里这组设计（图案、配饰、名字的字形、颜色和左右排列）的唯一依据。画面里每一处出现这组设计，都逐个照样板画，完全相同；其他参考图里同一部位的图案、名字和配饰一律不照。只照样板画这部分细节，不照它的构图、背景、姿势或商品颜色。下面提示词里写的“图1”到“图%d”，依次指第 %d 到第 %d 张参考图。\n", n-1, 2, n)
+	return fmt.Sprintf("样板图：参考图第 1 张是本套已经生成好的细节样板，是样板里这组设计（图案、配饰、名字的字形、颜色和左右排列）的唯一依据。只照设计区里的设计：画面里每一处出现这组设计，都逐个照样板画，完全相同；其他参考图里同一部位的图案、名字和配饰一律不照。不照样板的构图、姿势、展示方式和场景，也不照它的商品颜色。下面提示词里写的“图1”到“图%d”，依次指第 %d 到第 %d 张参考图。\n", n-1, 2, n)
 }
 
 // samplesPromptLine leads a prompt whose first references are the samples of the
@@ -92,7 +93,7 @@ func samplesPromptLine(areas []string, n int, lang string) string {
 		}
 		parts = append(parts, fmt.Sprintf("第 %d 张是「%s」设计的样板", i+1, area))
 	}
-	line := "样板图：参考图" + strings.Join(parts, "，") + "。每张样板是它那个区域设计（图案、配饰、朝向、名字的字形和颜色、在商品上的位置和相对大小）的唯一依据：画面里出现这个区域时照对应样板画，完全相同，不要换成别的画法、比例或位置；其他参考图里这些区域的图案、名字和配饰一律不照。只照样板画这些设计，不照样板的构图、背景、姿势或商品颜色。"
+	line := "样板图：参考图" + strings.Join(parts, "，") + "。只照设计区里的设计：每张样板是它那个设计区的设计（图案、配饰、朝向、名字的字形和颜色）的唯一依据，画面里出现这个设计区时照对应样板画，完全相同，不要换成别的画法；其他参考图里这些设计区的图案、名字和配饰一律不照。不照样板的构图、姿势、展示方式和场景，也不照它的商品颜色；设计在商品上的位置和大小按提示词。"
 	if rest := n - len(areas); rest > 0 {
 		line += fmt.Sprintf("下面提示词里写的“图1”到“图%d”，依次指第 %d 到第 %d 张参考图。", rest, len(areas)+1, n)
 	}

@@ -111,6 +111,39 @@ export type AgentRun = {
   submittedRevision: number;
 };
 export type AgentPage = { items: AgentRun[]; total: number };
+
+// A run or task stored by an older version may lack lists; the pages read their
+// length, so a missing list is an empty one.
+export function normalizeAgentRun(r: AgentRun): AgentRun {
+  return {
+    ...r,
+    input: {
+      ...r.input,
+      references: r.input?.references || [],
+      skillIDs: r.input?.skillIDs || [],
+    },
+    skills: r.skills || [],
+    product: { ...r.product, referenceIDs: r.product?.referenceIDs || [] },
+    questions: r.questions || [],
+    plans: (r.plans || []).map((p) => ({
+      ...p,
+      locked: p.locked || [],
+      editable: p.editable || [],
+      items: (p.items || []).map((i) => ({
+        ...i,
+        references: i.references || [],
+      })),
+    })),
+    events: r.events || [],
+  };
+}
+export function normalizeTask(t: Task): Task {
+  return {
+    ...t,
+    references: t.references || [],
+    assetIDs: t.assetIDs || [],
+  };
+}
 export type RunProgress = {
   step: RunStep;
   stepStartedAt: string;

@@ -62,11 +62,11 @@ func TestInvalidKeyPausesBatchAndBulkRetryRecovers(t *testing.T) {
 		}
 	}
 
-	// The user fixes the key; one confirmed action regenerates the failed image and
-	// resumes the paused ones, but never the image whose result is unknown.
+	// The user fixes the key; one confirmed action regenerates the failed image,
+	// resumes the paused ones and resends the image whose result is unknown.
 	reject.Store(false)
 	n, e := s.RetryFailedAgentImages(runID)
-	if e != nil || n != 4 {
+	if e != nil || n != 5 {
 		t.Fatal("bulk retry", n, e)
 	}
 	waitFor(t, "all recovered", func() bool {
@@ -77,16 +77,10 @@ func TestInvalidKeyPausesBatchAndBulkRetryRecovers(t *testing.T) {
 				done++
 			}
 		}
-		return done == 4
+		return done == 5
 	})
-	if requests.Load() != 5 {
+	if requests.Load() != 6 {
 		t.Fatal("each image must be sent once more exactly", requests.Load())
-	}
-	current, _ = s.GetAgentTasks(runID)
-	for _, task := range current {
-		if task.PlanItemID == "slot-5" && task.Status != "unknown" {
-			t.Fatal("unknown result was resent")
-		}
 	}
 	if _, e := s.RetryFailedAgentImages(runID); e == nil {
 		t.Fatal("second click should find nothing to retry")

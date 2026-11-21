@@ -93,6 +93,10 @@ export type Task = {
   planItemID?: string;
   refinedFrom?: string;
   refineInstruction?: string;
+  // How a refinement is made: drawn again from the plan, or changed on the old
+  // image; refineUnjudged marks an edit because the AI could not decide.
+  refineMode?: "regenerate" | "edit";
+  refineUnjudged?: boolean;
   previousAssetIDs?: string[];
   // Detail sample: the sample image itself, and images drawn from it.
   sample?: boolean;

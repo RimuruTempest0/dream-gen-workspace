@@ -105,6 +105,8 @@ export namespace core {
 	    useSample?: boolean;
 	    useSamples?: string[];
 	    noProduct?: boolean;
+	    request?: number;
+	    presentation?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SuiteItem(source);
@@ -124,6 +126,8 @@ export namespace core {
 	        this.useSample = source["useSample"];
 	        this.useSamples = source["useSamples"];
 	        this.noProduct = source["noProduct"];
+	        this.request = source["request"];
+	        this.presentation = source["presentation"];
 	    }
 	}
 	export class SuitePlan {
@@ -134,6 +138,8 @@ export namespace core {
 	    notes: string;
 	    items: SuiteItem[];
 	    cuffEmbroidery?: boolean;
+	    keepPerson?: boolean;
+	    requests?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SuitePlan(source);
@@ -148,6 +154,8 @@ export namespace core {
 	        this.notes = source["notes"];
 	        this.items = this.convertValues(source["items"], SuiteItem);
 	        this.cuffEmbroidery = source["cuffEmbroidery"];
+	        this.keepPerson = source["keepPerson"];
+	        this.requests = source["requests"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -850,6 +858,114 @@ export namespace core {
 	        this.day = source["day"];
 	        this.counts = source["counts"];
 	    }
+	}
+	export class FeedbackImage {
+	    slot: number;
+	    planItemID: string;
+	    purpose: string;
+	    taskID: string;
+	    version: number;
+	    versions: number;
+	    current: boolean;
+	    status: string;
+	    error?: string;
+	    assetIDs: string[];
+	    refineInstruction?: string;
+	    sample?: boolean;
+	    sampleArea?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FeedbackImage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.slot = source["slot"];
+	        this.planItemID = source["planItemID"];
+	        this.purpose = source["purpose"];
+	        this.taskID = source["taskID"];
+	        this.version = source["version"];
+	        this.versions = source["versions"];
+	        this.current = source["current"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.assetIDs = source["assetIDs"];
+	        this.refineInstruction = source["refineInstruction"];
+	        this.sample = source["sample"];
+	        this.sampleArea = source["sampleArea"];
+	    }
+	}
+	export class FeedbackItem {
+	    planItemID?: string;
+	    taskID?: string;
+	    verdict: string;
+	    problems?: string[];
+	    note?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FeedbackItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.planItemID = source["planItemID"];
+	        this.taskID = source["taskID"];
+	        this.verdict = source["verdict"];
+	        this.problems = source["problems"];
+	        this.note = source["note"];
+	    }
+	}
+	export class FeedbackPackageFile {
+	    name: string;
+	    bytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FeedbackPackageFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.bytes = source["bytes"];
+	    }
+	}
+	export class FeedbackPackagePreview {
+	    files: FeedbackPackageFile[];
+	    bytes: number;
+	    generatedImages: number;
+	    referenceImages: number;
+	    uploads: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FeedbackPackagePreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = this.convertValues(source["files"], FeedbackPackageFile);
+	        this.bytes = source["bytes"];
+	        this.generatedImages = source["generatedImages"];
+	        this.referenceImages = source["referenceImages"];
+	        this.uploads = source["uploads"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class GatewayCall {
 	    taskID: string;
@@ -1583,6 +1699,24 @@ export namespace core {
 	        this.b64_json = source["b64_json"];
 	    }
 	}
+	export class TaskPause {
+	    at?: string;
+	    reason?: string;
+	    resumedAt?: string;
+	    resumedBy?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TaskPause(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = source["at"];
+	        this.reason = source["reason"];
+	        this.resumedAt = source["resumedAt"];
+	        this.resumedBy = source["resumedBy"];
+	    }
+	}
 	export class Task {
 	    concept?: string;
 	    mood?: string;
@@ -1597,11 +1731,15 @@ export namespace core {
 	    planItemID?: string;
 	    refinedFrom?: string;
 	    refineInstruction?: string;
+	    refineMode?: string;
+	    refineUnjudged?: boolean;
 	    routedFrom?: string;
 	    routedFromName?: string;
 	    routeReason?: string;
 	    autoRetryOf?: string;
 	    autoRetriedAs?: string;
+	    trigger?: string;
+	    pauses?: TaskPause[];
 	    autoDownloads?: number;
 	    downloadRetryAt?: string;
 	    policyRetryOf?: string;
@@ -1657,11 +1795,15 @@ export namespace core {
 	        this.planItemID = source["planItemID"];
 	        this.refinedFrom = source["refinedFrom"];
 	        this.refineInstruction = source["refineInstruction"];
+	        this.refineMode = source["refineMode"];
+	        this.refineUnjudged = source["refineUnjudged"];
 	        this.routedFrom = source["routedFrom"];
 	        this.routedFromName = source["routedFromName"];
 	        this.routeReason = source["routeReason"];
 	        this.autoRetryOf = source["autoRetryOf"];
 	        this.autoRetriedAs = source["autoRetriedAs"];
+	        this.trigger = source["trigger"];
+	        this.pauses = this.convertValues(source["pauses"], TaskPause);
 	        this.autoDownloads = source["autoDownloads"];
 	        this.downloadRetryAt = source["downloadRetryAt"];
 	        this.policyRetryOf = source["policyRetryOf"];
@@ -1878,6 +2020,46 @@ export namespace core {
 	        this.costSamples = source["costSamples"];
 	    }
 	}
+	export class SuiteFeedback {
+	    runID: string;
+	    verdict: string;
+	    problems: string[];
+	    note: string;
+	    items?: FeedbackItem[];
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SuiteFeedback(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runID = source["runID"];
+	        this.verdict = source["verdict"];
+	        this.problems = source["problems"];
+	        this.note = source["note"];
+	        this.items = this.convertValues(source["items"], FeedbackItem);
+	        this.updatedAt = source["updatedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	export class Summary {
@@ -1900,6 +2082,7 @@ export namespace core {
 	        this.version = source["version"];
 	    }
 	}
+	
 	
 	export class Template {
 	    id: string;

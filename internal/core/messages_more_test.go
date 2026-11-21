@@ -143,6 +143,17 @@ func TestRefusalIsACodeInEveryLanguage(t *testing.T) {
 	if refusalOf(Task{Status: "failed", Error: "API Key 无效（HTTP 401）：insufficient balance"}) != "balance" {
 		t.Error("an empty account reported as an invalid key before 0.5.5")
 	}
+	// 线路额度已用完 covers a used-up trial allowance, and the wording tasks were
+	// saved with before it.
+	for _, text := range []string{
+		i18n.T(i18n.En, "generation.trialQuota", "status", 403, "raw", "x"),
+		"The image service account has run out of balance (HTTP 402). The image service refused the request; nothing was made or charged.",
+		"图片服务账户余额不足（HTTP 402），图片服务拒绝了请求，未生成也不计费。",
+	} {
+		if got := refusalOf(Task{Status: "failed", Error: text}); got != "balance" {
+			t.Error("not a quota refusal:", text, got)
+		}
+	}
 }
 
 // The fixed lines the backend adds to a 生图提示词 are part of the prompt the
@@ -152,7 +163,7 @@ func TestFixedPromptLinesFollowThePromptLanguage(t *testing.T) {
 	r := AgentRun{Language: i18n.Ko, Input: AgentInput{Ratio: "1:1"}, Skills: []SkillRecord{{ID: p004SkillID, Content: shippedP004Contents()[0]}}}
 	p := SuitePlan{Locked: []string{"red hoodie"}, Editable: []string{"background"}, CuffEmbroidery: &no}
 	got := itemPrompt(r, p, SuiteItem{Prompt: "A hoodie on a hanger", Sample: true, SampleArea: "chest"})
-	if hasHan(got) || !strings.Contains(got, "Locked for the whole set: red hoodie") || !strings.Contains(got, "Project fixed rules (P004)") || !strings.HasPrefix(got, "Design master") {
+	if hasHan(got) || !strings.Contains(got, "Locked for the whole set: red hoodie") || !strings.Contains(got, "Project fixed rules (P004)") || !strings.HasPrefix(got, "Design-area sample") {
 		t.Fatal(got)
 	}
 	r.Language = i18n.ZhCN

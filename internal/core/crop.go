@@ -1,12 +1,12 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"bytes"
 	"encoding/json"
 	"image"
 	stdDraw "image/draw"
 	"image/png"
+	"imageworkbench/internal/i18n"
 	"strings"
 	"unicode/utf8"
 
@@ -32,6 +32,15 @@ const (
 func runReferenceIDs(r AgentRun) []string {
 	ids := append(append([]string{}, r.Input.References...), r.Product.ReferenceIDs...)
 	return append(ids, r.Crops...)
+}
+
+// earlierSuiteImage reports whether the asset is an image a suite generated. Used
+// whole as a reference it carries that suite's person, pose and scene, so a plan
+// uses only a crop of the product itself unless the customer keeps the person.
+func (s *Service) earlierSuiteImage(id string) bool {
+	var a Asset
+	var t Task
+	return s.store.Get("asset", id, &a) == nil && a.TaskID != "" && s.store.Get("task", a.TaskID, &t) == nil && t.AgentRunID != ""
 }
 
 func cropReferenceTool() map[string]any {

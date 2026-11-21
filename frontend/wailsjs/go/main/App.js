@@ -66,6 +66,10 @@ export function ChooseExportPath(arg1) {
   return window['go']['main']['App']['ChooseExportPath'](arg1);
 }
 
+export function ChooseFeedbackPath() {
+  return window['go']['main']['App']['ChooseFeedbackPath']();
+}
+
 export function ChooseSkillSource(arg1) {
   return window['go']['main']['App']['ChooseSkillSource'](arg1);
 }
@@ -138,6 +142,10 @@ export function ExportDiagnosticsToPath(arg1) {
   return window['go']['main']['App']['ExportDiagnosticsToPath'](arg1);
 }
 
+export function ExportFeedbackPackageToPath(arg1, arg2) {
+  return window['go']['main']['App']['ExportFeedbackPackageToPath'](arg1, arg2);
+}
+
 export function ExportGatewayCallsToPath(arg1, arg2) {
   return window['go']['main']['App']['ExportGatewayCallsToPath'](arg1, arg2);
 }
@@ -178,12 +186,20 @@ export function GetExportAsset(arg1) {
   return window['go']['main']['App']['GetExportAsset'](arg1);
 }
 
+export function GetFeedbackImages(arg1) {
+  return window['go']['main']['App']['GetFeedbackImages'](arg1);
+}
+
 export function GetGatewaySettings() {
   return window['go']['main']['App']['GetGatewaySettings']();
 }
 
 export function GetGuideMode() {
   return window['go']['main']['App']['GetGuideMode']();
+}
+
+export function GetSuiteFeedback(arg1) {
+  return window['go']['main']['App']['GetSuiteFeedback'](arg1);
 }
 
 export function GetTask(arg1) {
@@ -290,6 +306,10 @@ export function OpenDataDirectory() {
   return window['go']['main']['App']['OpenDataDirectory']();
 }
 
+export function PreviewFeedbackPackage(arg1) {
+  return window['go']['main']['App']['PreviewFeedbackPackage'](arg1);
+}
+
 export function QuitNow() {
   return window['go']['main']['App']['QuitNow']();
 }
@@ -340,6 +360,10 @@ export function SaveShopRule(arg1) {
 
 export function SaveSkill(arg1) {
   return window['go']['main']['App']['SaveSkill'](arg1);
+}
+
+export function SaveSuiteFeedback(arg1) {
+  return window['go']['main']['App']['SaveSuiteFeedback'](arg1);
 }
 
 export function SaveSuitePlan(arg1, arg2) {
