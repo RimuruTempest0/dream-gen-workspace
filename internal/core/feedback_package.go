@@ -120,7 +120,9 @@ type feedbackTask struct {
 	PolicyStep        int                 `json:"policyStep,omitempty"`
 	RefinedFrom       string              `json:"refinedFrom,omitempty"`
 	RefineInstruction string              `json:"refineInstruction,omitempty"`
-	Sample            bool                `json:"sample,omitempty"`
+	RefineMode        string              `json:"refineMode,omitempty"`
+	RefineUnjudged    bool                `json:"refineUnjudged,omitempty"`
+	Sample         bool                `json:"sample,omitempty"`
 	SampleArea        string              `json:"sampleArea,omitempty"`
 	SampleItems       []string            `json:"sampleItems,omitempty"`
 	SampleAssetIDs    []string            `json:"sampleAssetIDs,omitempty"`
@@ -227,7 +229,7 @@ func feedbackRunOf(r AgentRun) feedbackRun {
 }
 
 func feedbackTaskOf(t Task) feedbackTask {
-	out := feedbackTask{ID: t.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, Status: t.Status, Error: t.Error, Language: t.Language, Prompt: t.Prompt, References: t.References, Line: lineOf(t.Connection), Model: t.Model, Size: t.Size, Quality: t.Quality, AssetIDs: t.AssetIDs, RoutedFromName: t.RoutedFromName, RouteReason: t.RouteReason, AutoRetryOf: t.AutoRetryOf, AutoRetriedAs: t.AutoRetriedAs, PolicyRetryOf: t.PolicyRetryOf, PolicyRetriedAs: t.PolicyRetriedAs, PolicyStep: t.PolicyStep, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction, Sample: t.Sample, SampleArea: t.SampleArea, SampleItems: t.SampleItems, SampleAssetIDs: t.SampleAssetIDs, SampleCheck: t.SampleCheck, SampleProblems: t.SampleProblems, SampleRedraws: t.SampleRedraws, Trial: t.Trial}
+	out := feedbackTask{ID: t.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, Status: t.Status, Error: t.Error, Language: t.Language, Prompt: t.Prompt, References: t.References, Line: lineOf(t.Connection), Model: t.Model, Size: t.Size, Quality: t.Quality, AssetIDs: t.AssetIDs, RoutedFromName: t.RoutedFromName, RouteReason: t.RouteReason, AutoRetryOf: t.AutoRetryOf, AutoRetriedAs: t.AutoRetriedAs, PolicyRetryOf: t.PolicyRetryOf, PolicyRetriedAs: t.PolicyRetriedAs, PolicyStep: t.PolicyStep, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction, RefineMode: t.RefineMode, RefineUnjudged: t.RefineUnjudged, Sample: t.Sample, SampleArea: t.SampleArea, SampleItems: t.SampleItems, SampleAssetIDs: t.SampleAssetIDs, SampleCheck: t.SampleCheck, SampleProblems: t.SampleProblems, SampleRedraws: t.SampleRedraws, Trial: t.Trial}
 	d := t.Diagnostic
 	if diag := (feedbackDiagnostic{Stage: d.Stage, StartedAt: d.StartedAt, HTTPStatus: d.HTTPStatus, UpstreamRequestID: d.UpstreamRequestID, UpstreamJobID: d.UpstreamJobID, ElapsedMS: d.ElapsedMS, BytesReceived: d.BytesReceived, NetworkError: d.NetworkError, DownloadMS: d.DownloadMS}); diag != (feedbackDiagnostic{}) {
 		out.Diagnostic = &diag
