@@ -584,6 +584,9 @@ var rejectionLabels = map[string]string{"balance": "connection.rejected.balance"
 // for a request the relay refused before generating. Relays answer both with
 // 401/403 (sometimes 402 or 429), so the message decides.
 func rejectionKind(status int, message string) string {
+	if quotaRefusedIn5xx(status, message) {
+		return "balance"
+	}
 	switch status {
 	case 402:
 		return "balance"
@@ -596,6 +599,18 @@ func rejectionKind(status int, message string) string {
 		}
 	}
 	return ""
+}
+
+// quotaUsedUp is the narrow wording of a quota or balance that is used up. It
+// is stricter than balanceWords: on a 5xx it turns 结果未知 into a refusal, so a
+// passing mention of "quota" or "billing" must not match.
+var quotaUsedUp = regexp.MustCompile(`(?i)额度(已)?(用尽|用完|不足)|余额不足|insufficient[ _-]?(user[ _-]?)?(balance|quota|credits?|funds)|quota[ _-]?(is[ _-]?)?(exhausted|exceeded|not enough)|out of (balance|credits?|quota)`)
+
+// quotaRefusedIn5xx recognises a relay that answered a used-up quota with a
+// server error (for example "HTTP 500：该令牌额度已用尽"): a complete reply that
+// refuses the request, not a cut connection.
+func quotaRefusedIn5xx(status int, message string) bool {
+	return status >= 500 && quotaUsedUp.MatchString(message)
 }
 
 // gatewaySetupLocked reports whether a primary or backup gateway is set up, which

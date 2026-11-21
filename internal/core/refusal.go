@@ -36,7 +36,9 @@ func refusalOf(t Task) string {
 	switch {
 	case catalogPrefix(t.Error, "generation.policyRefused"):
 		return "policy"
-	case catalogPrefix(t.Error, "generation.balance"):
+	// 线路额度已用完: an empty account or a used-up trial allowance. Tasks saved
+	// by earlier versions still carry the old "account out of balance" wording.
+	case catalogPrefix(t.Error, "generation.balance"), catalogPrefix(t.Error, "generation.trialQuota"), catalogPrefix(t.Error, "generation.legacy.balance"):
 		return "balance"
 	case catalogPrefix(t.Error, "generation.keyRejected"):
 		// Before 0.5.5 an empty account was reported as an invalid key.

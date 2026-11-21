@@ -63,7 +63,7 @@ var chineseAllowed = map[string]map[string]string{
 		"cropReferenceTool": "tool description for the Agent",
 	},
 	"fixed_lists.go": {"moodSentenceZh": "zh-CN fixed text"},
-	"gateways.go":    {"balanceWords": "recognises upstream error text"},
+	"gateways.go":    {"balanceWords": "recognises upstream error text", "quotaUsedUp": "recognises upstream error text"},
 	"license_qa.go":  {"writeQACustomer": "desktop QA licence fixture (provider data)"},
 	"llm_monitor.go": {"legacyWaitingStages": "recognises stage names saved before 0.8.0"},
 	"moods.go": {
