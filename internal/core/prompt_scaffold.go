@@ -99,8 +99,16 @@ const (
 	enRefineSampleLine   = "Image 2 is this set's detail sample (a close-up such as the cuff), not the image to edit; use it only to see how these details should look: draw the layout of icon and text, the left-to-right order, text direction, font, colour and relative size like the sample, not its garment colour, composition or background."
 )
 
-// refineMarkers are the refinement markers of saved prompts, newest first.
-var refineMarkers = []string{refinePromptMarker, enRefinePromptMarker, refinePromptMarkerV1}
+// The wrapper of a regenerated refinement in English (see regeneratePrompt).
+const (
+	enRegenerateHead     = "Generate this image again from the requirements below; do not edit the earlier image.\nThis change (must be done, and clearly visible): "
+	enRegenerateHeadRest = "\nThis change comes before the requirements below; where they conflict, follow this change. The product itself (style, colour, fabric) and the design of every design area stay the same."
+	enRegenerateMarker   = "\n\nRequirements of this image (anything that conflicts with this change no longer applies):\n"
+)
+
+// refineMarkers are the refinement markers of saved prompts, newest first; a
+// regenerated refinement has its own (refine.go).
+var refineMarkers = []string{refinePromptMarker, enRefinePromptMarker, regenerateMarker, enRegenerateMarker, refinePromptMarkerV1}
 
 // enSampleFixMarker starts the corrections added to a redrawn sample's prompt.
 const enSampleFixMarker = "\n\nThe previous sample failed its check; correct this time: "

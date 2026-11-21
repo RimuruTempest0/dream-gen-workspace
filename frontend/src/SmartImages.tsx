@@ -81,6 +81,7 @@ import {
   SampleCheckNote,
   type RefineTarget,
   RefineDialog,
+  RefineModeNote,
   type SmartMode,
   ModeSwitch,
   SuiteEstimateHint,
@@ -1181,6 +1182,7 @@ export function SmartImages() {
                         })}
                       </p>
                     )}
+                    <RefineModeNote task={task} />
                     <SampleNote task={task} tasks={tasks} />
                     {task.sample && (
                       <p className="hint">
