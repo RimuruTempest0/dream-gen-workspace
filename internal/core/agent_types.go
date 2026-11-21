@@ -116,6 +116,9 @@ type SuitePlan struct {
 	// CuffEmbroidery says whether the product has cuff embroidery; nil on plans
 	// saved before 0.5.2. False drops the P004 cuff clauses from image prompts.
 	CuffEmbroidery *bool `json:"cuffEmbroidery,omitempty"`
+	// KeepPerson says the customer asked to keep a person from an earlier suite
+	// image; only then may an item take such an image whole as a reference.
+	KeepPerson bool `json:"keepPerson,omitempty"`
 }
 type AgentEvent struct {
 	At   string `json:"at"`

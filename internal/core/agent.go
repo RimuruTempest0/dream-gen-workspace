@@ -542,6 +542,9 @@ func (s *Service) validatePlan(r *AgentRun, p *SuitePlan) error {
 			if !allowed[id] {
 				return s.fail("agent.plan.foreignRef")
 			}
+			if !p.KeepPerson && s.earlierSuiteImage(id) {
+				return s.fail("agent.plan.earlierSuiteImage")
+			}
 			var a Asset
 			if e := s.store.Get("asset", id, &a); e != nil {
 				return e
