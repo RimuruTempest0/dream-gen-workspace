@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   App as AntApp,
   Button,
   Checkbox,
+  Form,
   Input,
   Modal,
   Progress,
@@ -15,7 +16,11 @@ import { MessageOutlined } from "@ant-design/icons";
 import { call, errorText } from "./api";
 import { formatNumber, t, type MessageKey } from "./i18n";
 import { time, useActions } from "./ui";
-import { SuiteFeedbackImages, type FeedbackItem } from "./SuiteFeedbackImages";
+import {
+  SuiteFeedbackImages,
+  noteCount,
+  type FeedbackItem,
+} from "./SuiteFeedbackImages";
 
 // 问题反馈 on one 套图 (a smart run): the tester's verdict on the whole set, kept
 // with it, and the 反馈包 saved on this computer for the provider.
@@ -64,6 +69,9 @@ const entryNotes: Record<string, MessageKey> = {
   "反馈.md": "feedback.preview.md",
   "run.json": "feedback.preview.run",
 };
+// The most characters (code points) of the note on the set: maxFeedbackNote in
+// internal/core/feedback.go.
+const maxNote = 8000;
 
 const size = (n: number) =>
   n < 1048576
@@ -90,12 +98,19 @@ export function SuiteFeedbackButton({ runID }: { runID: string }) {
   );
 }
 
-function missing(v: SuiteFeedback): MessageKey | "" {
-  if (!v.verdict) return "feedback.error.verdict";
-  if (v.verdict !== "usable" && v.problems.length === 0 && !v.note.trim())
-    return "feedback.error.detail";
-  return "";
-}
+// The form's fields; runID and updatedAt stay outside it.
+type Values = {
+  verdict?: Verdict;
+  problems: string[];
+  note: string;
+  items: FeedbackItem[];
+};
+const valuesOf = (v: SuiteFeedback): Values => ({
+  verdict: v.verdict || undefined,
+  problems: v.problems || [],
+  note: v.note || "",
+  items: v.items || [],
+});
 
 function SuiteFeedbackDialog({
   runID,
@@ -109,13 +124,19 @@ function SuiteFeedbackDialog({
   const actions = useActions(),
     qc = useQueryClient();
   const { notification } = AntApp.useApp();
+  const formName = "suite-feedback-" + useId();
+  const [form] = Form.useForm<Values>();
   const saved = useQuery({
     queryKey: ["suite-feedback", runID],
     queryFn: () => call<SuiteFeedback>("GetSuiteFeedback", runID),
     enabled: open && !!runID,
   });
-  const [form, setForm] = useState<SuiteFeedback | null>(null);
-  const [problem, setProblem] = useState<MessageKey | "">("");
+  // The values the form starts from (set once per opening) and when the
+  // feedback was last saved.
+  const [initial, setInitial] = useState<Values | null>(null);
+  const [updatedAt, setUpdatedAt] = useState("");
+  // Changed since it was opened or last saved.
+  const [dirty, setDirty] = useState(false);
   const [preview, setPreview] = useState<FeedbackPackagePreview | null>(null);
   const [packing, setPacking] = useState<FeedbackPackageProgress | null>(null);
   // The images are packed in the background; generation keeps running.
@@ -134,34 +155,63 @@ function SuiteFeedbackDialog({
   }, [open, runID]);
   useEffect(() => {
     if (!open) {
-      setForm(null);
+      setInitial(null);
       setPreview(null);
-      setProblem("");
-    } else if (saved.data && !form)
-      setForm({ ...saved.data, problems: saved.data.problems || [] });
-  }, [open, saved.data, form]);
-  function change(p: Partial<SuiteFeedback>) {
-    setForm((v) => (v ? { ...v, ...p } : v));
-    setProblem("");
+      setDirty(false);
+    } else if (saved.data && !initial) {
+      setInitial(valuesOf(saved.data));
+      setUpdatedAt(saved.data.updatedAt);
+    }
+  }, [open, saved.data, initial]);
+
+  // Moves to the first field that is wrong: its control, else its first option.
+  function focusField(name: keyof Values) {
+    form.scrollToField(name, { block: "center" });
+    const el = document.getElementById(`${formName}_${name}`);
+    const target =
+      el && el.matches("input, textarea")
+        ? el
+        : el?.querySelector<HTMLElement>("input, textarea");
+    target?.focus();
   }
   // Saves the form; false when something required is missing or saving failed.
   async function save(notify: boolean): Promise<boolean> {
-    if (!form) return false;
-    const wrong = missing(form);
-    setProblem(wrong);
-    if (wrong) return false;
+    let values: Values;
+    try {
+      values = await form.validateFields();
+    } catch (e) {
+      const first = (e as { errorFields?: { name: (string | number)[] }[] })
+        .errorFields?.[0];
+      if (first) focusField(first.name[0] as keyof Values);
+      return false;
+    }
     const out = await actions.run(
       () =>
         call<SuiteFeedback>("SaveSuiteFeedback", {
-          ...form,
-          note: form.note.trim(),
+          runID,
+          verdict: values.verdict,
+          problems: values.problems || [],
+          note: (values.note || "").trim(),
+          items: values.items || [],
         }),
       notify ? t("feedback.saved") : undefined,
     );
     if (!out) return false;
-    setForm({ ...out, problems: out.problems || [] });
+    form.setFieldsValue(valuesOf(out));
+    setUpdatedAt(out.updatedAt);
+    setDirty(false);
     qc.setQueryData(["suite-feedback", runID], out);
     return true;
+  }
+  // Closing with unsaved changes asks first.
+  function close() {
+    if (dirty && !preview)
+      actions.confirm(
+        t("feedback.discard.title"),
+        t("feedback.discard.body"),
+        async () => onClose(),
+      );
+    else onClose();
   }
   async function showPackage() {
     if (!(await save(false))) return;
@@ -199,9 +249,9 @@ function SuiteFeedbackDialog({
     </Space>
   ) : (
     <Space wrap>
-      <Button onClick={onClose}>{t("feedback.close")}</Button>
+      <Button onClick={close}>{t("feedback.close")}</Button>
       <Button
-        disabled={!form}
+        disabled={!initial}
         loading={actions.busy}
         onClick={() => save(true)}
       >
@@ -209,7 +259,7 @@ function SuiteFeedbackDialog({
       </Button>
       <Button
         type="primary"
-        disabled={!form}
+        disabled={!initial}
         loading={actions.busy}
         onClick={showPackage}
       >
@@ -221,7 +271,7 @@ function SuiteFeedbackDialog({
     <Modal
       title={t(preview ? "feedback.preview.title" : "feedback.title")}
       open={open}
-      onCancel={onClose}
+      onCancel={close}
       footer={footer}
       width={720}
       destroyOnHidden
@@ -234,7 +284,7 @@ function SuiteFeedbackDialog({
           description={errorText(saved.error)}
         />
       )}
-      {preview ? (
+      {preview && (
         <div className="feedback-preview">
           <ul aria-label={t("feedback.preview.title")}>
             {preview.files
@@ -293,62 +343,95 @@ function SuiteFeedbackDialog({
             </div>
           )}
         </div>
-      ) : (
-        form && (
-          <div className="feedback-form">
-            <p className="hint">{t("feedback.intro")}</p>
-            <fieldset>
-              <legend className="field-label">
-                {t("feedback.verdict")}
-                <span aria-hidden="true"> *</span>
-              </legend>
+      )}
+      {/* Kept (hidden) while the package is previewed, so 返回修改 finds it as left. */}
+      {initial && (
+        <Form
+          form={form}
+          name={formName}
+          layout="vertical"
+          noValidate
+          className="feedback-form"
+          style={preview ? { display: "none" } : undefined}
+          initialValues={initial}
+          onValuesChange={(changed) => {
+            setDirty(true);
+            // The detail rule reads the verdict and the note: check it again
+            // while it shows an error.
+            if (
+              !("problems" in changed) &&
+              form.getFieldError("problems").length > 0
+            )
+              form.validateFields(["problems"]).catch(() => {});
+          }}
+        >
+          <p className="hint">{t("feedback.intro")}</p>
+          <fieldset>
+            <legend className="field-label">
+              {t("feedback.verdict")}
+              <span aria-hidden="true"> *</span>
+            </legend>
+            <Form.Item
+              name="verdict"
+              rules={[{ required: true, message: t("feedback.error.verdict") }]}
+            >
               <Radio.Group
                 aria-required="true"
-                value={form.verdict || undefined}
-                onChange={(e) => change({ verdict: e.target.value })}
                 options={verdicts.map((v) => ({
                   value: v.value,
                   label: t(v.label),
                 }))}
               />
-            </fieldset>
-            <fieldset>
-              <legend className="field-label">{t("feedback.problems")}</legend>
+            </Form.Item>
+          </fieldset>
+          <fieldset>
+            <legend className="field-label">{t("feedback.problems")}</legend>
+            <Form.Item
+              name="problems"
+              rules={[
+                ({ getFieldValue }) => ({
+                  validator(_, value?: string[]) {
+                    const verdict = getFieldValue("verdict");
+                    const note = (getFieldValue("note") || "") as string;
+                    if (
+                      verdict &&
+                      verdict !== "usable" &&
+                      !value?.length &&
+                      !note.trim()
+                    )
+                      return Promise.reject(
+                        new Error(t("feedback.error.detail")),
+                      );
+                    return Promise.resolve();
+                  },
+                }),
+              ]}
+            >
               <Checkbox.Group
-                value={form.problems}
-                onChange={(v) => change({ problems: v as string[] })}
                 options={problems.map((p) => ({
                   value: p.value,
                   label: t(p.label),
                 }))}
               />
-            </fieldset>
-            <label htmlFor="suite-feedback-note" className="field-label">
-              {t("feedback.note")}
-            </label>
+            </Form.Item>
+          </fieldset>
+          <Form.Item name="note" label={t("feedback.note")}>
             <Input.TextArea
-              id="suite-feedback-note"
-              value={form.note}
-              onChange={(e) => change({ note: e.target.value })}
-              maxLength={8000}
+              count={noteCount(maxNote)}
               autoSize={{ minRows: 3, maxRows: 8 }}
+              style={{ resize: "none" }}
               placeholder={t("feedback.note.placeholder")}
             />
-            <SuiteFeedbackImages
-              runID={runID}
-              items={form.items || []}
-              onChange={(items) => change({ items })}
-            />
-            {problem && (
-              <Alert type="error" showIcon role="alert" message={t(problem)} />
-            )}
-            {form.updatedAt && (
-              <p className="hint">
-                {t("feedback.savedAt", { time: time(form.updatedAt) })}
-              </p>
-            )}
-          </div>
-        )
+          </Form.Item>
+          <Form.Item name="items" noStyle>
+            <SuiteFeedbackImages runID={runID} />
+          </Form.Item>
+          {updatedAt && (
+            <p className="hint">
+              {t("feedback.savedAt", { time: time(updatedAt) })}
+            </p>
+          )}
+        </Form>
       )}
     </Modal>
   );

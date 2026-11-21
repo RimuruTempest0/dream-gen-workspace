@@ -59,7 +59,41 @@ func cleanAgentRun(r AgentRun) AgentRun {
 	}
 	r.LLMConnection = cleanConnection(r.LLMConnection)
 	r.ImageConnection = cleanConnection(r.ImageConnection)
+	// Lists a run stored without them are sent empty, never null: the interface
+	// reads their length.
+	r.Instructions = orEmpty(r.Instructions)
+	r.Input.References, r.Input.SkillIDs = orEmpty(r.Input.References), orEmpty(r.Input.SkillIDs)
+	r.Product.ReferenceIDs = orEmpty(r.Product.ReferenceIDs)
+	r.Skills, r.Questions, r.Events = orEmpty(r.Skills), orEmpty(r.Questions), orEmpty(r.Events)
+	r.Plans = orEmpty(r.Plans)
+	for i := range r.Skills {
+		r.Skills[i].Attachments = orEmpty(r.Skills[i].Attachments)
+	}
+	for i := range r.Plans {
+		p := &r.Plans[i]
+		p.Locked, p.Editable, p.Items = orEmpty(p.Locked), orEmpty(p.Editable), orEmpty(p.Items)
+		for j := range p.Items {
+			p.Items[j].References = orEmpty(p.Items[j].References)
+		}
+	}
 	return r
+}
+
+// cleanTask is a task as it is sent to the interface: the line without its key,
+// no result links, and lists empty rather than null.
+func cleanTask(t Task) Task {
+	t.Connection = cleanConnection(t.Connection)
+	t.Results = nil
+	t.References, t.AssetIDs = orEmpty(t.References), orEmpty(t.AssetIDs)
+	return t
+}
+
+// orEmpty is v, or an empty list when v is nil.
+func orEmpty[T any](v []T) []T {
+	if v == nil {
+		return []T{}
+	}
+	return v
 }
 func (s *Service) ListAgentRuns(offset, limit int) (AgentPage, error) {
 	s.mu.Lock()
@@ -72,7 +106,7 @@ func (s *Service) ListAgentRuns(offset, limit int) (AgentPage, error) {
 	out := []AgentRun{}
 	for _, r := range all[a:b] {
 		r = cleanAgentRun(r)
-		r.Events, r.Activity = nil, nil
+		r.Events, r.Activity = []AgentEvent{}, nil
 		out = append(out, r)
 	}
 	return AgentPage{out, len(all)}, nil
@@ -688,10 +722,11 @@ func (s *Service) GetAgentTasks(id string) ([]Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	all, e := List[Task](s.store, "task")
+	sortNewestFirst(all)
 	out := []Task{}
 	slot := map[string]int{}
-	// List is newest first: the first task of a slot is its current attempt, and
-	// images of older attempts (retries, refinements) are kept as previous versions.
+	// Newest first: the first task of a slot is its current attempt, and images
+	// of older attempts (retries, refinements) are kept as previous versions.
 	for _, t := range all {
 		if t.AgentRunID == id {
 			if i, ok := slot[t.PlanItemID]; ok {
@@ -699,19 +734,20 @@ func (s *Service) GetAgentTasks(id string) ([]Task, error) {
 				continue
 			}
 			slot[t.PlanItemID] = len(out)
-			t.Connection = cleanConnection(t.Connection)
-			t.Results = nil
+			t = cleanTask(t)
 			t.PreviousAssetIDs = nil
 			out = append(out, t)
 		}
 	}
 	var run AgentRun
-	if s.store.Get("agent_run", id, &run) == nil && run.SubmittedRevision > 0 && run.SubmittedRevision <= len(run.Plans) {
-		order := map[string]int{}
-		for i, item := range run.Plans[run.SubmittedRevision-1].Items {
-			order[item.ID] = i
+	if s.store.Get("agent_run", id, &run) == nil {
+		if plan, ok := suitePlanOf(run.Plans, run.SubmittedRevision); ok {
+			order := map[string]int{}
+			for i, item := range plan.Items {
+				order[item.ID] = i
+			}
+			sort.SliceStable(out, func(i, j int) bool { return order[out[i].PlanItemID] < order[out[j].PlanItemID] })
 		}
-		sort.SliceStable(out, func(i, j int) bool { return order[out[i].PlanItemID] < order[out[j].PlanItemID] })
 	}
 	return out, e
 }

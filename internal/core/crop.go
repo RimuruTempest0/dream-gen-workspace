@@ -1,12 +1,12 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"bytes"
 	"encoding/json"
 	"image"
 	stdDraw "image/draw"
 	"image/png"
+	"imageworkbench/internal/i18n"
 	"strings"
 	"unicode/utf8"
 

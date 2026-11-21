@@ -553,6 +553,7 @@ func freshAttempt(t Task, c Connection) Task {
 	t.AutoRetryOf, t.AutoRetriedAs, t.AutoDownloads, t.DownloadRetryAt = "", "", 0, ""
 	t.PolicyRetryOf, t.PolicyRetriedAs, t.PolicyStep, t.Rewording, t.RewordFor = "", "", 0, false, ""
 	t.NudgeOf, t.Nudge = "", ""
+	t.Pauses = nil
 	t.Connection = c
 	return t
 }

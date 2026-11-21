@@ -49,7 +49,7 @@ func TestFeedbackPackageSetsTheRequestsAgainstThePlan(t *testing.T) {
 	s.store.Put("task", "t1", Task{ID: "t1", BatchID: "b", AgentRunID: r.ID, PlanItemID: item.ID, CreatedAt: Now(), UpdatedAt: Now(), Status: "succeeded", AssetIDs: []string{}})
 	_, files := feedbackZip(t, s, r.ID)
 	md := string(files["反馈.md"])
-	if !strings.Contains(md, "| 序号 | 用户原要求 | 图位 | 方案用途 | 展示方式 | 场景 | 样板 | 最终状态 |") {
+	if !strings.Contains(md, "| 序号 | 顾客原要求 | 图位 | 方案用途 | 展示方式 | 场景 | 样板 | 最终状态 |") {
 		t.Fatalf("no comparison table:\n%s", md)
 	}
 	if mdRow(md, "1", "上身主图", "第 1 张", "主图", "上身", "客厅") == "" || !strings.Contains(mdRow(md, "1", "上身主图"), "已完成") {
@@ -130,6 +130,79 @@ func TestRegenerationsRecordWhoTriggeredThem(t *testing.T) {
 	}
 }
 
+// The line's quota runs out, the rest of the set pauses unsent, and the
+// customer's one-click completion resumes it: the timeline in 反馈.md still says
+// when and why each image paused and that the one-click completion resumed it.
+func TestFeedbackTimelineKeepsPausesAfterTheyAreResumed(t *testing.T) {
+	server, ok, _ := relay(t, 402, `{"error":{"message":"该令牌额度已用尽 !token.UnlimitedQuota && token.RemainQuota = 0"}}`)
+	s := testService(t)
+	c := storedConnection(t, s, server.URL)
+	run := putFeedbackRun(t, s, "submitted")
+	run.Plans = []SuitePlan{{Revision: 1, Items: []SuiteItem{{ID: "slot-1", Purpose: "主图"}, {ID: "slot-2", Purpose: "整件平铺"}, {ID: "slot-3", Purpose: "礼盒"}}}}
+	run.SubmittedRevision = 1
+	s.store.Put("agent_run", run.ID, run)
+	tasks := []Task{}
+	for i := 1; i <= 3; i++ {
+		tasks = append(tasks, suiteTask(c, run.ID, fmt.Sprintf("slot-%d", i), "queued"))
+	}
+	if _, e := s.store.Submit("suite", "batch-"+run.ID, tasks); e != nil {
+		t.Fatal(e)
+	}
+	for s.stepNext() { // the first is refused, the other two pause
+	}
+	names := map[string]string{"slot-1": "第 1 张（主图）", "slot-2": "第 2 张（整件平铺）", "slot-3": "第 3 张（礼盒）"}
+	paused := []string{}
+	for _, task := range tasksWhere(s, func(t Task) bool { return t.Status == "blocked" }) {
+		paused = append(paused, names[task.PlanItemID])
+	}
+	if len(paused) != 2 {
+		t.Fatal("the rest of the set did not pause")
+	}
+	ok.Store(true)
+	if n, e := s.RetryFailedAgentImages(run.ID); e != nil || n != 3 {
+		t.Fatal("one-click completion", n, e)
+	}
+	for s.stepNext() {
+	}
+	_, files := feedbackZip(t, s, run.ID)
+	md := string(files["反馈.md"])
+	timeline := md[strings.Index(md, "## 时间线"):]
+	for _, slot := range paused {
+		p := strings.Index(timeline, slot+"：已暂停（线路额度已用完")
+		r := strings.Index(timeline, slot+"：继续生成（顾客一键补齐")
+		d := strings.Index(timeline, slot+"：已完成")
+		if p < 0 || r < p || d < r {
+			t.Fatalf("%s: pause, resume and result not in order:\n%s", slot, timeline)
+		}
+	}
+	var pkg struct {
+		Tasks []struct {
+			PlanItemID string `json:"planItemID"`
+			Pauses     []struct {
+				At        string `json:"at"`
+				Reason    string `json:"reason"`
+				ResumedAt string `json:"resumedAt"`
+				ResumedBy string `json:"resumedBy"`
+			} `json:"pauses"`
+		} `json:"tasks"`
+	}
+	if e := json.Unmarshal(files["run.json"], &pkg); e != nil {
+		t.Fatal(e)
+	}
+	resumed := 0
+	for _, task := range pkg.Tasks {
+		for _, p := range task.Pauses {
+			if p.At == "" || !strings.Contains(p.Reason, "线路额度已用完") || p.ResumedAt == "" || p.ResumedBy != "retry-all" {
+				t.Fatalf("pause record of %s: %+v", task.PlanItemID, p)
+			}
+			resumed++
+		}
+	}
+	if resumed != 2 {
+		t.Fatalf("run.json keeps %d pauses, want 2", resumed)
+	}
+}
+
 // A change to an image is a regeneration the customer started by asking for it.
 func TestRefinementRecordsItsTrigger(t *testing.T) {
 	s, first, _, _, _ := refineFixture(t)
@@ -190,7 +263,9 @@ func TestFeedbackTimelineTellsHowTheSuiteWentInOrder(t *testing.T) {
 		}
 		s.store.Put("task", v.ID, v)
 	}
-	task("s1", "s", 1, 2, "succeeded", func(v *Task) { v.Sample, v.SampleArea, v.SampleCheck, v.SampleProblems = true, "胸前", "redrawn", "字母 D 少了一笔" })
+	task("s1", "s", 1, 2, "succeeded", func(v *Task) {
+		v.Sample, v.SampleArea, v.SampleCheck, v.SampleProblems = true, "胸前", "redrawn", "字母 D 少了一笔"
+	})
 	task("s2", "s", 3, 4, "succeeded", func(v *Task) {
 		v.Sample, v.SampleArea, v.SampleCheck, v.SampleRedraws, v.Trigger = true, "胸前", "passed", 1, triggerSampleRedraw
 	})

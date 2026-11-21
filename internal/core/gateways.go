@@ -40,17 +40,17 @@ type GatewayHealth struct {
 
 // Health thresholds; package variables so tests can shorten them.
 var (
-	slowGenerationMS   int64 = 90_000
-	healthWindow             = 15 * time.Minute
-	recoverQuiet             = 10 * time.Minute
-	probeInterval            = 3 * time.Minute
-	downProbeInterval        = 30 * time.Second
-	probeTimeout             = 30 * time.Second
+	slowGenerationMS  int64 = 90_000
+	healthWindow            = 15 * time.Minute
+	recoverQuiet            = 10 * time.Minute
+	probeInterval           = 3 * time.Minute
+	downProbeInterval       = 30 * time.Second
+	probeTimeout            = 30 * time.Second
 	// An automatic re-generation waits for a free check that passes: checked this
 	// often, given up (unsent) after this long.
 	retryProbeInterval = 10 * time.Second
 	retryWaitLimit     = 10 * time.Minute
-	modelListFreshness       = 30 * time.Minute
+	modelListFreshness = 30 * time.Minute
 )
 
 const (
@@ -489,9 +489,7 @@ func (s *Service) routeLocked(t *Task, g GatewaySettings, hc *healthCache) bool 
 		return true
 	}
 	if h.State == "down" && !retry {
-		t.Status = "blocked"
-		t.Error = s.msg("generation.serviceDown", "name", t.Connection.Name, "reason", h.Reason)
-		t.UpdatedAt = Now()
+		pauseTask(t, s.msg("generation.serviceDown", "name", t.Connection.Name, "reason", h.Reason))
 		_ = s.store.Put("task", t.ID, *t)
 		_ = s.store.appendLog("warn", "image", t.BatchID, t.Error)
 	}

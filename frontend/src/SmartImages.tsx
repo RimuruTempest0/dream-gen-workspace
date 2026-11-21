@@ -30,6 +30,8 @@ import {
 } from "./api";
 import {
   blankAgentDraft,
+  normalizeAgentRun,
+  normalizeTask,
   type AgentInput,
   type AgentPage,
   type AgentRun,
@@ -152,13 +154,17 @@ export function SmartImages() {
   );
   const runQuery = useQuery({
     queryKey: ["agent-run", runID],
-    queryFn: () => call<AgentRun>("GetAgentRun", runID),
+    queryFn: () =>
+      call<AgentRun>("GetAgentRun", runID).then(normalizeAgentRun),
     enabled: !!runID,
     refetchInterval: 2000,
   });
   const taskQuery = useQuery({
     queryKey: ["agent-tasks", runID],
-    queryFn: () => call<Task[]>("GetAgentTasks", runID),
+    queryFn: () =>
+      call<Task[]>("GetAgentTasks", runID).then((tasks) =>
+        (tasks || []).map(normalizeTask),
+      ),
     enabled: !!runID,
     refetchInterval: 2500,
   });
@@ -207,8 +213,14 @@ export function SmartImages() {
     const opened = initialized.current !== run.id;
     if (opened) {
       initialized.current = run.id;
-      setInput(run.input);
-      setProductText(run.input.productText);
+      // Like the draft: a stored input may lack lists.
+      setInput({
+        ...blankAgentDraft,
+        ...run.input,
+        references: run.input.references || [],
+        skillIDs: run.input.skillIDs || [],
+      });
+      setProductText(run.input.productText || "");
     }
     // Each new stop shows the saved answers, so a question asked again starts empty
     // instead of showing the answer that did not settle it.

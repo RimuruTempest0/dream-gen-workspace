@@ -1,9 +1,9 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"context"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"strings"
 	"testing"
 )

@@ -1,10 +1,10 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"archive/zip"
 	"embed"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"io"
 	"os"
 	"path/filepath"

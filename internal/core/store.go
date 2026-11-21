@@ -28,7 +28,14 @@ func NewID() string {
 	}
 	return hex.EncodeToString(b[:])
 }
-func Now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+
+// Now is the current time as stored: RFC 3339 in UTC with all nine fractional
+// digits, so new stored times order correctly as text too. Times stored by
+// earlier versions dropped trailing zeros; compare times with earlier, not as text.
+func Now() string { return time.Now().UTC().Format(storedTime) }
+
+const storedTime = "2006-01-02T15:04:05.000000000Z07:00"
+
 func Open(root string) (*Store, error) {
 	for _, dir := range []string{"references", "images", "thumbnails", "secrets", "skills", "agent-cache"} {
 		if e := os.MkdirAll(filepath.Join(root, dir), 0700); e != nil {

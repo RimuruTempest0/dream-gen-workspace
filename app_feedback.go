@@ -15,6 +15,7 @@ func (a *App) GetSuiteFeedback(runID string) (core.SuiteFeedback, error) {
 func (a *App) SaveSuiteFeedback(v core.SuiteFeedback) (core.SuiteFeedback, error) {
 	return a.service.SaveSuiteFeedback(v)
 }
+
 // GetFeedbackImages lists the suite's cards and versions for 逐张核验.
 func (a *App) GetFeedbackImages(runID string) ([]core.FeedbackImage, error) {
 	return a.service.GetFeedbackImages(runID)

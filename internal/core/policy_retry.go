@@ -204,7 +204,7 @@ func (s *Service) rewordPrompt(ctx context.Context, c Connection, key, lang, pro
 			head, body = line+"\n", rest
 		}
 	}
-	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body),s.msg("agent.llmStage.reword"), func(text string) error {
+	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(lang, rewordInstruction+body), s.msg("agent.llmStage.reword"), func(text string) error {
 		for _, q := range quotedText.FindAllStringSubmatch(body, -1) {
 			if want := q[1] + q[2]; !strings.Contains(text, want) {
 				return s.fail("agent.rewrite.lostText", "text", want)

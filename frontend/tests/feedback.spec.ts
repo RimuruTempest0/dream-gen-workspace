@@ -3,6 +3,7 @@ import {
   expect,
   chromium,
   type Browser,
+  type Locator,
   type Page,
 } from "@playwright/test";
 import fs from "node:fs";
@@ -24,6 +25,9 @@ async function reload() {
   await page.reload();
   await page.waitForFunction(() => !!window.go?.main?.App);
 }
+// The error shown on a form field (Ant Design Form).
+const fieldError = (dialog: Locator) =>
+  dialog.locator(".ant-form-item-explain-error");
 // Opens the seeded suite from the history list.
 async function openSuite(open: string) {
   const row = page
@@ -81,11 +85,16 @@ test("the verdict is required, the package is listed before saving and the feedb
 
   // Nothing chosen: cannot save.
   await dialog.getByRole("button", { name: "保存反馈", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("请先选择整套判断");
+  await expect(fieldError(dialog)).toContainText("请先选择整套判断");
+  // The error is on the field, and the focus moves there.
+  await expect(dialog.getByLabel("整套可用", { exact: true })).toBeFocused();
   // Not usable, but nothing said: still cannot save.
   await dialog.getByLabel("整套不可用", { exact: true }).check();
   await dialog.getByRole("button", { name: "保存反馈", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("至少选一个问题类型");
+  await expect(fieldError(dialog)).toContainText("至少选一个问题类型");
+  await expect(
+    dialog.getByLabel("少了点名要的图", { exact: true }),
+  ).toBeFocused();
   expect(
     (await go<{ verdict: string }>("GetSuiteFeedback", runID)).verdict,
   ).toBe("");
@@ -116,6 +125,27 @@ test("the verdict is required, the package is listed before saving and the feedb
   await expect(dialog.getByLabel("整套说明", { exact: true })).toHaveValue(
     note,
   );
+});
+
+test("closing the panel with unsaved changes asks first", async () => {
+  const runID = await go<string>("SeedTestSuite", true);
+  await reload();
+  await openSuite("打开记录");
+  await page.getByRole("button", { name: "问题反馈", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "问题反馈" });
+  await dialog.getByLabel("整套说明", { exact: true }).fill("还没保存的说明");
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  const ask = page.getByRole("dialog").filter({ hasText: "放弃未保存的反馈？" });
+  await expect(ask).toBeVisible();
+  // Kept open: the text is still there.
+  await ask.getByRole("button", { name: "取消" }).click();
+  await expect(dialog.getByLabel("整套说明", { exact: true })).toHaveValue(
+    "还没保存的说明",
+  );
+  await page.keyboard.press("Escape");
+  await ask.getByRole("button", { name: "继续" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect((await go<{ note: string }>("GetSuiteFeedback", runID)).note).toBe("");
 });
 
 test("the package preview counts the images and packing shows image x of y", async () => {
@@ -191,7 +221,7 @@ test("single images can be marked, failed and unknown cards and each version are
     .fill(note);
   await image("第 4 张 · 第 1 版").getByLabel("合格", { exact: true }).check();
   await dialog.getByRole("button", { name: "保存反馈", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("请先选择整套判断");
+  await expect(fieldError(dialog)).toContainText("请先选择整套判断");
   await dialog.getByLabel("部分可用", { exact: true }).check();
   await dialog.getByLabel("几张图太像", { exact: true }).check();
   await dialog.getByRole("button", { name: "保存反馈", exact: true }).click();
