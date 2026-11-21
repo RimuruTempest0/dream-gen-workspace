@@ -70,7 +70,10 @@ test("the verdict is required, the package is listed before saving and the feedb
   await openSuite("打开记录");
   await page.getByRole("button", { name: "问题反馈", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("整套判断", { exact: true })).toBeVisible();
+  // The legend's " *" is aria-hidden: the group is named by the legend text alone.
+  await expect(
+    dialog.getByRole("group", { name: "整套判断", exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByPlaceholder("我要的是……，实际是……")).toBeVisible();
 
   // Nothing chosen: cannot save.
@@ -122,7 +125,10 @@ test("the panel follows the display language", async () => {
     .click();
   const dialog = page.getByRole("dialog");
   await expect(
-    dialog.getByText("Verdict on the whole set", { exact: true }),
+    dialog.getByRole("group", {
+      name: "Verdict on the whole set",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     dialog.getByLabel("Some images are too similar", { exact: true }),
@@ -133,7 +139,9 @@ test("the panel follows the display language", async () => {
   await openSuite("開く");
   await page.getByRole("button", { name: "問題を報告", exact: true }).click();
   await expect(
-    page.getByRole("dialog").getByText("セット全体の判定", { exact: true }),
+    page
+      .getByRole("dialog")
+      .getByRole("group", { name: "セット全体の判定", exact: true }),
   ).toBeVisible();
   await go("SetInterfaceLanguage", "zh-CN");
 });

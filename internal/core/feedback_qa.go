@@ -9,12 +9,12 @@ func (s *Service) SeedTestSuite(stopped bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	run := AgentRun{ID: NewID(), CreatedAt: Now(), UpdatedAt: Now(), Status: "submitted", Stage: "QA", BatchID: NewID(), SubmittedRevision: 1, Language: s.Language(),
-		Input:     AgentInput{Instruction: "QA suite: worn front, flat lay, gift box", TargetCount: 3, Size: "1024x1024", Quality: "auto"},
+		Input:     AgentInput{Instruction: "QA suite: worn front, flat lay, gift box", TargetCount: 3, Size: "1024x1024", Quality: "auto", References: []string{}, SkillIDs: []string{}},
 		Questions: []AgentQuestion{}, Events: []AgentEvent{{At: Now(), Text: "QA plan saved"}}, Product: ProductInfo{ReferenceIDs: []string{}},
 		Plans: []SuitePlan{{Revision: 1, CreatedAt: Now(), Locked: []string{"QA product"}, Editable: []string{}, Items: []SuiteItem{
-			{ID: "qa-1", Purpose: "worn front", Scene: "studio", Prompt: "QA prompt 1"},
-			{ID: "qa-2", Purpose: "flat lay", Scene: "white", Prompt: "QA prompt 2"},
-			{ID: "qa-3", Purpose: "gift box", Scene: "table", Prompt: "QA prompt 3"},
+			{ID: "qa-1", Purpose: "worn front", Scene: "studio", Prompt: "QA prompt 1", References: []string{}},
+			{ID: "qa-2", Purpose: "flat lay", Scene: "white", Prompt: "QA prompt 2", References: []string{}},
+			{ID: "qa-3", Purpose: "gift box", Scene: "table", Prompt: "QA prompt 3", References: []string{}},
 		}}}}
 	if stopped {
 		run.Status, run.Error = "interrupted", "QA stop"
