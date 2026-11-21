@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 
 	"imageworkbench/internal/i18n"
 )
@@ -33,12 +32,12 @@ type feedbackPackage struct {
 	Format     int    `json:"format"`
 	AppVersion string `json:"appVersion"`
 	// CustomerID is the software ID of the hosted edition's licence file.
-	CustomerID string          `json:"customerID,omitempty"`
-	Language   string          `json:"language"`
-	ExportedAt string          `json:"exportedAt"`
-	Feedback   SuiteFeedback   `json:"feedback"`
-	Run        feedbackRun     `json:"run"`
-	Tasks      []feedbackTask  `json:"tasks"`
+	CustomerID string         `json:"customerID,omitempty"`
+	Language   string         `json:"language"`
+	ExportedAt string         `json:"exportedAt"`
+	Feedback   SuiteFeedback  `json:"feedback"`
+	Run        feedbackRun    `json:"run"`
+	Tasks      []feedbackTask `json:"tasks"`
 
 	// Images lists the files under images/ (#19).
 	Images []feedbackPackedImage `json:"images"`
@@ -120,6 +119,7 @@ type feedbackTask struct {
 	AutoRetryOf       string              `json:"autoRetryOf,omitempty"`
 	AutoRetriedAs     string              `json:"autoRetriedAs,omitempty"`
 	Trigger           string              `json:"trigger,omitempty"`
+	Pauses            []TaskPause         `json:"pauses,omitempty"`
 	PolicyRetryOf     string              `json:"policyRetryOf,omitempty"`
 	PolicyRetriedAs   string              `json:"policyRetriedAs,omitempty"`
 	PolicyStep        int                 `json:"policyStep,omitempty"`
@@ -127,7 +127,7 @@ type feedbackTask struct {
 	RefineInstruction string              `json:"refineInstruction,omitempty"`
 	RefineMode        string              `json:"refineMode,omitempty"`
 	RefineUnjudged    bool                `json:"refineUnjudged,omitempty"`
-	Sample         bool                `json:"sample,omitempty"`
+	Sample            bool                `json:"sample,omitempty"`
 	SampleArea        string              `json:"sampleArea,omitempty"`
 	SampleItems       []string            `json:"sampleItems,omitempty"`
 	SampleAssetIDs    []string            `json:"sampleAssetIDs,omitempty"`
@@ -238,7 +238,8 @@ func (s *Service) feedbackEntriesLocked(runID string) ([]zipEntry, []feedbackPac
 			conns = append(conns, t.Connection)
 		}
 	}
-	sort.SliceStable(mine, func(i, j int) bool { return earlier(mine[i].CreatedAt, mine[j].CreatedAt) })
+	// Oldest attempt first, by the moment each was created.
+	sort.SliceStable(mine, func(i, j int) bool { return attemptBefore(mine[i], mine[j]) })
 	pkg := feedbackPackage{Format: feedbackFormat, AppVersion: AppVersion, Language: s.Language(), ExportedAt: Now(), Feedback: feedback, Run: feedbackRunOf(run), Tasks: []feedbackTask{}}
 	if p := s.lic.profile; p != nil {
 		pkg.CustomerID = p.SoftwareID
@@ -272,7 +273,7 @@ func feedbackRunOf(r AgentRun) feedbackRun {
 }
 
 func feedbackTaskOf(t Task) feedbackTask {
-	out := feedbackTask{ID: t.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, Status: t.Status, Error: t.Error, Language: t.Language, Prompt: t.Prompt, References: t.References, Line: lineOf(t.Connection), Model: t.Model, Size: t.Size, Quality: t.Quality, AssetIDs: t.AssetIDs, RoutedFromName: t.RoutedFromName, RouteReason: t.RouteReason, AutoRetryOf: t.AutoRetryOf, AutoRetriedAs: t.AutoRetriedAs, Trigger: t.Trigger, PolicyRetryOf: t.PolicyRetryOf, PolicyRetriedAs: t.PolicyRetriedAs, PolicyStep: t.PolicyStep, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction, RefineMode: t.RefineMode, RefineUnjudged: t.RefineUnjudged, Sample: t.Sample, SampleArea: t.SampleArea, SampleItems: t.SampleItems, SampleAssetIDs: t.SampleAssetIDs, SampleCheck: t.SampleCheck, SampleProblems: t.SampleProblems, SampleRedraws: t.SampleRedraws, Trial: t.Trial}
+	out := feedbackTask{ID: t.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, Status: t.Status, Error: t.Error, Language: t.Language, Prompt: t.Prompt, References: t.References, Line: lineOf(t.Connection), Model: t.Model, Size: t.Size, Quality: t.Quality, AssetIDs: t.AssetIDs, RoutedFromName: t.RoutedFromName, RouteReason: t.RouteReason, AutoRetryOf: t.AutoRetryOf, AutoRetriedAs: t.AutoRetriedAs, Trigger: t.Trigger, Pauses: t.Pauses, PolicyRetryOf: t.PolicyRetryOf, PolicyRetriedAs: t.PolicyRetriedAs, PolicyStep: t.PolicyStep, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction, RefineMode: t.RefineMode, RefineUnjudged: t.RefineUnjudged, Sample: t.Sample, SampleArea: t.SampleArea, SampleItems: t.SampleItems, SampleAssetIDs: t.SampleAssetIDs, SampleCheck: t.SampleCheck, SampleProblems: t.SampleProblems, SampleRedraws: t.SampleRedraws, Trial: t.Trial}
 	d := t.Diagnostic
 	if diag := (feedbackDiagnostic{Stage: d.Stage, StartedAt: d.StartedAt, HTTPStatus: d.HTTPStatus, UpstreamRequestID: d.UpstreamRequestID, UpstreamJobID: d.UpstreamJobID, ElapsedMS: d.ElapsedMS, BytesReceived: d.BytesReceived, NetworkError: d.NetworkError, DownloadMS: d.DownloadMS}); diag != (feedbackDiagnostic{}) {
 		out.Diagnostic = &diag
@@ -341,10 +342,11 @@ var feedbackLabels = map[string]string{
 	"submitted":       "已提交生成",
 	"none":            "未提交",
 	// who started an attempt again (Task.Trigger)
-	triggerAutoResend: "自动重发",
-	triggerRetry:      "顾客单张重新生成",
-	triggerRetryAll:   "顾客一键补齐（重新生成全部失败图片）",
-	triggerRefine:     "顾客修改",
+	triggerAutoResend:   "自动重发",
+	triggerRetry:        "顾客单张重新生成",
+	triggerRetryAll:     "顾客一键补齐（重新生成全部失败图片）",
+	triggerRefine:       "顾客修改",
+	triggerResume:       "顾客继续生成这张图",
 	"refine-regenerate": "重新生成",
 	"refine-edit":       "在原图上改",
 	// the sample check (Task.SampleCheck)
@@ -426,7 +428,7 @@ func feedbackMarkdown(p feedbackPackage) string {
 		line("- AI 模型线路：%s（%s）", r.LLMLine.Name, r.LLMLine.Model)
 	}
 	line("")
-	line("## 用户原要求")
+	line("## 顾客原要求")
 	line("")
 	quote(r.Input.Instruction)
 	for i, v := range r.Instructions {
@@ -440,11 +442,10 @@ func feedbackMarkdown(p feedbackPackage) string {
 	line("")
 	line("## 方案里的每张图")
 	line("")
-	if len(r.Plans) == 0 {
+	if plan, ok := suitePlanOf(r.Plans, r.SubmittedRevision); !ok {
 		line("（这套图没有保存方案）")
 	} else {
-		plan := submittedPlan(r)
-		// The newest task of a slot is its current attempt.
+		// Tasks are oldest attempt first: the last of a slot is its current attempt.
 		current := map[string]feedbackTask{}
 		for _, t := range p.Tasks {
 			current[t.PlanItemID] = t
@@ -470,7 +471,7 @@ func feedbackMarkdown(p feedbackPackage) string {
 			}
 			line("| %s | %s | 第 %d 张 | %s | %s | %s | %s | %s |", no, request, i+1, cell(item.Purpose), presentation, cell(item.Scene), cell(sample), state)
 		}
-		line("| 序号 | 用户原要求 | 图位 | 方案用途 | 展示方式 | 场景 | 样板 | 最终状态 |")
+		line("| 序号 | 顾客原要求 | 图位 | 方案用途 | 展示方式 | 场景 | 样板 | 最终状态 |")
 		line("| --- | --- | --- | --- | --- | --- | --- | --- |")
 		for n, request := range plan.Requests {
 			found := false
@@ -506,8 +507,8 @@ func feedbackMarkdown(p feedbackPackage) string {
 			}
 		}
 	}
-	if len(r.Plans) > 0 {
-		for i, item := range submittedPlan(r).Items {
+	if plan, ok := suitePlanOf(r.Plans, r.SubmittedRevision); ok {
+		for i, item := range plan.Items {
 			slots[item.ID] = fmt.Sprintf("第 %d 张（%s）", i+1, oneLine(item.Purpose))
 		}
 	}
@@ -547,6 +548,28 @@ func feedbackMarkdown(p feedbackPackage) string {
 			start += "（内容审核拒绝后）"
 		}
 		events = append(events, timelineEntry{t.CreatedAt, name + "：" + start})
+		// Each pause and its resume. A pause still open is the image's state and
+		// is written as its end below.
+		for i, v := range t.Pauses {
+			open := v.ResumedAt == ""
+			if open && i == len(t.Pauses)-1 && t.Status == "blocked" {
+				continue
+			}
+			if v.At != "" {
+				paused := feedbackLabel("blocked")
+				if v.Reason != "" {
+					paused += "（" + oneLine(v.Reason) + "）"
+				}
+				events = append(events, timelineEntry{v.At, name + "：" + paused})
+			}
+			if !open {
+				resumed := "继续生成"
+				if v.ResumedBy != "" {
+					resumed += "（" + feedbackLabel(v.ResumedBy) + "）"
+				}
+				events = append(events, timelineEntry{v.ResumedAt, name + "：" + resumed})
+			}
+		}
 		end := ""
 		switch t.Status {
 		case "succeeded", "unknown", "canceled":
@@ -597,25 +620,5 @@ func feedbackMarkdown(p feedbackPackage) string {
 
 func cell(text string) string { return strings.ReplaceAll(oneLine(text), "|", "/") }
 
-// submittedPlan is the plan the suite was generated from: the submitted
-// revision, else the newest. r has at least one plan.
-func submittedPlan(r feedbackRun) SuitePlan {
-	if r.SubmittedRevision > 0 && r.SubmittedRevision <= len(r.Plans) {
-		return r.Plans[r.SubmittedRevision-1]
-	}
-	return r.Plans[len(r.Plans)-1]
-}
-
 // A timelineEntry is one line of the 反馈.md timeline.
 type timelineEntry struct{ at, text string }
-
-// earlier orders stored times (RFC 3339, of differing precision) by the moment
-// they name; a time that does not parse is compared as text.
-func earlier(a, b string) bool {
-	x, e1 := time.Parse(time.RFC3339Nano, a)
-	y, e2 := time.Parse(time.RFC3339Nano, b)
-	if e1 != nil || e2 != nil {
-		return a < b
-	}
-	return x.Before(y)
-}

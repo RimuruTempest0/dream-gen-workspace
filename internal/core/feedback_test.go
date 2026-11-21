@@ -56,6 +56,21 @@ func TestSuiteFeedbackIsSavedWithTheSuiteAndSurvivesARestart(t *testing.T) {
 }
 
 // feedbackZip exports the run's 反馈包 and returns its entries in order.
+// The note's limit counts characters, as the panel does: 8000 Chinese
+// characters (24000 bytes) are kept, one more is refused.
+func TestSuiteFeedbackNoteLimitCountsCharacters(t *testing.T) {
+	s := testService(t)
+	run := putFeedbackRun(t, s, "ready")
+	note := strings.Repeat("袖", 8000)
+	saved, e := s.SaveSuiteFeedback(SuiteFeedback{RunID: run.ID, Verdict: "unusable", Note: note})
+	if e != nil || saved.Note != note {
+		t.Fatalf("an 8000-character Chinese note was refused: %v", e)
+	}
+	if _, e = s.SaveSuiteFeedback(SuiteFeedback{RunID: run.ID, Verdict: "unusable", Note: note + "口"}); e == nil || !strings.Contains(e.Error(), "8000") {
+		t.Fatalf("an 8001-character note: %v", e)
+	}
+}
+
 func feedbackZip(t *testing.T, s *Service, runID string) ([]string, map[string][]byte) {
 	t.Helper()
 	dest := filepath.Join(t.TempDir(), "问题反馈-20261121-1030.zip")

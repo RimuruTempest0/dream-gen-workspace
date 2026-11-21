@@ -99,11 +99,11 @@ func (s *Service) claimTask(download bool) bool {
 			}
 			// Past the trial limit (or with an invalid licence) nothing more is sent.
 			if !download && s.trialStopLocked() {
-				t.Status, t.UpdatedAt = "blocked", Now()
-				t.Error = s.msg("generation.unsent") + s.text(trialUsedUp)
+				reason := s.msg("generation.unsent") + s.text(trialUsedUp)
 				if msg := s.licenseBlockMessageLocked(); msg != "" {
-					t.Error = s.msg("generation.unsent") + msg
+					reason = s.msg("generation.unsent") + msg
 				}
+				pauseTask(&t, reason)
 				_ = s.store.Put("task", t.ID, t)
 				continue
 			}
@@ -156,8 +156,7 @@ func (s *Service) step(claimed Task) bool {
 	}
 	key, e := s.key(t.Connection.Credential)
 	if e != nil {
-		t.Status = "blocked"
-		t.Error = e.Error()
+		pauseTask(&t, e.Error())
 		s.store.Put("task", t.ID, t)
 		s.mu.Unlock()
 		s.signal()
@@ -334,9 +333,7 @@ func (s *Service) pauseBatchForRejectionLocked(failed Task, kind string) {
 	paused := 0
 	for _, t := range tasks {
 		if t.BatchID == failed.BatchID && t.Status == "queued" && t.Connection.ID == failed.Connection.ID {
-			t.Status = "blocked"
-			t.Error = s.taskMsg(t, note)
-			t.UpdatedAt = Now()
+			pauseTask(&t, s.taskMsg(t, note))
 			if s.store.Put("task", t.ID, t) == nil {
 				paused++
 			}

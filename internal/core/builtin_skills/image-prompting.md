@@ -27,19 +27,19 @@ Completeness comes before length: do not target 250 characters at the expense of
 - Name a kept element by its actual shape in the reference, with a short visual spec (shape, colors, attachments and their position). Never swap in a similar common object from the user's wording: a mini Christmas-stocking headpiece is not a Santa hat.
 - Locate units on garment landmarks, not canvas coordinates. Keep scale relative to the garment; normal perspective can alter apparent screen size.
 - Generic terms such as “手写体” cannot substitute for visible letterforms. Do not call a generated sample approved before its check.
-- New design decisions without visual evidence must be made once and fixed in locked, only within the user's authorized design freedom.
+- New design decisions without visual evidence must be made once and fixed in locked, only within the user's authorized design freedom. Exact replication of an unreadable design needs better source material, not invented typography.
 
 ## 3. Reference images: fixed identity, explicit roles
 Keep the identity/design references for each visible unit in the same order with the same role wording across items that show it. Scene-only or color-only references may vary; do not force irrelevant references onto charts or unrelated crops.
 - Label each input by its actual index and role. Say whether it supplies garment shape, chest design, cuff design, color only or scene only. An existing image being modified is the edit target; supporting images are not replacement compositions.
 - An old-design reference contributes only the unchanged parts; name the removed or changed features and exclude them. Do not call the old design the exact reference for the new one.
 - Sample mechanics (sample, sampleArea, useSamples) are in listing-suite. The backend puts the samples first with their own index and role line and shifts your numbering; do not number them in your manual reference line.
-- A reference supplies the product itself, never the person, pose, scene or composition.
 - Data-only sources such as size tables supply verified values written in the prompt, not a second product for the model to copy.
 
 ## 4. Exact text, letterforms and relationships
 Quote each visible string verbatim, including punctuation and case; spell names letter by letter. Describe or reference letterforms, line order, color and location. State the title's arch and its relationship to the motif when relevant.
 - Scene changes cannot change the product design: no different script style, tracking, icon or title gap for variety.
+- Use only sourced font names, dimensions, sizes, colors and option counts.
 - A unit that is visible remains complete. An out-of-frame unit is not moved into another body region.
 - No extra wording, symbols, logos or watermarks. This does not remove authorized design text or labels.
 - Infographics need every requested label, number and unit explicitly; keep optional copy short. Never truncate verified values to meet a length suggestion.

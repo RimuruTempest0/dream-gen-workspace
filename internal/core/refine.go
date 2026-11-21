@@ -1,9 +1,9 @@
 package core
 
 import (
-	"imageworkbench/internal/i18n"
 	"context"
 	"fmt"
+	"imageworkbench/internal/i18n"
 	"regexp"
 	"slices"
 	"sort"
@@ -107,6 +107,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 		t.SampleItem, t.SampleItems = "", nil
 	}
 	t.AutoRetryOf, t.AutoRetriedAs, t.Trigger = "", "", triggerRefine
+	t.Pauses = nil
 	t.PolicyRetryOf, t.PolicyRetriedAs, t.PolicyStep, t.Rewording, t.RewordFor = "", "", 0, false, ""
 	t.SampleCheck, t.SampleProblems = "", ""
 	t.RefinedFrom = source.ID
@@ -335,10 +336,11 @@ func (s *Service) applyRefineLocked(t *Task, merged, mode string) {
 // planReferencesLocked is the reference pictures the plan gave t's slot.
 func (s *Service) planReferencesLocked(t Task) []string {
 	var r AgentRun
-	if s.store.Get("agent_run", t.AgentRunID, &r) != nil || r.SubmittedRevision < 1 || r.SubmittedRevision > len(r.Plans) {
+	if s.store.Get("agent_run", t.AgentRunID, &r) != nil {
 		return []string{}
 	}
-	for _, item := range r.Plans[r.SubmittedRevision-1].Items {
+	plan, _ := suitePlanOf(r.Plans, r.SubmittedRevision)
+	for _, item := range plan.Items {
 		if item.ID == t.PlanItemID {
 			refs := []string{}
 			for _, id := range item.References {

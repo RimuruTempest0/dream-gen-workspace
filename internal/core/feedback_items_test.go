@@ -165,7 +165,7 @@ func TestFeedbackPackageCarriesThePerImageVerdicts(t *testing.T) {
 	_, files := feedbackZip(t, s, suite.run.ID)
 	md := string(files["反馈.md"])
 	section := strings.Index(md, "## 逐张结论")
-	if section < 0 || section > strings.Index(md, "## 用户原要求") {
+	if section < 0 || section > strings.Index(md, "## 顾客原要求") {
 		t.Fatalf("反馈.md has no per-image section before the request:\n%s", md)
 	}
 	// Each verdict names its slot, its version and the refinement asked for, in Chinese.

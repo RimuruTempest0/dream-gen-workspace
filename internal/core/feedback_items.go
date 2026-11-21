@@ -5,7 +5,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 // 逐张核验 (#20): besides the verdict on the whole 套图 (required), the tester may
@@ -19,8 +18,6 @@ var (
 	feedbackItemVerdicts = []string{"ok", "problem"}
 	feedbackItemProblems = []string{"shot-wrong", "too-similar", "design-wrong", "product-changed", "edit-missed", "no-image", "other"}
 )
-
-const maxFeedbackItemNote = 2000
 
 // FeedbackImage is one card (one version of a plan slot) the tester can mark.
 type FeedbackImage struct {
@@ -57,19 +54,8 @@ func (s *Service) GetFeedbackImages(runID string) ([]FeedbackImage, error) {
 	return feedbackImagesOf(run, tasks), nil
 }
 
-// suitePlanOf is the plan the suite was generated from (the newest if none was).
-func suitePlanOf(r AgentRun) (SuitePlan, bool) {
-	if len(r.Plans) == 0 {
-		return SuitePlan{}, false
-	}
-	if r.SubmittedRevision > 0 && r.SubmittedRevision <= len(r.Plans) {
-		return r.Plans[r.SubmittedRevision-1], true
-	}
-	return r.Plans[len(r.Plans)-1], true
-}
-
 func feedbackImagesOf(run AgentRun, all []Task) []FeedbackImage {
-	plan, _ := suitePlanOf(run)
+	plan, _ := suitePlanOf(run.Plans, run.SubmittedRevision)
 	slots := []string{}
 	purpose := map[string]string{}
 	for _, item := range plan.Items {
@@ -89,12 +75,7 @@ func feedbackImagesOf(run AgentRun, all []Task) []FeedbackImage {
 	out := []FeedbackImage{}
 	for i, slot := range slots {
 		list := versions[slot]
-		// By time, not by string: RFC3339Nano drops trailing zeros. At the same
-		// instant, a refinement comes after the image it was refined from.
-		sort.SliceStable(list, func(a, b int) bool {
-			x, y := list[a], list[b]
-			return earlier(x.CreatedAt, y.CreatedAt) || (!earlier(y.CreatedAt, x.CreatedAt) && y.RefinedFrom == x.ID)
-		})
+		sort.SliceStable(list, func(a, b int) bool { return attemptBefore(list[a], list[b]) })
 		for v := len(list) - 1; v >= 0; v-- {
 			t := list[v]
 			assets := t.AssetIDs
@@ -151,7 +132,7 @@ func (s *Service) cleanFeedbackItemsLocked(runID string, items []FeedbackItem) (
 		}
 		v.Problems = problems
 		v.Note = strings.TrimSpace(strings.ReplaceAll(v.Note, "\r\n", "\n"))
-		if utf8.RuneCountInString(v.Note) > maxFeedbackItemNote || !utf8.ValidString(v.Note) {
+		if !noteFits(v.Note, maxFeedbackItemNote) {
 			return nil, s.fail("feedbackItem.noteTooLong", "max", maxFeedbackItemNote)
 		}
 		out = append(out, v)
@@ -182,7 +163,7 @@ func feedbackItemsMarkdown(p feedbackPackage) string {
 	run := AgentRun{ID: p.Run.ID, Plans: p.Run.Plans, SubmittedRevision: p.Run.SubmittedRevision}
 	tasks := []Task{}
 	for _, t := range p.Tasks {
-		tasks = append(tasks, Task{ID: t.ID, AgentRunID: run.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, Status: t.Status, RefineInstruction: t.RefineInstruction})
+		tasks = append(tasks, Task{ID: t.ID, AgentRunID: run.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, Status: t.Status, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction})
 	}
 	images := feedbackImagesOf(run, tasks)
 	var b strings.Builder

@@ -40,7 +40,17 @@ var (
 	feedbackProblems = []string{"missing-shot", "too-similar", "design-inconsistent", "product-changed", "edit-missed", "interrupted", "other"}
 )
 
-const maxFeedbackNote = 8 << 10
+// The tester's notes are limited in characters (code points), as the panel
+// counts them: the note on the set, and the one sentence on an image.
+const (
+	maxFeedbackNote     = 8000
+	maxFeedbackItemNote = 2000
+)
+
+// noteFits reports whether note is valid text of at most max characters.
+func noteFits(note string, max int) bool {
+	return utf8.ValidString(note) && utf8.RuneCountInString(note) <= max
+}
 
 // GetSuiteFeedback returns the saved feedback on the suite, or an empty one.
 func (s *Service) GetSuiteFeedback(runID string) (SuiteFeedback, error) {
@@ -83,8 +93,8 @@ func (s *Service) SaveSuiteFeedback(v SuiteFeedback) (SuiteFeedback, error) {
 		return v, s.fail("feedback.problemUnknown")
 	}
 	v.Problems = problems
-	if len(v.Note) > maxFeedbackNote || !utf8.ValidString(v.Note) {
-		return v, s.fail("feedback.noteTooLong")
+	if !noteFits(v.Note, maxFeedbackNote) {
+		return v, s.fail("feedback.noteTooLong", "max", maxFeedbackNote)
 	}
 	if v.Verdict != "usable" && len(v.Problems) == 0 && v.Note == "" {
 		return v, s.fail("feedback.detailRequired")

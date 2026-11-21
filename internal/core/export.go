@@ -11,12 +11,14 @@ import (
 	"sort"
 )
 
+// sortTasks orders tasks oldest attempt first (attemptBefore), then by ID.
 func sortTasks(tasks []Task) {
-	sort.Slice(tasks, func(i, j int) bool {
-		if tasks[i].CreatedAt == tasks[j].CreatedAt {
-			return tasks[i].ID < tasks[j].ID
+	sort.SliceStable(tasks, func(i, j int) bool {
+		x, y := tasks[i], tasks[j]
+		if attemptBefore(x, y) || attemptBefore(y, x) {
+			return attemptBefore(x, y)
 		}
-		return tasks[i].CreatedAt < tasks[j].CreatedAt
+		return x.ID < y.ID
 	})
 }
 
@@ -55,16 +57,15 @@ func (s *Service) ListRecentBatches(limit int) ([]RecentBatch, error) {
 			b.Active++
 		}
 		if len(b.Tasks) < 6 {
-			t.Connection = cleanConnection(t.Connection)
-			t.Results = nil
-			b.Tasks = append(b.Tasks, t)
+			b.Tasks = append(b.Tasks, cleanTask(t))
 		}
 	}
 	sort.Slice(batches, func(i, j int) bool {
-		if batches[i].CreatedAt == batches[j].CreatedAt {
-			return batches[i].ID > batches[j].ID
+		x, y := batches[i].CreatedAt, batches[j].CreatedAt
+		if earlier(x, y) || earlier(y, x) {
+			return earlier(y, x)
 		}
-		return batches[i].CreatedAt > batches[j].CreatedAt
+		return batches[i].ID > batches[j].ID
 	})
 	if limit < 1 || limit > 20 {
 		limit = 6

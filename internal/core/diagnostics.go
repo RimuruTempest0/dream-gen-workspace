@@ -210,8 +210,8 @@ func (s *Service) collectDiagnosticsLocked(programDir string) (diagnosticSummary
 
 // redactorLocked hides what no package sent to the provider may hold: saved
 // keys, credentials and query parameters in text (as the logs do) and the
-// address of every line in conns. Text keeps its length; the diagnostic
-// package cuts it like a log line.
+// address of every line in conns. It does not shorten text (the hidden parts
+// are replaced by markers); the diagnostic package cuts it like a log line.
 func (s *Service) redactorLocked(conns []Connection, lang string) func(string) string {
 	// Lines' addresses stay out too: logs keep a URL's host and path.
 	hosts := []string{}

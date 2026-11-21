@@ -138,8 +138,7 @@ func sanitizeBackup(st *Store, lang string) error {
 		t.Results = nil
 		switch t.Status {
 		case "queued", "blocked":
-			t.Status = "blocked"
-			t.Error = i18n.T(lang, "data.backup.taskQueued")
+			pauseTask(&t, i18n.T(lang, "data.backup.taskQueued"))
 		case "submitting", "running":
 			t.Status = "unknown"
 			t.Error = i18n.T(lang, "data.backup.taskSubmitting")

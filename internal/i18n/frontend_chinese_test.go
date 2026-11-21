@@ -22,30 +22,30 @@ const frontendDir = "../../frontend/src"
 // recognise text written before 0.8.0 or by upstream services.
 var frontendChineseAllowed = map[string]map[string]string{
 	"AgentSettings.tsx": {
-		`内置: "agentSettings.skill.source.builtin"`:   "stored skill source code (translated here)",
-		`导入: "agentSettings.skill.source.imported"`:  "stored skill source code (translated here)",
-		`自定义: "agentSettings.skill.source.custom"`:   "stored skill source code (translated here)",
+		`内置: "agentSettings.skill.source.builtin"`:  "stored skill source code (translated here)",
+		`导入: "agentSettings.skill.source.imported"`: "stored skill source code (translated here)",
+		`自定义: "agentSettings.skill.source.custom"`:  "stored skill source code (translated here)",
 	},
 	"i18n/languages.ts": {
 		`native: "中文"`:  "the language's own name in the language switch",
 		`native: "日本語"`: "the language's own name in the language switch",
-		`"思源宋体"`:       "Windows font family name",
+		`"思源宋体"`:        "Windows font family name",
 	},
-	"tokens.ts": {`"思源宋体"`: "Windows font family name"},
+	"tokens.ts":         {`"思源宋体"`: "Windows font family name"},
 	"SuiteFeedback.tsx": {`"反馈.md": "feedback.preview.md"`: "file name in the 反馈包 (the file is Chinese for the provider)"},
 	"SmartParts.tsx": {
-		`正在用浏览器读取商品页: "browser-reading"`:    "stage text saved before 0.8.0",
+		`正在用浏览器读取商品页: "browser-reading"`:   "stage text saved before 0.8.0",
 		`需要你在弹出的窗口里完成验证: "browser-verify"`: "stage text saved before 0.8.0",
-		`准备素材: "preparing"`:                  "stage text saved before 0.8.0",
+		`准备素材: "preparing"`:                "stage text saved before 0.8.0",
 	},
 	"ui.tsx": {
-		`"样板图："`:                 "recognises the Chinese sample line of an image prompt",
-		`/^用途[：:]\s*/`:           "recognises the Chinese purpose line of an image prompt",
-		`余额|额度|欠费|充值`:            "recognises upstream balance errors",
-		`"图片服务账户余额不足"`:           "recognises task errors saved before 0.8.0",
-		`"中转站账户余额不足"`:            "recognises task errors saved before 0.8.0",
-		`"API Key 无效"`:            "recognises task errors saved before 0.8.0",
-		`"生图模型的内容审核拒绝了这张图"`:      "recognises task errors saved before 0.8.0",
+		`"样板图："`:                      "recognises the Chinese sample line of an image prompt",
+		`/^用途[：:]\s*/`:                "recognises the Chinese purpose line of an image prompt",
+		`余额|额度|欠费|充值`:                 "recognises upstream balance errors",
+		`"图片服务账户余额不足"`:                "recognises task errors saved before 0.8.0",
+		`"中转站账户余额不足"`:                 "recognises task errors saved before 0.8.0",
+		`"API Key 无效"`:                "recognises task errors saved before 0.8.0",
+		`"生图模型的内容审核拒绝了这张图"`:           "recognises task errors saved before 0.8.0",
 		`/^(?:(图片线路)|LLM 线路) (\d+)$/`: "default line names the admin tool writes into the license file (shown translated)",
 	},
 }
@@ -152,7 +152,6 @@ func chineseInCode(file, src string, allowed map[string]string, used map[string]
 	}
 	return problems
 }
-
 
 // stripComments blanks the comments of TypeScript/TSX source (keeping line
 // breaks), leaving strings, template literals, regular expressions and JSX

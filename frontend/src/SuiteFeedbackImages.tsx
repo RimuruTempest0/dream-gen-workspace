@@ -29,7 +29,15 @@ type FeedbackImage = {
   refineInstruction?: string;
 };
 
-const itemProblems: { value: string; label: MessageKey }[] = [
+/** Caps a note at max characters counted as code points, like the backend. */
+export const noteCount = (max: number) => ({
+  max,
+  strategy: (text: string) => [...text].length,
+  exceedFormatter: (text: string, { max }: { max: number }) =>
+    [...text].slice(0, max).join(""),
+});
+
+const itemProblems:{ value: string; label: MessageKey }[] = [
   { value: "shot-wrong", label: "feedbackImages.problem.shotWrong" },
   { value: "too-similar", label: "feedbackImages.problem.tooSimilar" },
   { value: "design-wrong", label: "feedbackImages.problem.design" },
@@ -39,15 +47,20 @@ const itemProblems: { value: string; label: MessageKey }[] = [
   { value: "other", label: "feedbackImages.problem.other" },
 ];
 
+// The most characters (code points, as the backend counts them) of an image's note.
+const maxItemNote = 2000;
+
+/** The per-image marks as a form control: value and onChange come from Form.Item. */
 export function SuiteFeedbackImages({
   runID,
-  items,
-  onChange,
+  value,
+  onChange = () => {},
 }: {
   runID: string;
-  items: FeedbackItem[];
-  onChange: (items: FeedbackItem[]) => void;
+  value?: FeedbackItem[];
+  onChange?: (items: FeedbackItem[]) => void;
 }) {
+  const items = value || [];
   const images = useQuery({
     queryKey: ["feedback-images", runID],
     queryFn: () => call<FeedbackImage[]>("GetFeedbackImages", runID),
@@ -173,7 +186,7 @@ export function SuiteFeedbackImages({
                 <Input
                   aria-label={t("feedbackImages.note", { image: name })}
                   value={item.note || ""}
-                  maxLength={2000}
+                  count={noteCount(maxItemNote)}
                   placeholder={t("feedbackImages.note.placeholder")}
                   onChange={(e) => set(image, { note: e.target.value })}
                 />

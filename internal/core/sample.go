@@ -24,7 +24,8 @@ func attachSample(t *Task, tasks []Task) bool {
 		var sample *Task
 		for i := range tasks {
 			c := &tasks[i]
-			if c.AgentRunID == t.AgentRunID && c.PlanItemID == item && (sample == nil || c.CreatedAt > sample.CreatedAt) {
+			// The sample's current attempt: its newest (attemptBefore, not text order).
+			if c.AgentRunID == t.AgentRunID && c.PlanItemID == item && (sample == nil || attemptBefore(*sample, *c)) {
 				sample = c
 			}
 		}
