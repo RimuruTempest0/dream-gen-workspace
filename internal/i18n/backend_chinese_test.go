@@ -67,6 +67,9 @@ var chineseAllowed = map[string]map[string]string{
 		"feedbackLabels":       "反馈.md is written for the provider, in Chinese",
 		"feedbackMarkdown":     "反馈.md is written for the provider, in Chinese",
 	},
+	"feedback_images.go": {
+		"feedbackImagesMarkdown": "反馈.md is written for the provider, in Chinese",
+	},
 	"fixed_lists.go": {"moodSentenceZh": "zh-CN fixed text"},
 	"gateways.go":    {"balanceWords": "recognises upstream error text", "quotaUsedUp": "recognises upstream error text"},
 	"license_qa.go":  {"writeQACustomer": "desktop QA licence fixture (provider data)"},

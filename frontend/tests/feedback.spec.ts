@@ -5,6 +5,9 @@ import {
   type Browser,
   type Page,
 } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // 问题反馈 on a 套图 (#16). The suites are seeded by the QA build (SeedTestSuite):
 // nothing is generated and no line is called.
@@ -113,6 +116,51 @@ test("the verdict is required, the package is listed before saving and the feedb
   await expect(dialog.getByLabel("整套说明", { exact: true })).toHaveValue(
     note,
   );
+});
+
+test("the package preview counts the images and packing shows image x of y", async () => {
+  // A sample, two versions of one image, an uploaded product photo and a crop.
+  const runID = await go<string>("SeedTestImageSuite");
+  await reload();
+  await page
+    .locator(".agent-history-row")
+    .filter({ hasText: "QA suite: worn front with images" })
+    .first()
+    .getByRole("button", { name: "打开记录", exact: true })
+    .click();
+  await page.getByRole("button", { name: "问题反馈", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("整套可用", { exact: true }).check();
+  await dialog
+    .getByRole("button", { name: "保存反馈包…", exact: true })
+    .click();
+  await expect(dialog.getByText("images/", { exact: true })).toBeVisible();
+  await expect(dialog).toContainText("生成图 3 张");
+  await expect(dialog).toContainText("参考图 2 张");
+  await expect(dialog).toContainText("含顾客上传的商品原图 1 张");
+  await expect(dialog).toContainText("长边约 1600 像素");
+
+  // The QA build packs slowly; the package is saved without the file dialog.
+  const target = path.join(
+    os.tmpdir(),
+    `feedback-qa-${Date.now()}`,
+    "问题反馈.zip",
+  );
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  await page.evaluate(
+    ({ runID, target }) => {
+      (window as any).__feedbackExport = window.go!.main!.App![
+        "ExportFeedbackPackageToPath"
+      ](runID, target);
+    },
+    { runID, target },
+  );
+  const status = dialog.getByRole("status");
+  await expect(status).toContainText(/正在打包第 [1-5]\/5 张/);
+  await page.evaluate(() => (window as any).__feedbackExport);
+  await expect(status).toHaveCount(0);
+  expect(fs.statSync(target).size).toBeGreaterThan(0);
+  fs.rmSync(path.dirname(target), { recursive: true, force: true });
 });
 
 test("the panel follows the display language", async () => {

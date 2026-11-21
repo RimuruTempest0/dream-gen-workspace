@@ -25,7 +25,11 @@ func (a *App) ChooseFeedbackPath() (string, error) {
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: a.msg("app.dialog.feedback"), DefaultDirectory: desktopDir(), DefaultFilename: name, Filters: []runtime.FileFilter{{DisplayName: a.msg("app.filter.feedback"), Pattern: "*.zip"}}})
 }
 
-// ExportFeedbackPackageToPath writes the suite's 反馈包 (no keys or line addresses).
+// ExportFeedbackPackageToPath writes the suite's 反馈包 (no keys or line
+// addresses), sending "feedback:progress" as each image is packed. The image
+// queue keeps running meanwhile.
 func (a *App) ExportFeedbackPackageToPath(runID, path string) error {
-	return a.service.ExportFeedbackPackage(runID, path)
+	return a.service.ExportFeedbackPackageWithProgress(runID, path, func(p core.FeedbackPackageProgress) {
+		runtime.EventsEmit(a.ctx, "feedback:progress", p)
+	})
 }

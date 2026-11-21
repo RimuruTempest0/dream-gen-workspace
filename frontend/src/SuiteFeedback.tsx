@@ -7,6 +7,7 @@ import {
   Checkbox,
   Input,
   Modal,
+  Progress,
   Radio,
   Space,
 } from "antd";
@@ -28,7 +29,18 @@ export type SuiteFeedback = {
 type FeedbackPackagePreview = {
   files: { name: string; bytes: number }[];
   bytes: number;
+  generatedImages: number;
+  referenceImages: number;
+  uploads: number;
 };
+// Packing reports image `image` of `images`; done once the package is saved.
+type FeedbackPackageProgress = {
+  runID: string;
+  image: number;
+  images: number;
+  done: boolean;
+};
+const isImage = (name: string) => name.startsWith("images/");
 
 type Verdict = "usable" | "partly-usable" | "unusable";
 const verdicts: { value: Verdict; label: MessageKey }[] = [
@@ -103,6 +115,21 @@ function SuiteFeedbackDialog({
   const [form, setForm] = useState<SuiteFeedback | null>(null);
   const [problem, setProblem] = useState<MessageKey | "">("");
   const [preview, setPreview] = useState<FeedbackPackagePreview | null>(null);
+  const [packing, setPacking] = useState<FeedbackPackageProgress | null>(null);
+  // The images are packed in the background; generation keeps running.
+  useEffect(() => {
+    if (!open) return;
+    const off = window.runtime?.EventsOn(
+      "feedback:progress",
+      (p: FeedbackPackageProgress) => {
+        if (p.runID === runID) setPacking(p.done ? null : p);
+      },
+    );
+    return () => {
+      off?.();
+      setPacking(null);
+    };
+  }, [open, runID]);
   useEffect(() => {
     if (!open) {
       setForm(null);
@@ -160,7 +187,11 @@ function SuiteFeedbackDialog({
       <Button onClick={() => setPreview(null)}>
         {t("feedback.preview.back")}
       </Button>
-      <Button type="primary" loading={actions.busy} onClick={savePackage}>
+      <Button
+        type="primary"
+        loading={actions.busy || !!packing}
+        onClick={savePackage}
+      >
         {t("feedback.preview.save")}
       </Button>
     </Space>
@@ -203,14 +234,35 @@ function SuiteFeedbackDialog({
       {preview ? (
         <div className="feedback-preview">
           <ul aria-label={t("feedback.preview.title")}>
-            {preview.files.map((f) => (
-              <li key={f.name}>
-                <strong>{f.name}</strong> · {size(f.bytes)}
-                {entryNotes[f.name] && (
-                  <p className="hint">{t(entryNotes[f.name])}</p>
-                )}
-              </li>
-            ))}
+            {preview.files
+              .filter((f) => !isImage(f.name))
+              .map((f) => (
+                <li key={f.name}>
+                  <strong>{f.name}</strong> · {size(f.bytes)}
+                  {entryNotes[f.name] && (
+                    <p className="hint">{t(entryNotes[f.name])}</p>
+                  )}
+                </li>
+              ))}
+            <li>
+              <strong>images/</strong> ·{" "}
+              {size(
+                preview.files
+                  .filter((f) => isImage(f.name))
+                  .reduce((n, f) => n + f.bytes, 0),
+              )}
+              <p className="hint">
+                {t("feedback.preview.images", {
+                  generated: preview.generatedImages,
+                  references: preview.referenceImages,
+                })}
+              </p>
+              <p className="hint">
+                {preview.uploads > 0
+                  ? t("feedback.preview.uploads", { count: preview.uploads })
+                  : t("feedback.preview.noUploads")}
+              </p>
+            </li>
           </ul>
           <p>
             {t("feedback.preview.total", {
@@ -220,6 +272,23 @@ function SuiteFeedbackDialog({
           </p>
           <p className="hint">{t("feedback.preview.safe")}</p>
           <p className="hint">{t("feedback.preview.where")}</p>
+          {packing && (
+            <div role="status">
+              <p>
+                {t("feedback.packing", {
+                  image: packing.image,
+                  images: packing.images,
+                })}
+              </p>
+              <Progress
+                percent={Math.round(
+                  ((packing.image - 1) / Math.max(packing.images, 1)) * 100,
+                )}
+                showInfo={false}
+                size="small"
+              />
+            </div>
+          )}
         </div>
       ) : (
         form && (
