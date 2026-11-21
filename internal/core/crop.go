@@ -34,6 +34,15 @@ func runReferenceIDs(r AgentRun) []string {
 	return append(ids, r.Crops...)
 }
 
+// earlierSuiteImage reports whether the asset is an image a suite generated. Used
+// whole as a reference it carries that suite's person, pose and scene, so a plan
+// uses only a crop of the product itself unless the customer keeps the person.
+func (s *Service) earlierSuiteImage(id string) bool {
+	var a Asset
+	var t Task
+	return s.store.Get("asset", id, &a) == nil && a.TaskID != "" && s.store.Get("task", a.TaskID, &t) == nil && t.AgentRunID != ""
+}
+
 func cropReferenceTool() map[string]any {
 	box := func(d string) map[string]any {
 		return map[string]any{"type": "number", "minimum": 0, "maximum": 1, "description": d}
