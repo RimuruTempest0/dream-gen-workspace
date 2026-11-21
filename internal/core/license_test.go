@@ -278,7 +278,7 @@ func TestUpstreamRefusalEndsTheTrial(t *testing.T) {
 	s.Start(func() {})
 	waitFor(t, "paused", func() bool { return countStatus(s, "failed") == 1 && countStatus(s, "blocked") == 1 })
 	failed := tasksWhere(s, func(t Task) bool { return t.Status == "failed" })[0]
-	if !strings.HasPrefix(failed.Error, "试用额度已用完") || strings.Contains(failed.Error, "充值") {
+	if !strings.HasPrefix(failed.Error, "线路额度已用完：试用额度已用完") || strings.Contains(failed.Error, "充值") {
 		t.Fatal(failed.Error)
 	}
 	if relay.used("line-image-2") != 0 {
@@ -418,7 +418,7 @@ func TestSub2APIKeyQuotaEndsTheTrial(t *testing.T) {
 	s.Start(func() {})
 	waitFor(t, "trial ended", func() bool { return countStatus(s, "failed") == 1 && countStatus(s, "blocked") == 1 })
 	failed := tasksWhere(s, func(t Task) bool { return t.Status == "failed" })[0]
-	if !strings.HasPrefix(failed.Error, "试用额度已用完（HTTP 429") || g.imageHits.Load() != 1 {
+	if !strings.HasPrefix(failed.Error, "线路额度已用完：试用额度已用完（HTTP 429") || g.imageHits.Load() != 1 {
 		t.Fatal(failed.Error, g.imageHits.Load())
 	}
 }
