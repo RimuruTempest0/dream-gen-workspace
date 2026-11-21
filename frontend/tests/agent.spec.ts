@@ -497,7 +497,7 @@ test.beforeAll(async () => {
                       scene: "家庭客厅",
                       prompt: `小金毛刺绣卫衣，自动模式第 ${i + 1} 张，真实商品比例。`,
                       references: [],
-                      // 11 is the cuff sample, 12 the chest master; the rest copy both.
+                      // 11 is the cuff sample, 12 the chest sample; the rest copy both.
                       sample: i >= 10,
                       sampleArea:
                         i === 10 ? "袖口" : i === 11 ? "胸前" : undefined,
@@ -1455,7 +1455,7 @@ test("automatic mode never asks and delivers the whole set", async () => {
   // The first sample failed its check and was redrawn once before the set.
   expect(imageRequests).toBe(before + 13);
   expect(sampleChecks).toBe(3);
-  // Every image names the chest master and the cuff sample it was drawn from.
+  // Every image names the chest sample and the cuff sample it was drawn from.
   await expect(
     page
       .getByText(
