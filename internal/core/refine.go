@@ -117,9 +117,14 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	// The original requirements often state the opposite of the change ("only the
 	// middle stocking has the design"); outnumbered, the change was ignored. With
 	// an LLM line they are first rewritten to agree with it (nothing sent meanwhile).
+	// The same LLM call decides whether the change is made on the old image or the
+	// image is drawn again (refineRequirements); without an LLM line it is an edit.
 	held := false
+	t.RefineMode, t.RefineUnjudged = "", false
 	if _, _, ok := s.rewordLLMLocked(t); ok {
 		t.Rewording, t.RewordFor, held = true, rewordRefine, true
+	} else {
+		t.RefineMode, t.RefineUnjudged = refineEdit, true
 	}
 	if e := s.ensureCanGenerateLocked(1, c.ID); e != nil {
 		return "", e
@@ -266,26 +271,101 @@ const refineMergeInstruction = `下面是一张电商图片原来的制作要求
 1. 找出所有与修改冲突的句子，不论在哪一行（主体、构图、画面文字、本张变化、约束、避免、统一锁定项、项目固定规则等），都改成符合修改后的描述。例如修改要求三只袜子都带刺绣，就把“只有中间一只带刺绣”“左右两只没有图案”“带刺绣的只有这一只”之类的说法都改成三只都带。
 2. 与修改无关的要求原样保留，包括引号里的画面文字、尺寸数字、参考图编号和作用、固定规则。修改需要新的画面文字时才加，并照用户写的逐字使用。
 3. 不新增修改以外的内容，不解释。
-4. 只输出改写后的完整制作要求，保持原来的分行格式，不要标题、说明或代码块。
+4. 判断这次修改的做法，写在第一行，只写一个标记：修改涉及人物（换模特、换人）、姿势、场景或展示方式（例如改成平铺、挂拍、礼盒）时写 [regenerate]，这张图会按改写后的制作要求重新生成；其他局部调整（例如亮一点、摆正袖口、改一处文字）写 [edit]，在原图上改。
+5. 从第二行起只输出改写后的完整制作要求，保持原来的分行格式，不要标题、说明或代码块。
 
 用户的修改：%s
 
 原制作要求：
 `
 
+// How a refinement is made (Task.RefineMode).
+const (
+	refineEdit       = "edit"
+	refineRegenerate = "regenerate"
+)
+
+var refineModeLine = regexp.MustCompile(`(?i)^\W*(regenerate|edit)\W*$`)
+
+// splitRefineMode takes the LLM's decision off the first line of its reply; an
+// empty mode means the reply did not say.
+func splitRefineMode(text string) (mode, rest string) {
+	first, rest, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	if m := refineModeLine.FindStringSubmatch(strings.TrimSpace(first)); m != nil {
+		return strings.ToLower(m[1]), strings.TrimSpace(rest)
+	}
+	return "", strings.TrimSpace(text)
+}
+
 var removalWords = regexp.MustCompile(`去掉|删除|删掉|不要|取消|拿掉`)
 
 // refineRequirements rewrites a refinement's original requirements so they no
-// longer contradict the change, and returns the refinement prompt built on them.
-func (s *Service) refineRequirements(ctx context.Context, c Connection, key string, t Task) (string, error) {
+// longer contradict the change. The same call decides how the change is made;
+// the mode is empty when the reply did not say.
+func (s *Service) refineRequirements(ctx context.Context, c Connection, key string, t Task) (merged, mode string, err error) {
 	base := refineBase(baseTaskPrompt(t))
-	merged, e := s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, fmt.Sprintf(refineMergeInstruction, t.RefineInstruction)+base),s.msg("agent.llmStage.refineMerge"), func(text string) error {
-		return s.localErr(checkRefineRequirements(base, t.RefineInstruction, text))
+	text, e := s.llmRewrite(ctx, c, key, withPromptLanguage(t.Language, fmt.Sprintf(refineMergeInstruction, t.RefineInstruction)+base), s.msg("agent.llmStage.refineMerge"), func(text string) error {
+		_, rest := splitRefineMode(text)
+		return s.localErr(checkRefineRequirements(base, t.RefineInstruction, rest))
 	})
 	if e != nil {
-		return "", e
+		return "", "", e
 	}
-	return refinePrompt(merged, t.RefineInstruction, len(sampleAssetsOf(t)), t.Language), nil
+	mode, merged = splitRefineMode(text)
+	return merged, mode, nil
+}
+
+// applyRefineLocked builds a held refinement from its rewritten requirements. A
+// regeneration draws the image again: the plan's references and the samples
+// (attached when it is sent, as for the set's own images), never the old image.
+// An edit keeps the old image first. An undecided change is an edit.
+func (s *Service) applyRefineLocked(t *Task, merged, mode string) {
+	if mode != refineRegenerate {
+		t.RefineMode, t.RefineUnjudged = refineEdit, mode == ""
+		t.Prompt = refinePrompt(merged, t.RefineInstruction, len(sampleAssetsOf(*t)), t.Language)
+		return
+	}
+	t.RefineMode, t.RefineUnjudged = refineRegenerate, false
+	t.References = s.planReferencesLocked(*t)
+	t.SampleAssetID, t.SampleAssetIDs = "", nil
+	t.SamplePending = t.SampleItem != "" || len(t.SampleItems) > 0
+	t.Prompt = regeneratePrompt(merged, t.RefineInstruction, t.Language)
+}
+
+// planReferencesLocked is the reference pictures the plan gave t's slot.
+func (s *Service) planReferencesLocked(t Task) []string {
+	var r AgentRun
+	if s.store.Get("agent_run", t.AgentRunID, &r) != nil || r.SubmittedRevision < 1 || r.SubmittedRevision > len(r.Plans) {
+		return []string{}
+	}
+	for _, item := range r.Plans[r.SubmittedRevision-1].Items {
+		if item.ID == t.PlanItemID {
+			refs := []string{}
+			for _, id := range item.References {
+				var a Asset
+				if s.store.Get("asset", id, &a) == nil {
+					refs = append(refs, id)
+				}
+			}
+			return refs
+		}
+	}
+	return []string{}
+}
+
+// The wrapper of a regenerated refinement (English: prompt_scaffold.go).
+const (
+	regenerateHead     = "按下面这张图的制作要求重新生成一张新图，不在旧图上修改。\n本次修改（必须做到，生成后要能明显看出变化）："
+	regenerateHeadRest = "\n本次修改优先于下面的制作要求，二者冲突时按本次修改画。商品本身（款式、颜色、面料）和各设计区的设计保持不变。"
+	regenerateMarker   = "\n\n这张图的制作要求（与本次修改冲突的内容作废）：\n"
+)
+
+// regeneratePrompt is the prompt of a refinement drawn again from its requirements.
+func regeneratePrompt(base, instruction, lang string) string {
+	if !zhPrompt(lang) {
+		return enRegenerateHead + instruction + enRegenerateHeadRest + enRegenerateMarker + base
+	}
+	return regenerateHead + instruction + regenerateHeadRest + regenerateMarker + base
 }
 
 // checkRefineRequirements guards the exact in-image text: the rewrite may not
