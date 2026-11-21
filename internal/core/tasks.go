@@ -271,7 +271,7 @@ func (s *Service) Retry(id string) (string, error) {
 		return "", s.fail("task.stillRunning")
 	}
 	if t.AgentRunID != "" {
-		if e := s.retryAgentLocked(t); e != nil {
+		if e := s.retryAgentLocked(t, triggerRetry); e != nil {
 			return "", e
 		}
 		s.signal()
@@ -318,9 +318,18 @@ func (s *Service) ResumeBlocked(id string) error {
 	return nil
 }
 
+// Who started an attempt again (Task.Trigger).
+const (
+	triggerAutoResend   = "auto-resend"   // the app resent it on its own (relay timeout, content check)
+	triggerSampleRedraw = "sample-redraw" // the sample check found it wrong and redrew it
+	triggerRetry        = "retry"         // the customer regenerated this one image
+	triggerRetryAll     = "retry-all"     // the customer's one-click completion of the set
+	triggerRefine       = "refine"        // the customer asked for a change
+)
+
 // retryAgentLocked queues a new attempt for a smart-generation slot with the
 // connection's current key. It is a new, possibly billable request.
-func (s *Service) retryAgentLocked(t Task) error {
+func (s *Service) retryAgentLocked(t Task, trigger string) error {
 	var c Connection
 	if e := s.store.Get("connection", t.Connection.ID, &c); e != nil {
 		return missing(e, s.msg("task.serviceDeleted"))
@@ -328,13 +337,14 @@ func (s *Service) retryAgentLocked(t Task) error {
 	// A manual retry starts the automatic resends after a content refusal afresh.
 	t.PolicyStep = 0
 	t.Language = s.Language() // a new request: the language chosen now
-	_, e := s.queueAttemptLocked(t, c, "")
+	_, e := s.queueAttemptLocked(t, c, "", trigger)
 	return e
 }
 
 // queueAttemptLocked queues a new attempt of t in the same batch on connection c.
-// autoRetryOf marks an automatic re-generation after a relay timeout.
-func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (Task, error) {
+// autoRetryOf marks an automatic re-generation after a relay timeout; trigger
+// records who started the attempt.
+func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf, trigger string) (Task, error) {
 	if normalizeConnection(c).Kind != "image" {
 		return Task{}, s.fail("task.chooseImageService")
 	}
@@ -351,7 +361,7 @@ func (s *Service) queueAttemptLocked(t Task, c Connection, autoRetryOf string) (
 	t.Diagnostic = GenerationDiagnostic{}
 	t.PreviousAssetIDs = nil
 	t.RoutedFrom, t.RoutedFromName, t.RouteReason = "", "", ""
-	t.AutoRetryOf, t.AutoRetriedAs = autoRetryOf, ""
+	t.AutoRetryOf, t.AutoRetriedAs, t.Trigger = autoRetryOf, "", trigger
 	t.PolicyRetryOf, t.PolicyRetriedAs, t.Rewording, t.RewordFor = "", "", false, ""
 	t.SampleCheck, t.SampleProblems = "", ""
 	t.Connection = c
@@ -409,7 +419,7 @@ func (s *Service) RetryFailedAgentImages(runID string) (int, error) {
 		seen[t.PlanItemID] = true
 		switch t.Status {
 		case "failed", "unknown":
-			e = s.retryAgentLocked(t)
+			e = s.retryAgentLocked(t, triggerRetryAll)
 		case "blocked":
 			e = s.resumeBlockedLocked(t)
 		default:

@@ -89,6 +89,9 @@ type Task struct {
 	// timeout; AutoRetriedAs is set on that original image.
 	AutoRetryOf   string `json:"autoRetryOf,omitempty"`
 	AutoRetriedAs string `json:"autoRetriedAs,omitempty"`
+	// Trigger says who started this attempt again (see the trigger* codes);
+	// empty on a first attempt and on tasks stored before it was recorded.
+	Trigger string `json:"trigger,omitempty"`
 	// AutoDownloads counts automatic re-downloads of a returned result; while one
 	// waits, the task stays "downloading" until DownloadRetryAt.
 	AutoDownloads   int    `json:"autoDownloads,omitempty"`

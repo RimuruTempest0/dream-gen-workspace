@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"imageworkbench/internal/i18n"
 )
@@ -115,6 +116,7 @@ type feedbackTask struct {
 	RouteReason       string              `json:"routeReason,omitempty"`
 	AutoRetryOf       string              `json:"autoRetryOf,omitempty"`
 	AutoRetriedAs     string              `json:"autoRetriedAs,omitempty"`
+	Trigger           string              `json:"trigger,omitempty"`
 	PolicyRetryOf     string              `json:"policyRetryOf,omitempty"`
 	PolicyRetriedAs   string              `json:"policyRetriedAs,omitempty"`
 	PolicyStep        int                 `json:"policyStep,omitempty"`
@@ -196,7 +198,7 @@ func (s *Service) feedbackEntriesLocked(runID string) ([]zipEntry, error) {
 			conns = append(conns, t.Connection)
 		}
 	}
-	sort.SliceStable(mine, func(i, j int) bool { return mine[i].CreatedAt < mine[j].CreatedAt })
+	sort.SliceStable(mine, func(i, j int) bool { return earlier(mine[i].CreatedAt, mine[j].CreatedAt) })
 	pkg := feedbackPackage{Format: feedbackFormat, AppVersion: AppVersion, Language: s.Language(), ExportedAt: Now(), Feedback: feedback, Run: feedbackRunOf(run), Tasks: []feedbackTask{}}
 	if p := s.lic.profile; p != nil {
 		pkg.CustomerID = p.SoftwareID
@@ -229,7 +231,7 @@ func feedbackRunOf(r AgentRun) feedbackRun {
 }
 
 func feedbackTaskOf(t Task) feedbackTask {
-	out := feedbackTask{ID: t.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, Status: t.Status, Error: t.Error, Language: t.Language, Prompt: t.Prompt, References: t.References, Line: lineOf(t.Connection), Model: t.Model, Size: t.Size, Quality: t.Quality, AssetIDs: t.AssetIDs, RoutedFromName: t.RoutedFromName, RouteReason: t.RouteReason, AutoRetryOf: t.AutoRetryOf, AutoRetriedAs: t.AutoRetriedAs, PolicyRetryOf: t.PolicyRetryOf, PolicyRetriedAs: t.PolicyRetriedAs, PolicyStep: t.PolicyStep, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction, RefineMode: t.RefineMode, RefineUnjudged: t.RefineUnjudged, Sample: t.Sample, SampleArea: t.SampleArea, SampleItems: t.SampleItems, SampleAssetIDs: t.SampleAssetIDs, SampleCheck: t.SampleCheck, SampleProblems: t.SampleProblems, SampleRedraws: t.SampleRedraws, Trial: t.Trial}
+	out := feedbackTask{ID: t.ID, PlanItemID: t.PlanItemID, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, Status: t.Status, Error: t.Error, Language: t.Language, Prompt: t.Prompt, References: t.References, Line: lineOf(t.Connection), Model: t.Model, Size: t.Size, Quality: t.Quality, AssetIDs: t.AssetIDs, RoutedFromName: t.RoutedFromName, RouteReason: t.RouteReason, AutoRetryOf: t.AutoRetryOf, AutoRetriedAs: t.AutoRetriedAs, Trigger: t.Trigger, PolicyRetryOf: t.PolicyRetryOf, PolicyRetriedAs: t.PolicyRetriedAs, PolicyStep: t.PolicyStep, RefinedFrom: t.RefinedFrom, RefineInstruction: t.RefineInstruction, RefineMode: t.RefineMode, RefineUnjudged: t.RefineUnjudged, Sample: t.Sample, SampleArea: t.SampleArea, SampleItems: t.SampleItems, SampleAssetIDs: t.SampleAssetIDs, SampleCheck: t.SampleCheck, SampleProblems: t.SampleProblems, SampleRedraws: t.SampleRedraws, Trial: t.Trial}
 	d := t.Diagnostic
 	if diag := (feedbackDiagnostic{Stage: d.Stage, StartedAt: d.StartedAt, HTTPStatus: d.HTTPStatus, UpstreamRequestID: d.UpstreamRequestID, UpstreamJobID: d.UpstreamJobID, ElapsedMS: d.ElapsedMS, BytesReceived: d.BytesReceived, NetworkError: d.NetworkError, DownloadMS: d.DownloadMS}); diag != (feedbackDiagnostic{}) {
 		out.Diagnostic = &diag
@@ -297,6 +299,19 @@ var feedbackLabels = map[string]string{
 	"ready":           "方案已就绪",
 	"submitted":       "已提交生成",
 	"none":            "未提交",
+	// who started an attempt again (Task.Trigger)
+	triggerAutoResend: "自动重发",
+	triggerRetry:      "顾客单张重新生成",
+	triggerRetryAll:   "顾客一键补齐（重新生成全部失败图片）",
+	triggerRefine:     "顾客修改",
+	"refine-regenerate": "重新生成",
+	"refine-edit":       "在原图上改",
+	// the sample check (Task.SampleCheck)
+	"sample-checking": "样板核对中",
+	"sample-passed":   "样板核对通过",
+	"sample-redrawn":  "样板核对不通过，已自动重画",
+	"sample-failed":   "样板重画后仍不通过，其余图照常生成",
+	"sample-skipped":  "样板未能核对",
 }
 
 func feedbackLabel(code string) string {
@@ -387,18 +402,16 @@ func feedbackMarkdown(p feedbackPackage) string {
 	if len(r.Plans) == 0 {
 		line("（这套图没有保存方案）")
 	} else {
-		plan := r.Plans[len(r.Plans)-1]
-		if r.SubmittedRevision > 0 && r.SubmittedRevision <= len(r.Plans) {
-			plan = r.Plans[r.SubmittedRevision-1]
-		}
+		plan := submittedPlan(r)
 		// The newest task of a slot is its current attempt.
 		current := map[string]feedbackTask{}
 		for _, t := range p.Tasks {
 			current[t.PlanItemID] = t
 		}
-		line("| 序号 | 方案用途 | 场景 | 样板 | 最终状态 |")
-		line("| --- | --- | --- | --- | --- |")
-		for i, item := range plan.Items {
+		// Each of the customer's requests (as the Agent listed them) against the
+		// images carrying it out; a request no image carries out is a row of its
+		// own. Plans that did not record requests or 展示方式 say so.
+		row := func(no, request string, i int, item SuiteItem) {
 			state := feedbackLabel("none")
 			if t, ok := current[item.ID]; ok {
 				state = feedbackLabel(t.Status)
@@ -410,17 +423,116 @@ func feedbackMarkdown(p feedbackPackage) string {
 					sample = "是"
 				}
 			}
-			line("| %d | %s | %s | %s | %s |", i+1, cell(item.Purpose), cell(item.Scene), cell(sample), state)
+			presentation := cell(item.Presentation)
+			if presentation == "" {
+				presentation = "（未记录）"
+			}
+			line("| %s | %s | 第 %d 张 | %s | %s | %s | %s | %s |", no, request, i+1, cell(item.Purpose), presentation, cell(item.Scene), cell(sample), state)
+		}
+		line("| 序号 | 用户原要求 | 图位 | 方案用途 | 展示方式 | 场景 | 样板 | 最终状态 |")
+		line("| --- | --- | --- | --- | --- | --- | --- | --- |")
+		for n, request := range plan.Requests {
+			found := false
+			for i, item := range plan.Items {
+				if item.Request == n+1 {
+					row(fmt.Sprint(n+1), cell(request), i, item)
+					found = true
+				}
+			}
+			if !found {
+				line("| %d | %s | （方案里没有） |  |  |  |  | 未做 |", n+1, cell(request))
+			}
+		}
+		unlinked := "（未对应原要求）"
+		if len(plan.Requests) == 0 {
+			unlinked = "（未记录）"
+		}
+		for i, item := range plan.Items {
+			if item.Request < 1 || item.Request > len(plan.Requests) {
+				row("—", unlinked, i, item)
+			}
 		}
 	}
 	line("")
 	line("## 时间线")
 	line("")
-	for _, v := range r.Events {
-		line("- %s %s", v.At, oneLine(v.Text))
+	// Each image by its slot in the plan (第 n 张（用途）), else by its task ID.
+	slots := map[string]string{}
+	for v := len(r.Plans) - 1; v >= 0; v-- {
+		for i, item := range r.Plans[v].Items {
+			if _, ok := slots[item.ID]; !ok && item.ID != "" {
+				slots[item.ID] = fmt.Sprintf("第 %d 张（%s）", i+1, oneLine(item.Purpose))
+			}
+		}
 	}
+	if len(r.Plans) > 0 {
+		for i, item := range submittedPlan(r).Items {
+			slots[item.ID] = fmt.Sprintf("第 %d 张（%s）", i+1, oneLine(item.Purpose))
+		}
+	}
+	events := []timelineEntry{}
+	if r.CreatedAt != "" {
+		events = append(events, timelineEntry{r.CreatedAt, "开始"})
+	}
+	for _, v := range r.Events {
+		events = append(events, timelineEntry{v.At, oneLine(v.Text)})
+	}
+	attempts := map[string]int{}
 	for _, t := range p.Tasks {
-		line("- %s 图片任务 %s：%s", t.CreatedAt, t.ID, feedbackLabel(t.Status))
+		name, ok := slots[t.PlanItemID]
+		if !ok {
+			name = "图片任务 " + t.ID
+		}
+		attempts[t.PlanItemID]++
+		// Who started the attempt, as recorded; tasks stored before the trigger
+		// was recorded show only what their links say.
+		start := "提交生成"
+		switch {
+		case t.Trigger == triggerSampleRedraw:
+			start = fmt.Sprintf("样板自动重画（第 %d 次）", t.SampleRedraws)
+		case t.Trigger == triggerRefine || t.Trigger == "" && t.RefinedFrom != "":
+			start = "顾客修改"
+			if t.RefineMode != "" {
+				start += "（" + feedbackLabel("refine-"+t.RefineMode) + "）"
+			}
+		case t.Trigger != "":
+			start = feedbackLabel(t.Trigger)
+		case t.AutoRetryOf != "" || t.PolicyRetryOf != "":
+			start = feedbackLabel(triggerAutoResend)
+		case attempts[t.PlanItemID] > 1 && t.PlanItemID != "":
+			start = "重新生成（未记录触发方式）"
+		}
+		if t.PolicyRetryOf != "" {
+			start += "（内容审核拒绝后）"
+		}
+		events = append(events, timelineEntry{t.CreatedAt, name + "：" + start})
+		end := ""
+		switch t.Status {
+		case "succeeded", "unknown", "canceled":
+			end = feedbackLabel(t.Status)
+		case "failed", "blocked", "download_failed":
+			end = feedbackLabel(t.Status)
+			if t.Error != "" {
+				end += "（" + oneLine(t.Error) + "）"
+			}
+		}
+		switch t.SampleCheck {
+		case "":
+		case "passed", "checking":
+			end = feedbackLabel("sample-" + t.SampleCheck)
+		default:
+			end = feedbackLabel("sample-" + t.SampleCheck)
+			if t.SampleProblems != "" {
+				end += "（" + oneLine(t.SampleProblems) + "）"
+			}
+		}
+		if end != "" {
+			events = append(events, timelineEntry{t.UpdatedAt, name + "：" + end})
+		}
+	}
+	sort.SliceStable(events, func(i, j int) bool { return earlier(events[i].at, events[j].at) })
+	for _, v := range events {
+		line("- %s %s", v.at, v.text)
 	}
 	errors := []string{}
 	for _, t := range p.Tasks {
@@ -442,3 +554,26 @@ func feedbackMarkdown(p feedbackPackage) string {
 }
 
 func cell(text string) string { return strings.ReplaceAll(oneLine(text), "|", "/") }
+
+// submittedPlan is the plan the suite was generated from: the submitted
+// revision, else the newest. r has at least one plan.
+func submittedPlan(r feedbackRun) SuitePlan {
+	if r.SubmittedRevision > 0 && r.SubmittedRevision <= len(r.Plans) {
+		return r.Plans[r.SubmittedRevision-1]
+	}
+	return r.Plans[len(r.Plans)-1]
+}
+
+// A timelineEntry is one line of the 反馈.md timeline.
+type timelineEntry struct{ at, text string }
+
+// earlier orders stored times (RFC 3339, of differing precision) by the moment
+// they name; a time that does not parse is compared as text.
+func earlier(a, b string) bool {
+	x, e1 := time.Parse(time.RFC3339Nano, a)
+	y, e2 := time.Parse(time.RFC3339Nano, b)
+	if e1 != nil || e2 != nil {
+		return a < b
+	}
+	return x.Before(y)
+}
