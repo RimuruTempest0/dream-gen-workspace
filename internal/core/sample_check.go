@@ -134,7 +134,7 @@ func (s *Service) redrawSampleLocked(t *Task) string {
 	if s.store.Get("connection", t.Connection.ID, &live) != nil {
 		return s.msg("agent.sample.connectionGone")
 	}
-	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "")
+	next, e := s.queueAttemptLocked(*t, normalizeConnection(live), "", triggerSampleRedraw)
 	if e != nil {
 		return s.msg("agent.sample.notQueued", "error", e)
 	}

@@ -296,7 +296,7 @@ func TestRefusedRefinementIsRewordedForTheRefusal(t *testing.T) {
 	s.store.Get("connection", c.ID, &c) // with its stored key reference
 	refined := Task{ID: NewID(), BatchID: "b", CreatedAt: Now(), UpdatedAt: Now(), Status: "failed", Prompt: "p", Model: "m", Connection: c, References: []string{}, AssetIDs: []string{}, RefinedFrom: "x", RewordFor: rewordRefine, PolicyStep: 1}
 	s.mu.Lock()
-	next, e := s.queueAttemptLocked(refined, c, "")
+	next, e := s.queueAttemptLocked(refined, c, "", "")
 	s.mu.Unlock()
 	if e != nil || next.RewordFor != "" || next.Rewording {
 		t.Fatalf("new attempt kept the refine rewrite: %+v %v", next, e)

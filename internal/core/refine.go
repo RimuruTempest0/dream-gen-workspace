@@ -106,7 +106,7 @@ func (s *Service) RefineAgentImage(in RefineInput) (string, error) {
 	} else {
 		t.SampleItem, t.SampleItems = "", nil
 	}
-	t.AutoRetryOf, t.AutoRetriedAs = "", ""
+	t.AutoRetryOf, t.AutoRetriedAs, t.Trigger = "", "", triggerRefine
 	t.PolicyRetryOf, t.PolicyRetriedAs, t.PolicyStep, t.Rewording, t.RewordFor = "", "", 0, false, ""
 	t.SampleCheck, t.SampleProblems = "", ""
 	t.RefinedFrom = source.ID
