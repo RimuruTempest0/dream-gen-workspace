@@ -32,6 +32,7 @@ var frontendChineseAllowed = map[string]map[string]string{
 		`"思源宋体"`:       "Windows font family name",
 	},
 	"tokens.ts": {`"思源宋体"`: "Windows font family name"},
+	"SuiteFeedback.tsx": {`"反馈.md": "feedback.preview.md"`: "file name in the 反馈包 (the file is Chinese for the provider)"},
 	"SmartParts.tsx": {
 		`正在用浏览器读取商品页: "browser-reading"`:    "stage text saved before 0.8.0",
 		`需要你在弹出的窗口里完成验证: "browser-verify"`: "stage text saved before 0.8.0",

@@ -121,6 +121,13 @@ If you close that window or more than 3 minutes pass, you are asked instead to u
 Browser cookies are saved in the current data folder and are not included in backups; Connections & Settings → Clear product page browser data deletes them.
 The browser only reads pages; Claude cannot operate it. Not every site is guaranteed to be readable.
 
+Report a problem:
+Every image set has a "Report a problem" button on its results, whether the set finished, was stopped or failed, in both the hosted edition and the open-source edition; nothing pops up to ask for feedback when a set is done.
+First choose a verdict on the whole set (usable / partly usable / not usable, required); when the set is not fully usable, tick at least one problem type or write "I wanted …, but I got …" in "Note on the set".
+The feedback is kept with the set, is still there after you close and reopen the program, and can be changed at any time.
+"Save feedback package…" first lists what the package holds and its size, then asks where to save it (the desktop by default, named "Feedback-date-time.zip"). The program uploads nothing: send it to your provider yourself, for example by WeChat or email.
+The feedback package holds 反馈.md (your verdict, the request compared with the plan, the timeline and errors) and run.json (request, plan, prompts, line names and models, errors and the whole process); it holds no API key, line address or license file, and this version holds no images yet. The diagnostic package on the Logs page is unchanged.
+
 Logs (0.2.2):
 "Logs" on the left shows the stages and errors of the program, connection verification, smart analysis and image generation tasks.
 You can filter by log level, source, keyword and related ID, view details, page through, and refresh manually or automatically.

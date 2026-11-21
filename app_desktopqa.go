@@ -48,6 +48,10 @@ func (a *App) ResetDesktopQAWithSystemLanguage(tag string) error {
 	return nil
 }
 
+// SeedTestSuite saves a submitted suite with failed and unknown images, nothing
+// generated, and returns its run ID; stopped saves it as interrupted.
+func (a *App) SeedTestSuite(stopped bool) (string, error) { return a.service.SeedTestSuite(stopped) }
+
 // StartTestCustomerExpiring is StartTestCustomer with an expiry (RFC 3339).
 func (a *App) StartTestCustomerExpiring(imageBase, llmBase string, trialImages int, expiresAt string) (map[string]string, error) {
 	if e := a.ResetDesktopQA(); e != nil {
