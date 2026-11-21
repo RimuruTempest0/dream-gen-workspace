@@ -404,7 +404,7 @@ func checkRefineRequirements(base, instruction, text string) error {
 	return nil
 }
 
-const refineSamplesLine = "第 2 到第 %d 张图片是本套各设计区的样板（例如胸前图案、袖口细节），不是底图，只用来看这些设计应该画成什么样：图案、配饰、朝向、文字的排列、字体、颜色、位置和相对大小照样板画；不照它们的衣服颜色、构图和背景。"
+const refineSamplesLine = "第 2 到第 %d 张图片是本套各设计区的样板（例如胸前图案、袖口细节），不是底图。只照设计区里的设计：图案、配饰、朝向、文字的排列、字体和颜色照样板画；不照样板的构图、姿势、展示方式和场景，也不照它们的衣服颜色。"
 
 // sampleAssetsOf lists the sample images a task was given (one before 0.7.9).
 func sampleAssetsOf(t Task) []string {
@@ -417,4 +417,4 @@ func sampleAssetsOf(t Task) []string {
 	return nil
 }
 
-const refineSampleLine = "第 2 张图片是本套的细节样板（袖口等局部特写），不是底图，只用来看这些细节应该画成什么样：图标和文字的排列方式、左右顺序、文字方向、字体、颜色和相对大小照样板画；不照它的衣服颜色、构图和背景。"
+const refineSampleLine = "第 2 张图片是本套的细节样板（袖口等局部特写），不是底图。只照设计区里的设计：图标和文字的排列方式、左右顺序、文字方向、字体、颜色和相对大小照样板画；不照样板的构图、姿势、展示方式和场景，也不照它的衣服颜色。"

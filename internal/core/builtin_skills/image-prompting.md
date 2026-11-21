@@ -26,7 +26,7 @@ Completeness comes before length: do not target 250 characters at the expense of
 - Write 图案只包含 for the actual complete design and 图案里没有 for explicitly removed or forbidden features. A local edit preserves unrequested features. A full replacement follows the user's replacement scope.
 - Name a kept element by its actual shape in the reference, with a short visual spec (shape, colors, attachments and their position). Never swap in a similar common object from the user's wording: a mini Christmas-stocking headpiece is not a Santa hat.
 - Locate units on garment landmarks, not canvas coordinates. Keep scale relative to the garment; normal perspective can alter apparent screen size.
-- Generic terms such as “手写体” cannot substitute for visible letterforms. Do not label an unreviewed generated sample as an approved master.
+- Generic terms such as “手写体” cannot substitute for visible letterforms. Do not call a generated sample approved before its check.
 - New design decisions without visual evidence must be made once and fixed in locked, only within the user's authorized design freedom.
 
 ## 3. Reference images: fixed identity, explicit roles

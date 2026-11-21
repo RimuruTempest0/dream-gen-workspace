@@ -139,7 +139,8 @@ func samplesUsed(p SuitePlan, item SuiteItem) []string {
 }
 
 // sampleLead opens a sample's own prompt. A cuff-like detail sample keeps the
-// close-up rule; the master of a main design area shows its placement and size.
+// close-up rule; any other area's sample fixes only that area's design, framed
+// as its prompt says.
 func sampleLead(area, lang string) string {
 	lower := strings.ToLower(area)
 	if area == "" || strings.Contains(area, "袖") || strings.Contains(lower, "cuff") || strings.Contains(lower, "sleeve") {
@@ -149,9 +150,9 @@ func sampleLead(area, lang string) string {
 		return sampleSelfLine
 	}
 	if !zhPrompt(lang) {
-		return fmt.Sprintf(enSampleMasterLine, area)
+		return fmt.Sprintf(enSampleAreaLine, area)
 	}
-	return fmt.Sprintf("设计母版（本套其他图片会照这张画「%[1]s」的设计，必须画准）：按提示词的取景画；画面里「%[1]s」设计的图案、朝向、位置和相对大小就是全套的标准，必须清楚、完整、端正。\n", area)
+	return fmt.Sprintf("设计区样板（本套其他图片只照这张画「%[1]s」的设计，必须画准）：按提示词的取景画；画面里「%[1]s」设计的图案、朝向、字形和颜色就是全套的标准，必须清楚、完整、端正。\n", area)
 }
 
 // sampleSelfLine leads the sample's own prompt. With a whole-garment reference and

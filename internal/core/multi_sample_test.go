@@ -47,8 +47,8 @@ func TestPlanAllowsOneSamplePerDesignArea(t *testing.T) {
 			t.Errorf("item %d uses %v, want %v", i, got, want)
 		}
 	}
-	// The main design's sample is a master; a cuff sample keeps the close-up rule.
-	if !strings.Contains(sampleLead("胸前", i18n.ZhCN), "设计母版") || sampleLead("袖口", i18n.ZhCN) != sampleSelfLine || sampleLead("", i18n.ZhCN) != sampleSelfLine {
+	// The main design's sample fixes only its design area; a cuff sample keeps the close-up rule.
+	if !strings.Contains(sampleLead("胸前", i18n.ZhCN), "设计区样板") || sampleLead("袖口", i18n.ZhCN) != sampleSelfLine || sampleLead("", i18n.ZhCN) != sampleSelfLine {
 		t.Fatal("sample leads")
 	}
 }
