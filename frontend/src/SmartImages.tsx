@@ -66,6 +66,7 @@ import {
 import { gatewayLabel, useGateways } from "./Gateways";
 import { t, type MessageKey } from "./i18n";
 import { LicenseNotice } from "./License";
+import { SuiteFeedbackButton } from "./SuiteFeedback";
 import {
   ReferenceStrip,
   AgentTiming,
@@ -942,6 +943,11 @@ export function SmartImages() {
                   </Tag>
                 )}
                 {run && <AgentTiming run={run} tasks={tasks} />}
+                {run &&
+                  !submitted &&
+                  (run.status === "failed" || run.status === "interrupted") && (
+                    <SuiteFeedbackButton runID={run.id} />
+                  )}
               </Space>
             </div>
             {runQuery.error && (
@@ -1134,6 +1140,7 @@ export function SmartImages() {
                   >
                     {t(done ? "smart.download.set" : "smart.download.done")}
                   </Button>
+                  <SuiteFeedbackButton runID={run!.id} />
                 </Space>
               </div>
               {tasks.some(isBalanceRejected) && (

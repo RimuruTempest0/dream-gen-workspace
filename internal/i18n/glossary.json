@@ -22,6 +22,7 @@
     { "zh-CN": "托管版", "en": "hosted edition", "vi": "bản dịch vụ", "ja": "ホスト版", "ko": "호스팅판", "note": "Delivery with a license file; lines and keys come from the provider." },
     { "zh-CN": "授权文件", "en": "license file", "vi": "tệp giấy phép", "ja": "ライセンスファイル", "ko": "라이선스 파일", "note": "Signed customer.dat." },
     { "zh-CN": "一键更新", "en": "one-click update", "vi": "cập nhật một chạm", "ja": "ワンクリック更新", "ko": "원클릭 업데이트", "note": "Download, verify, replace and restart in one click." },
+    { "zh-CN": "反馈包", "en": "feedback package", "vi": "gói phản hồi", "ja": "フィードバックパッケージ", "ko": "피드백 패키지", "note": "The ZIP a tester saves after checking an image set, sent to the provider by hand; not the diagnostic package." },
     { "zh-CN": "更新说明", "en": "update notes", "vi": "ghi chú cập nhật", "ja": "更新内容", "ko": "업데이트 안내", "note": "What changed, shown during a one-click update." }
   ]
 }

@@ -53,6 +53,20 @@ func (st *Store) savedSecrets() []string {
 }
 
 func redactLogText(text string, secrets []string, lang string) string {
+	return truncateLogText(redactText(text, secrets, lang))
+}
+
+// truncateLogText cuts text to the length of a log line.
+func truncateLogText(text string) string {
+	runes := []rune(text)
+	if len(runes) > 4000 {
+		text = string(runes[:4000]) + "…"
+	}
+	return text
+}
+
+// redactText hides saved keys, credentials and URL query parameters in text.
+func redactText(text string, secrets []string, lang string) string {
 	for _, secret := range secrets {
 		text = strings.ReplaceAll(text, secret, i18n.T(lang, "log.hidden"))
 	}
@@ -69,10 +83,6 @@ func redactLogText(text string, secrets []string, lang string) string {
 		}
 		return u.String()
 	})
-	runes := []rune(text)
-	if len(runes) > 4000 {
-		text = string(runes[:4000]) + "…"
-	}
 	return text
 }
 

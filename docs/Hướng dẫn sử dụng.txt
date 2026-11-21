@@ -121,6 +121,13 @@ Nếu đóng cửa sổ đó hoặc quá 3 phút, sẽ chuyển sang nhắc tả
 Cookie của trình duyệt được lưu trong thư mục dữ liệu hiện tại, không đưa vào bản sao lưu; Kết nối và cài đặt → Xóa dữ liệu trình duyệt trang sản phẩm để xóa.
 Trình duyệt chỉ đọc trang, Claude không thể điều khiển nó; không đảm bảo đọc được mọi trang web.
 
+Báo lỗi:
+Mỗi bộ ảnh đều có nút "Báo lỗi" trên kết quả, dù bộ ảnh đã xong, bị dừng hay báo lỗi, ở cả bản dịch vụ và bản mã nguồn mở; khi bộ ảnh xong sẽ không có cửa sổ bật lên giục bạn phản hồi.
+Trước tiên chọn đánh giá cả bộ (dùng được / dùng được một phần / không dùng được, bắt buộc); khi cả bộ không dùng được hoàn toàn, hãy đánh dấu ít nhất một loại vấn đề hoặc viết "Tôi muốn …, nhưng thực tế là …" trong "Ghi chú cho cả bộ".
+Phản hồi được lưu cùng bộ ảnh, vẫn còn sau khi đóng và mở lại phần mềm, và có thể sửa bất cứ lúc nào.
+"Lưu gói phản hồi…" sẽ liệt kê trước nội dung và dung lượng của gói, rồi hỏi nơi lưu (mặc định là màn hình nền, tên tệp "Phan-hoi-ngày-giờ.zip"). Phần mềm không tải lên: hãy tự gửi cho nhà cung cấp, ví dụ qua WeChat hoặc email.
+Gói phản hồi gồm 反馈.md (kết luận kiểm tra, đối chiếu yêu cầu với phương án, dòng thời gian và lỗi) và run.json (yêu cầu, phương án, câu lệnh, tên tuyến và mô hình, lỗi và toàn bộ quá trình); không chứa API Key, địa chỉ tuyến hay tệp giấy phép, và phiên bản này chưa kèm ảnh. Gói chẩn đoán ở trang Nhật ký không thay đổi.
+
 Nhật ký (0.2.2):
 "Nhật ký" bên trái cho xem các giai đoạn và lỗi của ứng dụng, xác minh kết nối, phân tích thông minh và tác vụ tạo ảnh.
 Hỗ trợ lọc theo mức nhật ký, nguồn, từ khóa và ID liên quan, xem chi tiết, phân trang và làm mới thủ công/tự động.

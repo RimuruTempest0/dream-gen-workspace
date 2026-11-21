@@ -62,6 +62,11 @@ var chineseAllowed = map[string]map[string]string{
 		"cropReference":     "tool result note for the Agent",
 		"cropReferenceTool": "tool description for the Agent",
 	},
+	"feedback_package.go": {
+		"feedbackMarkdownName": "file name in the 反馈包",
+		"feedbackLabels":       "反馈.md is written for the provider, in Chinese",
+		"feedbackMarkdown":     "反馈.md is written for the provider, in Chinese",
+	},
 	"fixed_lists.go": {"moodSentenceZh": "zh-CN fixed text"},
 	"gateways.go":    {"balanceWords": "recognises upstream error text", "quotaUsedUp": "recognises upstream error text"},
 	"license_qa.go":  {"writeQACustomer": "desktop QA licence fixture (provider data)"},
