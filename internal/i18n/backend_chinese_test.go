@@ -99,6 +99,7 @@ var chineseAllowed = map[string]map[string]string{
 		"refinePromptMarkerV1":   "recognises prompts saved before 0.6.11",
 		"refineSampleLine":       "Chinese image-prompt line",
 		"refineSamplesLine":      "Chinese image-prompt line",
+		"regenerateHead":         "Chinese image-prompt lines and marker (English: prompt_scaffold.go)",
 		"removalWords":           "recognises the customer's words",
 	},
 	"sample.go": {
