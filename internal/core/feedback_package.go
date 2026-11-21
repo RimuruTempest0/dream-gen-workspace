@@ -39,6 +39,9 @@ type feedbackPackage struct {
 	Feedback   SuiteFeedback   `json:"feedback"`
 	Run        feedbackRun     `json:"run"`
 	Tasks      []feedbackTask  `json:"tasks"`
+
+	// Images lists the files under images/ (#19).
+	Images []feedbackPackedImage `json:"images"`
 }
 
 // feedbackLine is a line as the package names it: never its address or key.
@@ -140,21 +143,43 @@ type FeedbackPackageFile struct {
 	Bytes int64  `json:"bytes"`
 }
 
-// FeedbackPackagePreview lists what the 反馈包 will hold.
+// FeedbackPackagePreview lists what the 反馈包 will hold. Image sizes are
+// estimated: the preview encodes nothing.
 type FeedbackPackagePreview struct {
 	Files []FeedbackPackageFile `json:"files"`
 	Bytes int64                 `json:"bytes"`
+	// GeneratedImages and ReferenceImages count the packed images; Uploads the
+	// customer's own product photos among the references.
+	GeneratedImages int `json:"generatedImages"`
+	ReferenceImages int `json:"referenceImages"`
+	Uploads         int `json:"uploads"`
 }
 
 // PreviewFeedbackPackage lists the entries of the suite's 反馈包 and their size.
 func (s *Service) PreviewFeedbackPackage(runID string) (FeedbackPackagePreview, error) {
 	s.mu.Lock()
-	entries, e := s.feedbackEntriesLocked(runID)
+	entries, images, e := s.feedbackEntriesLocked(runID)
 	s.mu.Unlock()
 	out := FeedbackPackagePreview{Files: []FeedbackPackageFile{}}
 	for _, v := range entries {
 		out.Files = append(out.Files, FeedbackPackageFile{v.name, int64(len(v.data))})
 		out.Bytes += int64(len(v.data))
+	}
+	for _, v := range images {
+		if v.Missing {
+			continue
+		}
+		if v.Kind == "generated" {
+			out.GeneratedImages++
+		} else {
+			out.ReferenceImages++
+		}
+		if v.Source == "upload" {
+			out.Uploads++
+		}
+		n := max(1, int64(v.Width)*int64(v.Height)/feedbackPixelsPerByte)
+		out.Files = append(out.Files, FeedbackPackageFile{v.File, n})
+		out.Bytes += n
 	}
 	return out, e
 }
@@ -162,33 +187,48 @@ func (s *Service) PreviewFeedbackPackage(runID string) (FeedbackPackagePreview, 
 // ExportFeedbackPackage writes the suite's 反馈包 to destination. It does not
 // use the image queue.
 func (s *Service) ExportFeedbackPackage(runID, destination string) error {
+	return s.ExportFeedbackPackageWithProgress(runID, destination, func(FeedbackPackageProgress) {})
+}
+
+// ExportFeedbackPackageWithProgress is ExportFeedbackPackage reporting each
+// image as it is packed, and once more when the package is saved.
+func (s *Service) ExportFeedbackPackageWithProgress(runID, destination string, progress func(FeedbackPackageProgress)) error {
 	s.mu.Lock()
-	entries, e := s.feedbackEntriesLocked(runID)
+	entries, images, e := s.feedbackEntriesLocked(runID)
 	s.mu.Unlock()
 	if e != nil {
 		return e
 	}
-	return writeZipFile(destination, entries)
+	packed, e := s.packFeedbackImages(runID, images, progress)
+	if e != nil {
+		return e
+	}
+	if e = writeZipFile(destination, append(entries, packed...)); e != nil {
+		return e
+	}
+	progress(FeedbackPackageProgress{RunID: runID, Image: len(packed), Images: len(packed), Done: true})
+	return nil
 }
 
-// feedbackEntriesLocked puts the package together: 反馈.md first, then run.json.
-func (s *Service) feedbackEntriesLocked(runID string) ([]zipEntry, error) {
+// feedbackEntriesLocked puts the package together: 反馈.md first, then
+// run.json, then the images (only listed here: they are packed outside the lock).
+func (s *Service) feedbackEntriesLocked(runID string) ([]zipEntry, []feedbackPackedImage, error) {
 	feedback, e := s.suiteFeedbackLocked(runID)
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	var run AgentRun
 	if e = s.store.Get("agent_run", runID, &run); e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	tasks, e := List[Task](s.store, "task")
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	mine := []Task{}
 	conns, e := List[Connection](s.store, "connection")
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	// Lines saved on the run and its tasks are hidden too, even if since deleted.
 	conns = append(conns, run.ImageConnection, run.LLMConnection)
@@ -206,13 +246,14 @@ func (s *Service) feedbackEntriesLocked(runID string) ([]zipEntry, error) {
 	for _, t := range mine {
 		pkg.Tasks = append(pkg.Tasks, feedbackTaskOf(t))
 	}
+	pkg.Images = s.feedbackImagesLocked(run, mine)
 	// The package is read by the provider: hidden parts are marked in Chinese.
 	redactStrings(reflect.ValueOf(&pkg), s.redactorLocked(conns, i18n.ZhCN))
 	data, e := json.MarshalIndent(pkg, "", "  ")
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
-	return []zipEntry{{feedbackMarkdownName, []byte(feedbackMarkdown(pkg))}, {feedbackRunName, data}}, nil
+	return []zipEntry{{feedbackMarkdownName, []byte(feedbackMarkdown(pkg))}, {feedbackRunName, data}}, pkg.Images, nil
 }
 
 func lineOf(c Connection) *feedbackLine {
@@ -548,6 +589,7 @@ func feedbackMarkdown(p feedbackPackage) string {
 			line("%s", v)
 		}
 	}
+	feedbackImagesMarkdown(&b, p)
 	line("")
 	line("完整记录见 run.json。")
 	return strings.ReplaceAll(b.String(), "\n", "\r\n")

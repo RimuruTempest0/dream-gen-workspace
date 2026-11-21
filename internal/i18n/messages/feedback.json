@@ -4,34 +4,39 @@
     "feedback.verdictRequired": "请先选择整套判断",
     "feedback.problemUnknown": "问题类型无法识别，请重新选择",
     "feedback.noteTooLong": "整套说明最多 8000 个字符",
-    "feedback.detailRequired": "整套不是完全可用时，请至少选一个问题类型或写一段说明"
+    "feedback.detailRequired": "整套不是完全可用时，请至少选一个问题类型或写一段说明",
+    "feedback.imageUnreadable": "图片 {file} 读不出来，反馈包没有保存"
   },
   "en": {
     "feedback.runMissing": "This image set no longer exists",
     "feedback.verdictRequired": "Choose a verdict for the whole set first",
     "feedback.problemUnknown": "A problem type was not recognised. Choose the problem types again",
     "feedback.noteTooLong": "The note on the set can be at most 8000 characters",
-    "feedback.detailRequired": "When the set is not fully usable, choose at least one problem type or write a note"
+    "feedback.detailRequired": "When the set is not fully usable, choose at least one problem type or write a note",
+    "feedback.imageUnreadable": "Image {file} could not be read, so the feedback package was not saved"
   },
   "vi": {
     "feedback.runMissing": "Bộ ảnh này không còn nữa",
     "feedback.verdictRequired": "Hãy chọn đánh giá cho cả bộ trước",
     "feedback.problemUnknown": "Không nhận ra một loại vấn đề. Hãy chọn lại các loại vấn đề",
     "feedback.noteTooLong": "Ghi chú cho cả bộ tối đa 8000 ký tự",
-    "feedback.detailRequired": "Khi cả bộ không dùng được hoàn toàn, hãy chọn ít nhất một loại vấn đề hoặc viết ghi chú"
+    "feedback.detailRequired": "Khi cả bộ không dùng được hoàn toàn, hãy chọn ít nhất một loại vấn đề hoặc viết ghi chú",
+    "feedback.imageUnreadable": "Không đọc được ảnh {file}, nên gói phản hồi chưa được lưu"
   },
   "ja": {
     "feedback.runMissing": "この画像セットはもうありません",
     "feedback.verdictRequired": "先にセット全体の判定を選んでください",
     "feedback.problemUnknown": "問題の種類を認識できません。もう一度選んでください",
     "feedback.noteTooLong": "セット全体の説明は 8000 文字までです",
-    "feedback.detailRequired": "セット全体がそのまま使えない場合は、問題の種類を1つ以上選ぶか説明を書いてください"
+    "feedback.detailRequired": "セット全体がそのまま使えない場合は、問題の種類を1つ以上選ぶか説明を書いてください",
+    "feedback.imageUnreadable": "画像 {file} を読み込めないため、フィードバックパッケージを保存できませんでした"
   },
   "ko": {
     "feedback.runMissing": "이 이미지 세트가 더 이상 없습니다",
     "feedback.verdictRequired": "먼저 세트 전체에 대한 판단을 고르세요",
     "feedback.problemUnknown": "인식할 수 없는 문제 유형이 있습니다. 문제 유형을 다시 고르세요",
     "feedback.noteTooLong": "세트 전체 설명은 최대 8000자입니다",
-    "feedback.detailRequired": "세트 전체를 그대로 쓸 수 없을 때는 문제 유형을 하나 이상 고르거나 설명을 적어 주세요"
+    "feedback.detailRequired": "세트 전체를 그대로 쓸 수 없을 때는 문제 유형을 하나 이상 고르거나 설명을 적어 주세요",
+    "feedback.imageUnreadable": "이미지 {file}을(를) 읽을 수 없어 피드백 패키지를 저장하지 못했습니다"
   }
 }
