@@ -163,7 +163,7 @@ func TestFixedPromptLinesFollowThePromptLanguage(t *testing.T) {
 	r := AgentRun{Language: i18n.Ko, Input: AgentInput{Ratio: "1:1"}, Skills: []SkillRecord{{ID: p004SkillID, Content: shippedP004Contents()[0]}}}
 	p := SuitePlan{Locked: []string{"red hoodie"}, Editable: []string{"background"}, CuffEmbroidery: &no}
 	got := itemPrompt(r, p, SuiteItem{Prompt: "A hoodie on a hanger", Sample: true, SampleArea: "chest"})
-	if hasHan(got) || !strings.Contains(got, "Locked for the whole set: red hoodie") || !strings.Contains(got, "Project fixed rules (P004)") || !strings.HasPrefix(got, "Design master") {
+	if hasHan(got) || !strings.Contains(got, "Locked for the whole set: red hoodie") || !strings.Contains(got, "Project fixed rules (P004)") || !strings.HasPrefix(got, "Design-area sample") {
 		t.Fatal(got)
 	}
 	r.Language = i18n.ZhCN
