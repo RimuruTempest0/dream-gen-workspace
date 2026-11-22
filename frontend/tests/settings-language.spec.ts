@@ -178,6 +178,7 @@ test.afterAll(async () => {
     await page.reload().catch(() => {});
   }
   await browser?.close();
+  server?.closeAllConnections();
   await new Promise<void>((r) => server?.close(() => r()));
 });
 

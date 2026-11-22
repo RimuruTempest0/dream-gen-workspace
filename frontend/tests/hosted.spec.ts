@@ -43,6 +43,9 @@ test.afterAll(async () => {
   await go("ResetDesktopQA").catch(() => {});
   await page?.reload();
   await browser?.close();
+  // The app keeps connections to the mock relay open (the settings page runs
+  // the free check on open), so close them instead of waiting for them.
+  server.closeAllConnections();
   await new Promise<void>((r) => server.close(() => r()));
 });
 

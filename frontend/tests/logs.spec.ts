@@ -46,6 +46,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (page) await page.goto("http://wails.localhost/#/");
   await browser?.close();
+  server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
