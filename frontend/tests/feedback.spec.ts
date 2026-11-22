@@ -139,7 +139,9 @@ test("closing the panel with unsaved changes asks first", async () => {
   const dialog = page.getByRole("dialog", { name: "问题反馈" });
   await dialog.getByLabel("整套说明", { exact: true }).fill("还没保存的说明");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  const ask = page.getByRole("dialog").filter({ hasText: "放弃未保存的反馈？" });
+  const ask = page
+    .getByRole("dialog")
+    .filter({ hasText: "放弃未保存的反馈？" });
   await expect(ask).toBeVisible();
   // Kept open: the text is still there.
   await ask.getByRole("button", { name: "取消" }).click();

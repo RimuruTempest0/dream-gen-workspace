@@ -1022,6 +1022,7 @@ export namespace core {
 	    medianMS: number;
 	    recentTimeouts: number;
 	    inFlight: number;
+	    checking: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new GatewayHealth(source);
@@ -1041,6 +1042,7 @@ export namespace core {
 	        this.medianMS = source["medianMS"];
 	        this.recentTimeouts = source["recentTimeouts"];
 	        this.inFlight = source["inFlight"];
+	        this.checking = source["checking"];
 	    }
 	}
 	export class GatewayStat {

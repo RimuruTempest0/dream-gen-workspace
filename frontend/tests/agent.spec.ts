@@ -590,6 +590,7 @@ test.afterAll(async () => {
     await page.goto("http://wails.localhost/#/");
   }
   await browser?.close();
+  server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 

@@ -50,6 +50,10 @@ export function CheckGateways() {
   return window['go']['main']['App']['CheckGateways']();
 }
 
+export function CheckStaleGateways() {
+  return window['go']['main']['App']['CheckStaleGateways']();
+}
+
 export function ChooseCustomerFile() {
   return window['go']['main']['App']['ChooseCustomerFile']();
 }
