@@ -887,9 +887,19 @@ test("备用图片服务：免费检查、主用/备用、结果未知自动重�
     model: "qa-image",
     key: "qa-key-123",
   })) as { id: string };
+  // Opening the settings runs the free check on services without a recent
+  // result, so their health is shown without clicking or generating first.
+  const modelsAtOpen = gatewayHits.models;
+  const generationsAtOpen = gatewayHits.gw524 + gatewayHits.gwok;
+  await page.getByRole("link", { name: "模板", exact: true }).click();
   await page.getByRole("link", { name: "系统", exact: true }).click();
   const rowOf = (name: string) =>
     page.locator(".connection-row").filter({ hasText: name });
+  await expect(
+    rowOf("QA 备用站").getByText("正常", { exact: true }),
+  ).toBeVisible();
+  expect(gatewayHits.models).toBeGreaterThanOrEqual(modelsAtOpen + 2);
+  expect(gatewayHits.gw524 + gatewayHits.gwok).toBe(generationsAtOpen);
   await rowOf("QA 超时站").getByRole("radio", { name: "主用" }).click();
   await expect
     .poll(async () => ((await go("GetGatewaySettings")) as any).primaryID)

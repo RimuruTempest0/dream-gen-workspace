@@ -45,7 +45,10 @@ func (a *App) SetGatewaySettings(g core.GatewaySettings) error {
 }
 func (a *App) GatewayHealth() ([]core.GatewayHealth, error) { return a.service.GatewayHealth() }
 func (a *App) CheckGateways() ([]core.GatewayHealth, error) { return a.service.CheckGateways() }
-func (a *App) LicenseStatus() core.LicenseStatus            { return a.service.LicenseStatus() }
+func (a *App) CheckStaleGateways() ([]core.GatewayHealth, error) {
+	return a.service.CheckStaleGateways()
+}
+func (a *App) LicenseStatus() core.LicenseStatus { return a.service.LicenseStatus() }
 func (a *App) Activate(code string) (core.LicenseStatus, error) {
 	return a.service.Activate(code)
 }

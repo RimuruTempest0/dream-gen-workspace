@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Radio, Space, Switch, Tag, Tooltip } from "antd";
 import {
@@ -28,6 +28,7 @@ export type GatewayHealth = {
   medianMS: number;
   recentTimeouts: number;
   inFlight: number;
+  checking: boolean;
 };
 
 const stateKeys: Record<GatewayHealth["state"], MessageKey> = {
@@ -64,6 +65,13 @@ export function useGateways() {
 
 export function GatewayTag({ health }: { health?: GatewayHealth }) {
   const state = health?.state || "unknown";
+  if (state === "unknown" && health?.checking) {
+    return (
+      <Tag color="processing" className="gateway-tag">
+        {t("gateways.state.checking")}
+      </Tag>
+    );
+  }
   const tag = (
     <Tag color={stateColor[state]} className="gateway-tag">
       {gatewayStateText(state)}
@@ -204,7 +212,9 @@ export function GatewayRow({
                 ? t("gateways.detail.models", { count: h.modelCount })
                 : t("gateways.detail.noModels"),
             })
-          : t("gateways.detail.unchecked")}
+          : h?.checking
+            ? t("gateways.detail.checking")
+            : t("gateways.detail.unchecked")}
         {h?.medianMS
           ? ` · ${t("gateways.detail.median", { time: seconds(h.medianMS) })}`
           : ""}
@@ -223,7 +233,27 @@ export function GatewayRow({
 export function GatewayFailover() {
   const { settings, health } = useGateways();
   const actions = useActions();
+  const qc = useQueryClient();
   const [checking, setChecking] = useState(false);
+  // Opening the page runs the free check on image services with no recent
+  // result, so their health is known without generating first. Quietly: the
+  // result shows on each service, failures included.
+  useEffect(() => {
+    let open = true;
+    const shown = window.setTimeout(
+      () => qc.invalidateQueries({ queryKey: ["gateway-health"] }),
+      300,
+    );
+    call<GatewayHealth[]>("CheckStaleGateways")
+      .then((data) => {
+        if (open) qc.setQueryData(["gateway-health"], data);
+      })
+      .catch(() => qc.invalidateQueries({ queryKey: ["gateway-health"] }));
+    return () => {
+      open = false;
+      window.clearTimeout(shown);
+    };
+  }, [qc]);
   const g = settings.data;
   if (!g) return null;
   const configured = !!g.primaryID || g.backupIDs.length > 0;
