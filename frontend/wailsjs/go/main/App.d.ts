@@ -26,6 +26,8 @@ export function CheckForUpdate():Promise<core.UpdateStatus>;
 
 export function CheckGateways():Promise<Array<core.GatewayHealth>>;
 
+export function CheckStaleGateways():Promise<Array<core.GatewayHealth>>;
+
 export function ChooseCustomerFile():Promise<string>;
 
 export function ChooseDataDirectory():Promise<string>;
