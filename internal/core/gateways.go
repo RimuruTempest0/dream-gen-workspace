@@ -36,6 +36,7 @@ type GatewayHealth struct {
 	MedianMS       int64  `json:"medianMS"`
 	RecentTimeouts int    `json:"recentTimeouts"`
 	InFlight       int    `json:"inFlight"`
+	Checking       bool   `json:"checking"` // a free check is running now
 }
 
 // Health thresholds; package variables so tests can shorten them.
@@ -244,7 +245,14 @@ func (s *Service) maybeProbeLocked(tasks []Task) {
 }
 
 // CheckGateways runs the free check on every image relay now and waits for it.
-func (s *Service) CheckGateways() ([]GatewayHealth, error) {
+func (s *Service) CheckGateways() ([]GatewayHealth, error) { return s.checkGateways(false) }
+
+// CheckStaleGateways runs the free check, and waits for it, on every image relay
+// whose last check is missing or older than the regular interval. The settings
+// page calls it when it opens, so health is known without generating first.
+func (s *Service) CheckStaleGateways() ([]GatewayHealth, error) { return s.checkGateways(true) }
+
+func (s *Service) checkGateways(staleOnly bool) ([]GatewayHealth, error) {
 	s.mu.Lock()
 	cs, e := List[Connection](s.store, "connection")
 	if e != nil {
@@ -252,11 +260,16 @@ func (s *Service) CheckGateways() ([]GatewayHealth, error) {
 		return nil, e
 	}
 	ids := []string{}
+	now := time.Now()
 	for _, c := range cs {
-		if normalizeConnection(c).Kind == "image" && !s.probing[c.ID] {
-			s.probing[c.ID] = true
-			ids = append(ids, c.ID)
+		if normalizeConnection(c).Kind != "image" || s.probing[c.ID] {
+			continue
 		}
+		if r, had := s.probes[c.ID]; staleOnly && had && now.Sub(r.at) < probeInterval {
+			continue
+		}
+		s.probing[c.ID] = true
+		ids = append(ids, c.ID)
 	}
 	s.mu.Unlock()
 	done := make(chan struct{}, len(ids))
@@ -309,7 +322,7 @@ func (s *Service) inFlightOnLocked(id string) int {
 }
 
 func (s *Service) healthLocked(c Connection, tasks []Task, now time.Time) GatewayHealth {
-	h := GatewayHealth{ConnectionID: c.ID, Name: c.Name, Model: c.Model, State: "unknown", InFlight: s.inFlightOnLocked(c.ID)}
+	h := GatewayHealth{ConnectionID: c.ID, Name: c.Name, Model: c.Model, State: "unknown", InFlight: s.inFlightOnLocked(c.ID), Checking: s.probing[c.ID]}
 	outcomes := []outcome{}
 	for _, t := range tasks {
 		if t.Connection.ID != c.ID {
