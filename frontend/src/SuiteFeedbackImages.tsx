@@ -37,7 +37,7 @@ export const noteCount = (max: number) => ({
     [...text].slice(0, max).join(""),
 });
 
-const itemProblems:{ value: string; label: MessageKey }[] = [
+const itemProblems: { value: string; label: MessageKey }[] = [
   { value: "shot-wrong", label: "feedbackImages.problem.shotWrong" },
   { value: "too-similar", label: "feedbackImages.problem.tooSimilar" },
   { value: "design-wrong", label: "feedbackImages.problem.design" },

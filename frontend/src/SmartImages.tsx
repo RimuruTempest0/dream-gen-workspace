@@ -154,8 +154,7 @@ export function SmartImages() {
   );
   const runQuery = useQuery({
     queryKey: ["agent-run", runID],
-    queryFn: () =>
-      call<AgentRun>("GetAgentRun", runID).then(normalizeAgentRun),
+    queryFn: () => call<AgentRun>("GetAgentRun", runID).then(normalizeAgentRun),
     enabled: !!runID,
     refetchInterval: 2000,
   });

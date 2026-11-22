@@ -148,7 +148,9 @@ export const basisNames: Record<string, { label: MessageKey; color?: string }> =
 // An automatic run answers its own questions; this shows how it decided each one,
 // so the values it had to pick (需核对) can be checked against the images.
 export function AgentJudgments({ run }: { run: AgentRun }) {
-  const answered = (run.questions || []).filter((q) => q.answeredBy === "agent");
+  const answered = (run.questions || []).filter(
+    (q) => q.answeredBy === "agent",
+  );
   if (!run.input.autoMode || !answered.length) return null;
   const verify = answered.filter((q) => q.basis === "verify").length;
   return (
