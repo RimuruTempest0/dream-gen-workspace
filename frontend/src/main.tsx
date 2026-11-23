@@ -4,6 +4,7 @@ import { ConfigProvider, App as AntApp } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter } from "react-router-dom";
 import { installTokens, useAntdTheme } from "./tokens";
+import { loadAppearance, useAppearance } from "./appearance";
 import { LanguageProvider, loadLanguage, type LanguageInfo } from "./i18n";
 import App from "./App";
 import { notImages } from "./ui";
@@ -13,7 +14,7 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } },
 });
 function Themed({ info }: { info: LanguageInfo }) {
-  const base = useAntdTheme();
+  const base = useAntdTheme(useAppearance().mode);
   // Text the backend wrote in the interface language (summaries, the licence
   // state) is fetched again in the new one; saved images are not.
   const first = useRef(true);
@@ -44,7 +45,7 @@ function Themed({ info }: { info: LanguageInfo }) {
     </ConfigProvider>
   );
 }
-loadLanguage().then((initial) =>
+Promise.all([loadLanguage(), loadAppearance()]).then(([initial]) =>
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
       <QueryClientProvider client={client}>

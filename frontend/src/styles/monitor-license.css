@@ -103,7 +103,7 @@
   background: var(--success);
 }
 .outcome-bar .warn {
-  background: #d9a23a;
+  background: var(--warning);
 }
 .outcome-bar .bad {
   background: var(--danger);

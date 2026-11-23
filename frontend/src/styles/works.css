@@ -68,7 +68,7 @@
 }
 .works-panel .asset-card-actions .ant-btn {
   border-color: transparent;
-  background: rgb(22 19 15 / 82%);
+  background: var(--overlay);
   color: var(--text);
   backdrop-filter: blur(6px);
 }

@@ -35,6 +35,7 @@ import { Assets } from "./pages/Assets";
 import { Settings } from "./pages/Settings";
 import { appName, t, useI18n, type MessageKey } from "./i18n";
 import { RailLanguageSwitch } from "./i18n/LanguageSwitch";
+import { ThemeMark } from "./ThemeMark";
 
 // Shows the newest smart-generation run while it is unfinished: a ring filled by
 // finished images, a spinner while analyzing, a dot while waiting for input.
@@ -189,10 +190,7 @@ export default function App() {
     <div className={collapsed ? "shell is-collapsed" : "shell"}>
       <aside className="rail">
         <div className="rail-brand">
-          <svg className="rail-mark" viewBox="0 0 28 28" aria-hidden="true">
-            <circle cx="14" cy="14" r="12.5" />
-            <path d="M14 1.5a12.5 12.5 0 0 1 0 25c4-3.5 6-7.7 6-12.5s-2-9-6-12.5z" />
-          </svg>
+          <ThemeMark />
           <span className="rail-wordmark">{appName()}</span>
           <Tooltip
             title={t(collapsed ? "shell.rail.expand" : "shell.rail.collapse")}
@@ -255,7 +253,7 @@ export default function App() {
           <RailLanguageSwitch tooltip={collapsed} />
           <small className="rail-version">
             {t("shell.rail.version", {
-              version: summary.data?.version || "0.8.2",
+              version: summary.data?.version || "0.8.3",
             })}
           </small>
         </div>

@@ -40,7 +40,8 @@
     "app.openData.notDirectory": "数据位置不是目录",
     "app.openData.failed": "无法打开数据目录：{error}",
     "app.openData.windowsOnly": "打开数据目录仅支持 Windows",
-    "app.languageInvalid": "界面语言无效"
+    "app.languageInvalid": "界面语言无效",
+    "app.appearanceInvalid": "外观设置无效"
   },
   "en": {
     "app.dialog.dataDirectory": "Choose a new save location (an empty folder)",
@@ -83,7 +84,8 @@
     "app.openData.notDirectory": "The data location is not a folder",
     "app.openData.failed": "Cannot open the data folder: {error}",
     "app.openData.windowsOnly": "Opening the data folder works only on Windows",
-    "app.languageInvalid": "Invalid display language"
+    "app.languageInvalid": "Invalid display language",
+    "app.appearanceInvalid": "Invalid appearance"
   },
   "vi": {
     "app.dialog.dataDirectory": "Chọn vị trí lưu mới (một thư mục trống)",
@@ -126,7 +128,8 @@
     "app.openData.notDirectory": "Vị trí dữ liệu không phải là thư mục",
     "app.openData.failed": "Không mở được thư mục dữ liệu: {error}",
     "app.openData.windowsOnly": "Chỉ mở được thư mục dữ liệu trên Windows",
-    "app.languageInvalid": "Ngôn ngữ giao diện không hợp lệ"
+    "app.languageInvalid": "Ngôn ngữ giao diện không hợp lệ",
+    "app.appearanceInvalid": "Chế độ giao diện không hợp lệ"
   },
   "ja": {
     "app.dialog.dataDirectory": "新しい保存先を選択（空のフォルダー）",
@@ -169,7 +172,8 @@
     "app.openData.notDirectory": "データの場所がフォルダーではありません",
     "app.openData.failed": "データフォルダーを開けません：{error}",
     "app.openData.windowsOnly": "データフォルダーを開くのは Windows だけで使えます",
-    "app.languageInvalid": "表示言語が無効です"
+    "app.languageInvalid": "表示言語が無効です",
+    "app.appearanceInvalid": "外観の設定が無効です"
   },
   "ko": {
     "app.dialog.dataDirectory": "새 저장 위치 선택(빈 폴더)",
@@ -212,6 +216,7 @@
     "app.openData.notDirectory": "데이터 위치가 폴더가 아닙니다",
     "app.openData.failed": "데이터 폴더를 열 수 없습니다: {error}",
     "app.openData.windowsOnly": "데이터 폴더 열기는 Windows에서만 됩니다",
-    "app.languageInvalid": "표시 언어가 올바르지 않습니다"
+    "app.languageInvalid": "표시 언어가 올바르지 않습니다",
+    "app.appearanceInvalid": "화면 모드가 올바르지 않습니다"
   }
 }

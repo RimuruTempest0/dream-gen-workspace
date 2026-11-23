@@ -64,6 +64,19 @@ func (a *App) SetInterfaceLanguage(code string) error {
 	}
 	return nil
 }
+// Appearance is the saved appearance: system, light (明) or dark (暗).
+func (a *App) Appearance() string { return a.service.Appearance() }
+
+// SetAppearance saves the appearance and recolours the window's title bar.
+func (a *App) SetAppearance(v string) error {
+	if e := a.service.SetAppearance(v); e != nil {
+		return e
+	}
+	if a.ctx != nil {
+		applyWindowAppearance(a.ctx, v)
+	}
+	return nil
+}
 func (a *App) OpenDataDirectory() error {
 	return a.service.LocalError(openDirectory(a.service.Root()))
 }
