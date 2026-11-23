@@ -55,6 +55,8 @@ type Service struct {
 	workers       sync.WaitGroup
 	// lang is the interface language (string); see language.go.
 	lang atomic.Value
+	// appearance is system, light or dark (string); see appearance.go.
+	appearance atomic.Value
 }
 
 const (
@@ -112,7 +114,19 @@ func NewService(root string) (*Service, error) {
 	if e != nil {
 		return nil, e
 	}
+	// Whether this data directory was used before is decided once, before
+	// either first-start preference below is saved.
+	used, e := st.hasData()
+	if e != nil {
+		st.Close()
+		return nil, e
+	}
 	lang, e := loadLanguage(st)
+	if e != nil {
+		st.Close()
+		return nil, e
+	}
+	appearance, e := loadAppearance(st, used)
 	if e != nil {
 		st.Close()
 		return nil, e
@@ -120,6 +134,7 @@ func NewService(root string) (*Service, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{store: st, provider: NewProvider(), ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), allowLocalProduct: qaLocalProduct}
 	s.lang.Store(lang)
+	s.appearance.Store(appearance)
 	st.lang = s.Language
 	tasks, e := List[Task](st, "task")
 	if e != nil {

@@ -18,6 +18,10 @@ export function AgentRuntime() {
   return window['go']['main']['App']['AgentRuntime']();
 }
 
+export function Appearance() {
+  return window['go']['main']['App']['Appearance']();
+}
+
 export function Backup() {
   return window['go']['main']['App']['Backup']();
 }
@@ -382,6 +386,10 @@ export function SetAgentDraft(arg1) {
   return window['go']['main']['App']['SetAgentDraft'](arg1);
 }
 
+export function SetAppearance(arg1) {
+  return window['go']['main']['App']['SetAppearance'](arg1);
+}
+
 export function SetDraft(arg1) {
   return window['go']['main']['App']['SetDraft'](arg1);
 }
@@ -448,6 +456,10 @@ export function Submit(arg1) {
 
 export function SubmitSuite(arg1, arg2, arg3) {
   return window['go']['main']['App']['SubmitSuite'](arg1, arg2, arg3);
+}
+
+export function SystemAppearance() {
+  return window['go']['main']['App']['SystemAppearance']();
 }
 
 export function TestConnection(arg1) {

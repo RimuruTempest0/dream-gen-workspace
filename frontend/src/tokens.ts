@@ -4,12 +4,16 @@ import { theme, type ThemeConfig } from "antd";
 // 0.7.20: one dark "gallery wall" for the whole app. The interface steps back
 // and the images are the only bright things on screen. No brand colour:
 // ivory is both the text and the primary action; hue is kept for status.
+// 0.8.3: this is 暗 (dark). 明 (light) below is the same wall by day.
 export const colors = {
   // primary is ivory. Anything drawn on a primary fill uses `background`
   // or `surface` for its text, never white.
   primary: "#EFE8DA",
+  primaryHover: "#FFFFFF",
   surface: "#1F1B16",
   background: "#16130F",
+  // Dropdowns, popovers and modals.
+  elevated: "#29241D",
   text: "#EFE8DA",
   success: "#86B98F",
   successBg: "#1D2A20",
@@ -29,6 +33,48 @@ export const colors = {
   inkText: "#EFE8DA",
   inkMuted: "#A69C8C",
   inkAccent: "#EFE8DA",
+  // The mark in the top-left corner: the lit part and the shadow of the moon.
+  moonLit: "#EFE8DA",
+  moonShade: "transparent",
+  // Floating buttons over an image (works wall, previews).
+  overlay: "rgb(22 19 15 / 82%)",
+};
+export type Palette = typeof colors;
+// 0.8.3: 明, paper and ink. The mirror of the dark wall: ink is the text and
+// the primary action, paper is drawn on it. Still no brand colour; status
+// hues are darkened to keep 4.5:1 on the paper.
+export const lightColors: Palette = {
+  primary: "#1F1B16",
+  primaryHover: "#000000",
+  surface: "#FAF7F1",
+  background: "#F2EDE3",
+  elevated: "#FBF9F4",
+  text: "#1F1B16",
+  success: "#36703F",
+  successBg: "#E2EDE0",
+  dangerBg: "#F6E1DA",
+  warningBg: "#F4E8CF",
+  danger: "#A63F28",
+  muted: "#6B6253",
+  border: "#D8CFBF",
+  soft: "#E7E0D3",
+  warning: "#80590C",
+  scrollbar: "#BFB4A3",
+  ink: "#E9E3D7",
+  inkRaised: "#F7F3EB",
+  inkSelected: "#DDD5C6",
+  inkLine: "#CFC5B4",
+  inkText: "#1F1B16",
+  inkMuted: "#6B6253",
+  inkAccent: "#1F1B16",
+  moonLit: "#FFFDF8",
+  moonShade: "#1F1B16",
+  overlay: "rgb(250 247 241 / 86%)",
+};
+export type Mode = "light" | "dark";
+export const palettes: Record<Mode, Palette> = {
+  dark: colors,
+  light: lightColors,
 };
 export const font = '"Microsoft YaHei UI", "Segoe UI", sans-serif';
 // Headings and the wordmark. The serif is not bundled yet; until it is, the
@@ -44,18 +90,23 @@ export const motion = {
   layout: "360ms",
   // Only for a newly generated image coming up on the wall.
   arrive: "640ms",
+  // Only for the moon in the top-left corner changing phase (明 / 暗).
+  phase: "640ms",
   ease: "cubic-bezier(0.16, 1, 0.3, 1)",
 };
-export function installTokens() {
+export function installTokens(mode: Mode = "dark") {
   const root = document.documentElement.style;
-  for (const [k, v] of Object.entries(colors)) root.setProperty(`--${k}`, v);
+  for (const [k, v] of Object.entries(palettes[mode]))
+    root.setProperty(`--${k}`, v);
   root.setProperty("--serif", serif);
   root.setProperty("--motion-instant", motion.instant);
   root.setProperty("--motion-base", motion.base);
   root.setProperty("--motion-layout", motion.layout);
   root.setProperty("--motion-arrive", motion.arrive);
+  root.setProperty("--motion-phase", motion.phase);
   root.setProperty("--ease-out", motion.ease);
-  root.setProperty("color-scheme", "dark");
+  root.setProperty("color-scheme", mode);
+  document.documentElement.dataset.mode = mode;
 }
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -66,73 +117,81 @@ function watchReducedMotion(changed: () => void) {
 // With "reduce motion" on in Windows, Ant Design's own motion (drawers, modals,
 // collapses) is switched off through its theme, so its components never wait
 // for a transition that the stylesheet has removed.
-export function useAntdTheme(): ThemeConfig {
+export function useAntdTheme(mode: Mode = "dark"): ThemeConfig {
   const reduced = useSyncExternalStore(
     watchReducedMotion,
     () => reducedMotion.matches,
   );
-  return useMemo(
-    () =>
-      reduced
-        ? { ...antdTheme, token: { ...antdTheme.token, motion: false } }
-        : antdTheme,
-    [reduced],
-  );
+  return useMemo(() => {
+    const base = antdThemes[mode];
+    return reduced
+      ? { ...base, token: { ...base.token, motion: false } }
+      : base;
+  }, [mode, reduced]);
 }
 
-// Shared by the app and the admin tool so both stay on the same theme.
-export const antdTheme: ThemeConfig = {
-  algorithm: theme.darkAlgorithm,
-  token: {
-    colorPrimary: colors.primary,
-    colorPrimaryHover: "#FFFFFF",
-    colorPrimaryActive: colors.primary,
-    colorLink: colors.primary,
-    colorLinkHover: "#FFFFFF",
-    colorLinkActive: colors.primary,
-    colorSuccess: colors.success,
-    colorSuccessBg: colors.successBg,
-    colorSuccessBorder: colors.border,
-    colorError: colors.danger,
-    colorErrorBg: colors.dangerBg,
-    colorErrorBorder: colors.border,
-    colorWarning: colors.warning,
-    colorWarningBg: colors.warningBg,
-    colorWarningBorder: colors.border,
-    colorInfo: colors.primary,
-    colorInfoBg: colors.soft,
-    colorInfoBorder: colors.border,
-    colorPrimaryBg: colors.soft,
-    colorText: colors.text,
-    colorTextDescription: colors.muted,
-    colorTextSecondary: colors.muted,
-    colorTextDisabled: colors.text,
-    // antd's default placeholder (a quarter of the text colour) is too faint
-    // on the dark surface.
-    colorTextPlaceholder: colors.muted,
-    colorBgBase: colors.background,
-    colorBgLayout: colors.background,
-    colorBgContainer: colors.surface,
-    colorBgElevated: colors.soft,
-    colorBorder: colors.border,
-    colorBorderSecondary: colors.border,
-    fontFamily: font,
-    fontSize: 14,
-    borderRadius: 8,
-    controlHeight: 38,
-  },
-  components: {
-    // Text on an ivory fill is dark.
-    Button: {
-      primaryColor: colors.background,
-      primaryShadow: "none",
-      defaultShadow: "none",
-      dangerShadow: "none",
+function makeAntdTheme(c: Palette, mode: Mode): ThemeConfig {
+  return {
+    algorithm: mode === "dark" ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    token: {
+      colorPrimary: c.primary,
+      colorPrimaryHover: c.primaryHover,
+      colorPrimaryActive: c.primary,
+      colorLink: c.primary,
+      colorLinkHover: c.primaryHover,
+      colorLinkActive: c.primary,
+      colorSuccess: c.success,
+      colorSuccessBg: c.successBg,
+      colorSuccessBorder: c.border,
+      colorError: c.danger,
+      colorErrorBg: c.dangerBg,
+      colorErrorBorder: c.border,
+      colorWarning: c.warning,
+      colorWarningBg: c.warningBg,
+      colorWarningBorder: c.border,
+      colorInfo: c.primary,
+      colorInfoBg: c.soft,
+      colorInfoBorder: c.border,
+      colorPrimaryBg: c.soft,
+      colorText: c.text,
+      colorTextDescription: c.muted,
+      colorTextSecondary: c.muted,
+      colorTextDisabled: c.text,
+      // antd's default placeholder (a quarter of the text colour) is too faint
+      // on the wall.
+      colorTextPlaceholder: c.muted,
+      colorBgBase: c.background,
+      colorBgLayout: c.background,
+      colorBgContainer: c.surface,
+      colorBgElevated: c.elevated,
+      colorBorder: c.border,
+      colorBorderSecondary: c.border,
+      fontFamily: font,
+      fontSize: 14,
+      borderRadius: 8,
+      controlHeight: 38,
     },
-    Checkbox: { colorWhite: colors.background },
-    Radio: { buttonSolidCheckedColor: colors.background },
-    // "On" is green so the white handle keeps its contrast.
-    Switch: { colorPrimary: "#4E8A5B", colorPrimaryHover: "#5A9A68" },
-    Tooltip: { colorBgSpotlight: "#3A332B" },
-  },
+    components: {
+      // Text on a primary fill is the wall colour: dark on ivory, paper on ink.
+      Button: {
+        primaryColor: c.background,
+        primaryShadow: "none",
+        defaultShadow: "none",
+        dangerShadow: "none",
+      },
+      Checkbox: { colorWhite: c.background },
+      Radio: { buttonSolidCheckedColor: c.background },
+      // "On" is green so the white handle keeps its contrast.
+      Switch: { colorPrimary: "#4E8A5B", colorPrimaryHover: "#5A9A68" },
+      // Tooltips stay dark in both modes.
+      Tooltip: { colorBgSpotlight: mode === "dark" ? "#3A332B" : "#2E2820" },
+    },
+  };
+}
+
+const antdThemes: Record<Mode, ThemeConfig> = {
+  dark: makeAntdTheme(colors, "dark"),
+  light: makeAntdTheme(lightColors, "light"),
 };
+// The admin tool stays on 暗.
+export const antdTheme = antdThemes.dark;

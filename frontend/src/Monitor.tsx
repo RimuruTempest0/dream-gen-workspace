@@ -164,7 +164,13 @@ type LLMMonitor = {
 };
 
 const pageSize = 20;
-const gatewayColors = ["#EFE8DA", "#E08A5B", "#8FA3BA", "#86B98F", "#B79AE8"];
+const gatewayColors = [
+  "var(--text)",
+  "#E08A5B",
+  "#8FA3BA",
+  "#86B98F",
+  "#B79AE8",
+];
 const stateKeys: Record<GatewayStat["state"], MessageKey> = {
   healthy: "monitor.state.healthy",
   slow: "monitor.state.slow",

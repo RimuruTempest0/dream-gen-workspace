@@ -110,7 +110,7 @@ func launch(root, data string) {
 	s.SetProductBrowser(filepath.Join(root, productBrowserExe), runtimePath)
 	// A customer package carries customer.dat beside the program; none = developer mode.
 	s.LoadLicense(root)
-	e = wails.Run(&options.App{Title: i18n.AppName(s.Language()), Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: &options.RGBA{R: 22, G: 19, B: 15, A: 1}, AssetServer: &assetserver.Options{Assets: assets},
+	e = wails.Run(&options.App{Title: i18n.AppName(s.Language()), Width: 1440, Height: 920, MinWidth: 800, MinHeight: 600, BackgroundColour: windowBackground(s.Appearance()), AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup: func(ctx context.Context) {
 			if needDirectory {
 				path, err := runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: bootMsg("app.boot.chooseData")})
@@ -130,8 +130,10 @@ func launch(root, data string) {
 				replacement.SetProductBrowser(filepath.Join(root, productBrowserExe), runtimePath)
 				replacement.LoadLicense(root)
 				saveDataPath(root, path)
+				applyWindowAppearance(ctx, replacement.Appearance())
 			}
 			app.startup(ctx)
+			app.watchAppearance(ctx)
 			runtime.OnFileDrop(ctx, func(x, y int, paths []string) {
 				items, err := app.importPaths(paths)
 				if err != nil {
@@ -142,7 +144,7 @@ func launch(root, data string) {
 				}
 			})
 		},
-		OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose, Bind: []interface{}{app}, DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true}, Windows: &windows.Options{WebviewBrowserPath: runtimePath, WebviewUserDataPath: cache, Theme: windows.Light}})
+		OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose, Bind: []interface{}{app}, DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true}, Windows: &windows.Options{WebviewBrowserPath: runtimePath, WebviewUserDataPath: cache, Theme: windowTheme(s.Appearance()), CustomTheme: titleBarTheme()}})
 	if e != nil {
 		fatal(bootMsg("app.boot.failed", "error", e))
 	}

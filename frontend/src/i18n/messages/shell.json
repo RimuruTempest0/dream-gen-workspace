@@ -30,7 +30,16 @@
     "shell.close.cancel": "继续运行",
     "shell.drop.failed": "参考图未导入",
     "shell.notFound": "页面不存在",
-    "shell.notFound.back": "返回创作"
+    "shell.notFound.back": "返回创作",
+    "shell.appearance.label": "外观",
+    "shell.appearance.system": "跟随系统",
+    "shell.appearance.light": "明",
+    "shell.appearance.dark": "暗",
+    "shell.appearance.hint": "跟随系统时，随 Windows 的深浅色一起变化。点左上角的圆也能切换明暗，之后固定为所选的一种。",
+    "shell.appearance.toLight": "切换到明",
+    "shell.appearance.toDark": "切换到暗",
+    "shell.appearance.following": "当前跟随系统",
+    "shell.appearance.failed": "外观未切换"
   },
   "en": {
     "shell.appName": "Image Workbench",
@@ -63,7 +72,16 @@
     "shell.close.cancel": "Keep running",
     "shell.drop.failed": "Reference images not imported",
     "shell.notFound": "Page not found",
-    "shell.notFound.back": "Back to Create"
+    "shell.notFound.back": "Back to Create",
+    "shell.appearance.label": "Appearance",
+    "shell.appearance.system": "Match Windows",
+    "shell.appearance.light": "Light",
+    "shell.appearance.dark": "Dark",
+    "shell.appearance.hint": "Match Windows follows the Windows light or dark setting. Clicking the circle in the top-left corner also switches, and keeps the one you chose.",
+    "shell.appearance.toLight": "Switch to light",
+    "shell.appearance.toDark": "Switch to dark",
+    "shell.appearance.following": "Matching Windows now",
+    "shell.appearance.failed": "Appearance not changed"
   },
   "vi": {
     "shell.appName": "Image Workbench",
@@ -96,7 +114,16 @@
     "shell.close.cancel": "Tiếp tục chạy",
     "shell.drop.failed": "Chưa nhập được ảnh tham chiếu",
     "shell.notFound": "Không tìm thấy trang",
-    "shell.notFound.back": "Quay lại Sáng tác"
+    "shell.notFound.back": "Quay lại Sáng tác",
+    "shell.appearance.label": "Giao diện sáng/tối",
+    "shell.appearance.system": "Theo Windows",
+    "shell.appearance.light": "Sáng",
+    "shell.appearance.dark": "Tối",
+    "shell.appearance.hint": "Khi theo Windows, giao diện đổi cùng chế độ sáng hoặc tối của Windows. Bấm vào hình tròn ở góc trên bên trái cũng đổi được, và giữ nguyên lựa chọn đó.",
+    "shell.appearance.toLight": "Chuyển sang sáng",
+    "shell.appearance.toDark": "Chuyển sang tối",
+    "shell.appearance.following": "Đang theo Windows",
+    "shell.appearance.failed": "Chưa đổi được giao diện"
   },
   "ja": {
     "shell.appName": "Image Workbench",
@@ -129,7 +156,16 @@
     "shell.close.cancel": "実行を続ける",
     "shell.drop.failed": "参考画像を取り込めませんでした",
     "shell.notFound": "ページが見つかりません",
-    "shell.notFound.back": "創作に戻る"
+    "shell.notFound.back": "創作に戻る",
+    "shell.appearance.label": "外観",
+    "shell.appearance.system": "Windows に合わせる",
+    "shell.appearance.light": "ライト",
+    "shell.appearance.dark": "ダーク",
+    "shell.appearance.hint": "Windows に合わせると、Windows のライト／ダーク設定に合わせて切り替わります。左上の円をクリックしても切り替えられ、選んだ方に固定されます。",
+    "shell.appearance.toLight": "ライトに切り替え",
+    "shell.appearance.toDark": "ダークに切り替え",
+    "shell.appearance.following": "現在 Windows に合わせています",
+    "shell.appearance.failed": "外観を切り替えられませんでした"
   },
   "ko": {
     "shell.appName": "Image Workbench",
@@ -162,6 +198,15 @@
     "shell.close.cancel": "계속 실행",
     "shell.drop.failed": "참고 이미지를 가져오지 못했습니다",
     "shell.notFound": "페이지를 찾을 수 없습니다",
-    "shell.notFound.back": "창작으로 돌아가기"
+    "shell.notFound.back": "창작으로 돌아가기",
+    "shell.appearance.label": "화면 모드",
+    "shell.appearance.system": "Windows 설정 따르기",
+    "shell.appearance.light": "라이트",
+    "shell.appearance.dark": "다크",
+    "shell.appearance.hint": "Windows 설정을 따르면 Windows의 라이트/다크 설정에 맞춰 바뀝니다. 왼쪽 위의 원을 클릭해도 바꿀 수 있으며, 고른 모드로 고정됩니다.",
+    "shell.appearance.toLight": "라이트로 전환",
+    "shell.appearance.toDark": "다크로 전환",
+    "shell.appearance.following": "지금은 Windows 설정을 따름",
+    "shell.appearance.failed": "화면 모드를 바꾸지 못했습니다"
   }
 }

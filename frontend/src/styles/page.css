@@ -329,14 +329,25 @@ html:not([lang="zh-CN"]) .mode-option-hint {
   color: var(--inkMuted);
 }
 .run-activity-log {
+  --log-time: #9ca3af;
+  --log-tool: #93c5fd;
+  --log-llm: #86efac;
+  --log-warn: #fcd34d;
   max-height: 260px;
   overflow: auto;
   padding: 10px 14px;
   display: grid;
   gap: 4px;
 }
+/* 明: the same four kinds of line, dark enough for the paper stage. */
+:root[data-mode="light"] .run-activity-log {
+  --log-time: #6b6253;
+  --log-tool: #2f5b86;
+  --log-llm: #36703f;
+  --log-warn: #80590c;
+}
 .run-activity-log:focus-visible {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid var(--log-tool);
   outline-offset: -2px;
 }
 .run-activity-line {
@@ -348,16 +359,16 @@ html:not([lang="zh-CN"]) .mode-option-hint {
   animation: fade-in var(--motion-base) var(--ease-out);
 }
 .run-activity-line time {
-  color: #9ca3af;
+  color: var(--log-time);
 }
 .run-activity-line.is-tool {
-  color: #93c5fd;
+  color: var(--log-tool);
 }
 .run-activity-line.is-llm {
-  color: #86efac;
+  color: var(--log-llm);
 }
 .run-activity-line.is-warn {
-  color: #fcd34d;
+  color: var(--log-warn);
 }
 .run-step-reply {
   margin: -4px 0 16px 28px;

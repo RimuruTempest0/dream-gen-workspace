@@ -45,18 +45,58 @@ h1 {
   margin-bottom: 18px;
   white-space: nowrap;
 }
+/* 0.8.3: the mark is the 明 / 暗 switch (ThemeMark.tsx). The button is a
+   40px target around the 28px moon. */
 .rail-mark {
   flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: -6px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  transition: background-color var(--motion-instant) var(--ease-out);
+}
+.rail-mark:hover {
+  background: var(--surface);
+}
+.rail-mark:focus-visible {
+  outline-offset: -2px;
+}
+.rail-mark svg {
   width: 28px;
   height: 28px;
+  overflow: visible;
 }
 .rail-mark circle {
   fill: none;
   stroke: var(--text);
   stroke-width: 1.5;
 }
-.rail-mark path {
-  fill: var(--text);
+.rail-mark-lit {
+  fill: var(--moonLit);
+}
+.rail-mark-shade {
+  fill: var(--moonShade);
+}
+.rail-mark-note {
+  display: block;
+  font-size: 12px;
+  opacity: 0.72;
+}
+/* While 明 / 暗 switches, every colour moves together, and only then. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition-property:
+    background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: var(--motion-layout) !important;
+  transition-timing-function: var(--ease-out) !important;
 }
 .rail-wordmark {
   flex: 1;
@@ -89,19 +129,23 @@ h1 {
 .rail-toggle:focus-visible {
   outline-offset: -2px;
 }
-/* Collapsed: the button takes the mark's place, so the rail keeps one icon
-   column and the way back out is where the way in was. */
+/* Collapsed: the moon stays on top so 明 / 暗 is one click away, and the
+   expand button sits under it in the same icon column. */
 .is-collapsed .rail-brand {
-  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  height: auto;
   padding: 0;
 }
-.is-collapsed .rail-mark,
+.is-collapsed .rail-mark {
+  margin-left: 0;
+}
 .is-collapsed .rail-wordmark {
   display: none;
 }
 .is-collapsed .rail-toggle {
   width: 40px;
-  height: 40px;
+  height: 36px;
   font-size: 18px;
 }
 .rail nav {

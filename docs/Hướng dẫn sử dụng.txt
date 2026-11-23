@@ -4,6 +4,8 @@ Từ 0.7.20, giao diện chuyển sang nền tối, thanh điều hướng bên 
 
 Ngôn ngữ giao diện (từ 0.8.0): chương trình có thể hiển thị bằng năm ngôn ngữ: 中文 (tiếng Trung), English, Tiếng Việt, 日本語 và 한국어. Lần mở đầu tiên chương trình theo ngôn ngữ của Windows, nếu Windows dùng ngôn ngữ khác thì hiển thị tiếng Trung; sau đó có thể đổi ở cuối thanh điều hướng bên trái hoặc trong "Hệ thống → Kết nối → Ngôn ngữ giao diện", có hiệu lực ngay và được giữ sau khi khởi động lại. AI viết câu hỏi, nhận định và giải thích bằng ngôn ngữ giao diện; câu lệnh tạo ảnh được viết bằng tiếng Trung khi giao diện là tiếng Trung và bằng tiếng Anh với các ngôn ngữ khác; chữ trong ảnh được vẽ đúng như bạn viết, không dịch. Nhật ký và thông báo đã lưu giữ nguyên ngôn ngữ lúc ghi. Thư mục chương trình có hướng dẫn sử dụng bằng cả năm ngôn ngữ; khi lên 0.8.0 bằng cập nhật một chạm chỉ có bản tiếng Trung, các ngôn ngữ khác có trong gói đầy đủ.
 
+Giao diện sáng và tối (từ 0.8.3): bấm vào hình tròn ở góc trên bên trái để chuyển giữa sáng (nền giấy, chữ mực) và tối (nền gần đen, tông ấm); hình tròn xoay như một pha của mặt trăng, và thanh tiêu đề phía trên cửa sổ cũng đổi theo cùng màu (Windows 11; Windows 10 chỉ hiển thị đen hoặc trắng của hệ thống). Bản cài mới theo Windows và đổi cùng chế độ sáng hoặc tối của Windows; sau khi bấm vào hình tròn, lựa chọn đó được giữ nguyên. Muốn theo Windows lại, chọn "Theo Windows" trong "Hệ thống → Kết nối → Giao diện sáng/tối". Bản nâng cấp từ phiên bản cũ giữ giao diện tối.
+
 Chỉ hỗ trợ Windows 11 x64.
 Giải nén toàn bộ tệp nén, nhấp đúp ImageWorkbench.exe.
 Hãy giữ thư mục runtime, agent và tệp product-browser.exe nằm cùng cấp với EXE; đó lần lượt là thành phần chạy giao diện, Claude Code tích hợp sẵn và trình duyệt trang sản phẩm.

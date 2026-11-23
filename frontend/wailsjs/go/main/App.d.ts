@@ -10,6 +10,8 @@ export function AddShopRuleFilesFromPaths(arg1:string,arg2:Array<string>):Promis
 
 export function AgentRuntime():Promise<core.AgentRuntimeInfo>;
 
+export function Appearance():Promise<string>;
+
 export function Backup():Promise<boolean>;
 
 export function CancelAgentAnalysis(arg1:string):Promise<void>;
@@ -192,6 +194,8 @@ export function SaveTemplate(arg1:core.Template):Promise<core.Template>;
 
 export function SetAgentDraft(arg1:core.AgentInput):Promise<void>;
 
+export function SetAppearance(arg1:string):Promise<void>;
+
 export function SetDraft(arg1:core.GenerateInput):Promise<void>;
 
 export function SetGatewaySettings(arg1:core.GatewaySettings):Promise<void>;
@@ -225,6 +229,8 @@ export function StopBatch(arg1:string):Promise<void>;
 export function Submit(arg1:core.GenerateInput):Promise<string>;
 
 export function SubmitSuite(arg1:string,arg2:number,arg3:string):Promise<string>;
+
+export function SystemAppearance():Promise<string>;
 
 export function TestConnection(arg1:core.ConnectionInput):Promise<core.TestResult>;
 
